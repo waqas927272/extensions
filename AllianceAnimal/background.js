@@ -3,6 +3,40 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     chrome.storage.local.set({ jobs: request.data }, () => {
       console.log('Jobs data stored.');
     });
+    return false;
+  }
+
+  // Handle webhook requests from results page (bypasses CORS)
+  if (request.action === 'sendWebhook') {
+    const { url, payload } = request;
+    console.log('Sending webhook to:', url);
+
+    (async () => {
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(payload)
+        });
+
+        console.log('Webhook response status:', response.status);
+
+        if (response.ok) {
+          sendResponse({ success: true });
+        } else {
+          const errorText = await response.text().catch(() => '');
+          sendResponse({ success: false, error: `HTTP ${response.status}: ${errorText}` });
+        }
+      } catch (error) {
+        console.error('Webhook error:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+
+    return true; // Keep message channel open for async response
   }
 
   if (request.action === 'scrapeJobDescription') {

@@ -35,6 +35,15 @@ document.addEventListener('DOMContentLoaded', () => {
   const addWebhookBtn = document.getElementById('addWebhook');
   const webhooksList = document.getElementById('webhooksList');
 
+  // Results modal elements
+  const resultsModal = document.getElementById('resultsModal');
+  const resultsModalHeader = document.getElementById('resultsModalHeader');
+  const resultsModalTitle = document.getElementById('resultsModalTitle');
+  const resultsModalBody = document.getElementById('resultsModalBody');
+  const closeResultsModal = document.getElementById('closeResultsModal');
+  const closeResultsBtn = document.getElementById('closeResultsBtn');
+  const copyResultsBtn = document.getElementById('copyResults');
+
   let storedJobs = [];
   let webhooks = [];
   let currentJobIndex = 0;
@@ -57,10 +66,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
       updateStats();
 
+      const PARENT_CLIENT_NAME = 'Alliance Animal Health (Parent Client)';
+
       if (storedJobs.length === 0) {
         jobRecordsTableBody.innerHTML = `
           <tr>
-            <td colspan="7" class="no-records">
+            <td colspan="8" class="no-records">
               <svg class="no-records-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14 2 14 8 20 8"></polyline>
@@ -91,7 +102,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (filteredJobs.length === 0) {
         jobRecordsTableBody.innerHTML = `
           <tr>
-            <td colspan="7" class="no-records">
+            <td colspan="8" class="no-records">
               <svg class="no-records-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <circle cx="11" cy="11" r="8"></circle>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -117,6 +128,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         row.innerHTML = `
           <td>${index + 1}</td>
+          <td class="parent-client-cell">${escapeHtml(PARENT_CLIENT_NAME)}</td>
           <td class="job-title">${escapeHtml(job.title)}</td>
           <td class="hospital-name">${escapeHtml(job.hospitalName)}</td>
           <td class="city-cell">${escapeHtml(job.city || 'N/A')}</td>
@@ -321,6 +333,56 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // ==================== RESULTS MODAL FUNCTIONS ====================
+
+  let currentResultsText = '';
+
+  function showResultsModal(title, message, type = 'default') {
+    currentResultsText = message;
+    resultsModalTitle.textContent = title;
+    resultsModalBody.textContent = message;
+
+    // Remove previous type classes
+    resultsModalHeader.classList.remove('success', 'error', 'warning');
+    if (type !== 'default') {
+      resultsModalHeader.classList.add(type);
+    }
+
+    resultsModal.classList.remove('hidden');
+  }
+
+  function hideResultsModal() {
+    resultsModal.classList.add('hidden');
+    currentResultsText = '';
+  }
+
+  function copyResultsToClipboard() {
+    navigator.clipboard.writeText(currentResultsText).then(() => {
+      const originalText = copyResultsBtn.innerHTML;
+      copyResultsBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg> Copied!';
+      copyResultsBtn.classList.add('btn-success');
+      copyResultsBtn.classList.remove('btn-primary');
+
+      setTimeout(() => {
+        copyResultsBtn.innerHTML = originalText;
+        copyResultsBtn.classList.remove('btn-success');
+        copyResultsBtn.classList.add('btn-primary');
+      }, 2000);
+    }).catch(err => {
+      console.error('Failed to copy:', err);
+    });
+  }
+
+  // Results modal event listeners
+  closeResultsModal.addEventListener('click', hideResultsModal);
+  closeResultsBtn.addEventListener('click', hideResultsModal);
+  copyResultsBtn.addEventListener('click', copyResultsToClipboard);
+  resultsModal.addEventListener('click', (e) => {
+    if (e.target === resultsModal) {
+      hideResultsModal();
+    }
+  });
+
   // ==================== WEBHOOK FUNCTIONS ====================
 
   // Load webhooks from storage
@@ -450,64 +512,153 @@ document.addEventListener('DOMContentLoaded', () => {
     closeWebhookModalFn();
   }
 
-  // Send data to all enabled webhooks
+  // Send webhook request via background script (bypasses CORS)
+  function sendWebhookRequest(url, payload) {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage(
+        {
+          action: 'sendWebhook',
+          url: url,
+          payload: payload
+        },
+        (response) => {
+          resolve(response || { success: false, error: 'No response from background script' });
+        }
+      );
+    });
+  }
+
+  // Send data to all enabled webhooks in batches
   async function sendToWebhooks() {
     const enabledWebhooks = webhooks.filter(w => w.enabled);
 
     if (enabledWebhooks.length === 0) {
-      alert('No enabled webhooks. Please add and enable at least one webhook.');
+      showResultsModal('Warning', 'No enabled webhooks. Please add and enable at least one webhook.', 'warning');
       return;
     }
 
     if (storedJobs.length === 0) {
-      alert('No records to send.');
+      showResultsModal('Warning', 'No records to send.', 'warning');
       return;
     }
 
-    if (!confirm(`Send ${storedJobs.length} records to ${enabledWebhooks.length} webhook(s)?`)) {
+    const BATCH_SIZE = 50;
+    const totalBatches = Math.ceil(storedJobs.length / BATCH_SIZE);
+
+    if (!confirm(`Send ${storedJobs.length} records in ${totalBatches} batch(es) of ${BATCH_SIZE} to ${enabledWebhooks.length} webhook(s)?`)) {
       return;
     }
 
     sendToWebhooksBtn.disabled = true;
     sendToWebhooksBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Sending...';
 
-    const results = [];
+    // Show progress section
+    progressSection.classList.remove('hidden');
+    progressBar.style.width = '0%';
+    progressText.textContent = `0 / ${totalBatches} batches`;
 
-    for (const webhook of enabledWebhooks) {
-      try {
-        const response = await fetch(webhook.url, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            source: 'AAH Job Scraper',
-            timestamp: new Date().toISOString(),
-            totalRecords: storedJobs.length,
-            data: storedJobs
-          })
+    const PARENT_CLIENT_NAME = 'Alliance Animal Health (Parent Client)';
+
+    // Add parentClientName to each job record
+    const jobsWithParentClient = storedJobs.map(job => ({
+      parentClientName: PARENT_CLIENT_NAME,
+      ...job
+    }));
+
+    // Split into batches
+    const batches = [];
+    for (let i = 0; i < jobsWithParentClient.length; i += BATCH_SIZE) {
+      batches.push(jobsWithParentClient.slice(i, i + BATCH_SIZE));
+    }
+
+    const allResults = [];
+    let batchesSent = 0;
+
+    // Send each batch to all enabled webhooks
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      const batchNumber = batchIndex + 1;
+
+      const payload = {
+        source: 'AAH Job Scraper',
+        parentClientName: PARENT_CLIENT_NAME,
+        timestamp: new Date().toISOString(),
+        batchNumber: batchNumber,
+        totalBatches: totalBatches,
+        batchSize: batch.length,
+        totalRecords: storedJobs.length,
+        data: batch
+      };
+
+      for (const webhook of enabledWebhooks) {
+        const response = await sendWebhookRequest(webhook.url, payload);
+        allResults.push({
+          name: webhook.name,
+          url: webhook.url,
+          batch: batchNumber,
+          ...response
         });
+      }
 
-        if (response.ok) {
-          results.push({ name: webhook.name, success: true });
-        } else {
-          results.push({ name: webhook.name, success: false, error: `HTTP ${response.status}` });
-        }
-      } catch (error) {
-        results.push({ name: webhook.name, success: false, error: error.message });
+      // Update progress
+      batchesSent++;
+      const percent = Math.round((batchesSent / totalBatches) * 100);
+      progressBar.style.width = `${percent}%`;
+      progressText.textContent = `${batchesSent} / ${totalBatches} batches`;
+
+      // Small delay between batches to avoid overwhelming the server
+      if (batchIndex < batches.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
 
-    // Show results
-    const successful = results.filter(r => r.success).length;
-    const failed = results.filter(r => !r.success);
+    // Hide progress section
+    progressSection.classList.add('hidden');
 
-    let message = `Sent to ${successful}/${enabledWebhooks.length} webhooks successfully.`;
-    if (failed.length > 0) {
-      message += '\n\nFailed webhooks:\n' + failed.map(f => `- ${f.name}: ${f.error}`).join('\n');
+    // Build detailed results message
+    const successful = allResults.filter(r => r.success);
+    const failed = allResults.filter(r => !r.success);
+    const timestamp = new Date().toISOString();
+
+    let message = `Webhook Results\n`;
+    message += `===============\n`;
+    message += `Timestamp: ${timestamp}\n`;
+    message += `Total Records: ${storedJobs.length}\n`;
+    message += `Batches Sent: ${totalBatches} (${BATCH_SIZE} records each)\n`;
+    message += `Webhooks: ${enabledWebhooks.length}\n`;
+    message += `Total Requests: ${allResults.length}\n`;
+    message += `Successful: ${successful.length} | Failed: ${failed.length}\n\n`;
+
+    if (successful.length > 0) {
+      message += `Successful Batches:\n`;
+      // Group by webhook
+      const successByWebhook = {};
+      successful.forEach(s => {
+        if (!successByWebhook[s.name]) {
+          successByWebhook[s.name] = [];
+        }
+        successByWebhook[s.name].push(s.batch);
+      });
+      Object.entries(successByWebhook).forEach(([name, batchNums]) => {
+        message += `  [OK] ${name}: Batches ${batchNums.join(', ')}\n`;
+      });
+      message += `\n`;
     }
 
-    alert(message);
+    if (failed.length > 0) {
+      message += `Failed Batches:\n`;
+      failed.forEach(f => {
+        message += `  [ERROR] ${f.name} (Batch ${f.batch})\n`;
+        message += `          ${f.url}\n`;
+        message += `          Error: ${f.error}\n`;
+      });
+    }
+
+    // Determine modal type based on results
+    const modalType = failed.length === 0 ? 'success' : (successful.length === 0 ? 'error' : 'warning');
+    const modalTitle = failed.length === 0 ? 'Success' : (successful.length === 0 ? 'Failed' : 'Partial Success');
+
+    showResultsModal(modalTitle, message, modalType);
 
     sendToWebhooksBtn.disabled = false;
     sendToWebhooksBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg> Send to Webhooks';

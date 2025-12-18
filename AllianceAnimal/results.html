@@ -132,6 +132,7 @@
           <thead>
             <tr>
               <th>#</th>
+              <th>Parent Client</th>
               <th>Job Title</th>
               <th>Hospital</th>
               <th>City</th>
@@ -198,6 +199,34 @@
             <button type="submit" class="btn btn-success">Save Webhook</button>
           </div>
         </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results Modal (for webhook results, errors, etc.) -->
+  <div id="resultsModal" class="modal hidden">
+    <div class="modal-content modal-small">
+      <div class="modal-header" id="resultsModalHeader">
+        <h3 id="resultsModalTitle">Results</h3>
+        <button class="modal-close" id="closeResultsModal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <pre id="resultsModalBody" class="results-content"></pre>
+        <div class="form-actions">
+          <button type="button" id="copyResults" class="btn btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            Copy
+          </button>
+          <button type="button" id="closeResultsBtn" class="btn btn-cancel">Close</button>
+        </div>
       </div>
     </div>
   </div>

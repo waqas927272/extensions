@@ -484,6 +484,12 @@ td:first-child {
   font-weight: 500;
 }
 
+.parent-client-cell {
+  color: #2c5282;
+  font-weight: 500;
+  font-size: 13px;
+}
+
 .description-cell {
   max-width: 180px;
 }
@@ -707,6 +713,43 @@ td:first-child {
 
 .form-actions .btn {
   min-width: 100px;
+}
+
+/* Results Modal */
+.results-content {
+  background: #f7fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 12px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 0;
+}
+
+.modal-header.success {
+  background: #48bb78;
+}
+
+.modal-header.error {
+  background: #fc8181;
+}
+
+.modal-header.warning {
+  background: #ed8936;
+}
+
+.copy-success {
+  color: #48bb78;
+  font-size: 12px;
+  margin-right: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* Responsive */
