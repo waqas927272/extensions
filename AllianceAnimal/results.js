@@ -3,6 +3,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const clearRecordsBtn = document.getElementById('clearRecords');
   const downloadCsvBtn = document.getElementById('downloadCsv');
   const getDescriptionsBtn = document.getElementById('getDescriptions');
+  const sendToWebhooksBtn = document.getElementById('sendToWebhooks');
   const searchInput = document.getElementById('searchInput');
 
   // Stats elements
@@ -21,7 +22,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const modalBody = document.getElementById('modalBody');
   const closeModal = document.getElementById('closeModal');
 
+  // Webhook elements
+  const webhookModal = document.getElementById('webhookModal');
+  const webhookModalTitle = document.getElementById('webhookModalTitle');
+  const webhookForm = document.getElementById('webhookForm');
+  const webhookNameInput = document.getElementById('webhookName');
+  const webhookUrlInput = document.getElementById('webhookUrl');
+  const webhookEnabledInput = document.getElementById('webhookEnabled');
+  const webhookIdInput = document.getElementById('webhookId');
+  const closeWebhookModal = document.getElementById('closeWebhookModal');
+  const cancelWebhook = document.getElementById('cancelWebhook');
+  const addWebhookBtn = document.getElementById('addWebhook');
+  const webhooksList = document.getElementById('webhooksList');
+
   let storedJobs = [];
+  let webhooks = [];
   let currentJobIndex = 0;
   let isGettingDescriptions = false;
 
@@ -306,6 +321,212 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // ==================== WEBHOOK FUNCTIONS ====================
+
+  // Load webhooks from storage
+  function loadWebhooks() {
+    chrome.storage.local.get(['webhooks'], (result) => {
+      webhooks = result.webhooks || [];
+      renderWebhooks();
+    });
+  }
+
+  // Save webhooks to storage
+  function saveWebhooks() {
+    chrome.storage.local.set({ webhooks: webhooks }, () => {
+      console.log('Webhooks saved');
+    });
+  }
+
+  // Render webhooks list
+  function renderWebhooks() {
+    if (webhooks.length === 0) {
+      webhooksList.innerHTML = '<div class="no-webhooks">No webhooks configured</div>';
+      return;
+    }
+
+    webhooksList.innerHTML = webhooks.map(webhook => `
+      <div class="webhook-item ${webhook.enabled ? '' : 'disabled'}" data-id="${webhook.id}">
+        <div class="webhook-status ${webhook.enabled ? '' : 'inactive'}"></div>
+        <span class="webhook-name" title="${webhook.url}">${webhook.name}</span>
+        <div class="webhook-actions">
+          <button class="webhook-btn edit" data-id="${webhook.id}" title="Edit">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+            </svg>
+          </button>
+          <button class="webhook-btn delete" data-id="${webhook.id}" title="Delete">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"></polyline>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+          </button>
+        </div>
+      </div>
+    `).join('');
+
+    // Add event listeners for edit/delete buttons
+    webhooksList.querySelectorAll('.webhook-btn.edit').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = e.currentTarget.dataset.id;
+        editWebhook(id);
+      });
+    });
+
+    webhooksList.querySelectorAll('.webhook-btn.delete').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = e.currentTarget.dataset.id;
+        deleteWebhook(id);
+      });
+    });
+  }
+
+  // Open webhook modal for adding
+  function openAddWebhookModal() {
+    webhookModalTitle.textContent = 'Add Webhook';
+    webhookForm.reset();
+    webhookIdInput.value = '';
+    webhookEnabledInput.checked = true;
+    webhookModal.classList.remove('hidden');
+  }
+
+  // Open webhook modal for editing
+  function editWebhook(id) {
+    const webhook = webhooks.find(w => w.id === id);
+    if (!webhook) return;
+
+    webhookModalTitle.textContent = 'Edit Webhook';
+    webhookIdInput.value = webhook.id;
+    webhookNameInput.value = webhook.name;
+    webhookUrlInput.value = webhook.url;
+    webhookEnabledInput.checked = webhook.enabled;
+    webhookModal.classList.remove('hidden');
+  }
+
+  // Delete webhook
+  function deleteWebhook(id) {
+    const webhook = webhooks.find(w => w.id === id);
+    if (!webhook) return;
+
+    if (confirm(`Delete webhook "${webhook.name}"?`)) {
+      webhooks = webhooks.filter(w => w.id !== id);
+      saveWebhooks();
+      renderWebhooks();
+    }
+  }
+
+  // Close webhook modal
+  function closeWebhookModalFn() {
+    webhookModal.classList.add('hidden');
+    webhookForm.reset();
+  }
+
+  // Save webhook (add or update)
+  function saveWebhook(e) {
+    e.preventDefault();
+
+    const id = webhookIdInput.value || Date.now().toString();
+    const name = webhookNameInput.value.trim();
+    const url = webhookUrlInput.value.trim();
+    const enabled = webhookEnabledInput.checked;
+
+    if (!name || !url) {
+      alert('Please fill in all fields');
+      return;
+    }
+
+    const existingIndex = webhooks.findIndex(w => w.id === id);
+    const webhookData = { id, name, url, enabled };
+
+    if (existingIndex >= 0) {
+      webhooks[existingIndex] = webhookData;
+    } else {
+      webhooks.push(webhookData);
+    }
+
+    saveWebhooks();
+    renderWebhooks();
+    closeWebhookModalFn();
+  }
+
+  // Send data to all enabled webhooks
+  async function sendToWebhooks() {
+    const enabledWebhooks = webhooks.filter(w => w.enabled);
+
+    if (enabledWebhooks.length === 0) {
+      alert('No enabled webhooks. Please add and enable at least one webhook.');
+      return;
+    }
+
+    if (storedJobs.length === 0) {
+      alert('No records to send.');
+      return;
+    }
+
+    if (!confirm(`Send ${storedJobs.length} records to ${enabledWebhooks.length} webhook(s)?`)) {
+      return;
+    }
+
+    sendToWebhooksBtn.disabled = true;
+    sendToWebhooksBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Sending...';
+
+    const results = [];
+
+    for (const webhook of enabledWebhooks) {
+      try {
+        const response = await fetch(webhook.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            source: 'AAH Job Scraper',
+            timestamp: new Date().toISOString(),
+            totalRecords: storedJobs.length,
+            data: storedJobs
+          })
+        });
+
+        if (response.ok) {
+          results.push({ name: webhook.name, success: true });
+        } else {
+          results.push({ name: webhook.name, success: false, error: `HTTP ${response.status}` });
+        }
+      } catch (error) {
+        results.push({ name: webhook.name, success: false, error: error.message });
+      }
+    }
+
+    // Show results
+    const successful = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success);
+
+    let message = `Sent to ${successful}/${enabledWebhooks.length} webhooks successfully.`;
+    if (failed.length > 0) {
+      message += '\n\nFailed webhooks:\n' + failed.map(f => `- ${f.name}: ${f.error}`).join('\n');
+    }
+
+    alert(message);
+
+    sendToWebhooksBtn.disabled = false;
+    sendToWebhooksBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg> Send to Webhooks';
+  }
+
+  // Webhook event listeners
+  addWebhookBtn.addEventListener('click', openAddWebhookModal);
+  closeWebhookModal.addEventListener('click', closeWebhookModalFn);
+  cancelWebhook.addEventListener('click', closeWebhookModalFn);
+  webhookForm.addEventListener('submit', saveWebhook);
+  sendToWebhooksBtn.addEventListener('click', sendToWebhooks);
+
+  webhookModal.addEventListener('click', (e) => {
+    if (e.target === webhookModal) {
+      closeWebhookModalFn();
+    }
+  });
+
   // Initial load
   displayRecords();
+  loadWebhooks();
 });

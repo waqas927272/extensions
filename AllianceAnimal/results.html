@@ -74,6 +74,13 @@
           </svg>
           Download CSV
         </button>
+        <button id="sendToWebhooks" class="btn btn-webhook">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+          Send to Webhooks
+        </button>
         <button id="clearRecords" class="btn btn-danger">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="3 6 5 6 21 6"></polyline>
@@ -81,6 +88,21 @@
           </svg>
           Clear All Records
         </button>
+      </div>
+
+      <div class="webhooks-section">
+        <div class="webhooks-header">
+          <h3>Webhooks</h3>
+          <button id="addWebhook" class="btn-add-webhook" title="Add Webhook">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+          </button>
+        </div>
+        <div id="webhooksList" class="webhooks-list">
+          <!-- Webhooks will be listed here -->
+        </div>
       </div>
 
       <div class="progress-section hidden" id="progressSection">
@@ -140,6 +162,42 @@
       </div>
       <div class="modal-body" id="modalBody">
         <!-- Description content -->
+      </div>
+    </div>
+  </div>
+
+  <!-- Webhook Modal -->
+  <div id="webhookModal" class="modal hidden">
+    <div class="modal-content modal-small">
+      <div class="modal-header">
+        <h3 id="webhookModalTitle">Add Webhook</h3>
+        <button class="modal-close" id="closeWebhookModal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <form id="webhookForm">
+          <div class="form-group">
+            <label for="webhookName">Name</label>
+            <input type="text" id="webhookName" placeholder="e.g., My CRM Webhook" required>
+          </div>
+          <div class="form-group">
+            <label for="webhookUrl">Webhook URL</label>
+            <input type="url" id="webhookUrl" placeholder="https://..." required>
+          </div>
+          <div class="form-group form-checkbox">
+            <input type="checkbox" id="webhookEnabled" checked>
+            <label for="webhookEnabled">Enabled</label>
+          </div>
+          <input type="hidden" id="webhookId">
+          <div class="form-actions">
+            <button type="button" id="cancelWebhook" class="btn btn-cancel">Cancel</button>
+            <button type="submit" class="btn btn-success">Save Webhook</button>
+          </div>
+        </form>
       </div>
     </div>
   </div>
