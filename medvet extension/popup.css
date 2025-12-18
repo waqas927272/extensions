@@ -1,0 +1,43 @@
+body {
+  width: 200px;
+  padding: 10px;
+  text-align: center;
+}
+
+button {
+  width: 100%;
+  margin: 5px 0;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+button:hover {
+  background-color: #f0f0f0;
+}
+
+#loadingMessage {
+  display: none;
+  margin-top: 10px;
+  color: #333;
+}
+
+#loadingMessage.show {
+  display: block;
+}
+
+#stats {
+  margin-top: 15px;
+  padding-top: 10px;
+  border-top: 1px solid #ccc;
+  text-align: left;
+}
+
+#stats p {
+  margin: 5px 0;
+}
+
+#stats span {
+  font-weight: bold;
+}

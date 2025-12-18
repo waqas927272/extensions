@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "AAH Job Scraper",
+  "version": "1.0",
+  "description": "Scrapes job data from Alliance Animal Health careers page.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.smartrecruiters.com/*"
+  ],
+  "icons": {
+    "16": "images/faveicon.jpg",
+    "48": "images/faveicon.jpg",
+    "128": "images/faveicon.jpg"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "images/faveicon.jpg",
+      "48": "images/faveicon.jpg",
+      "128": "images/faveicon.jpg"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

@@ -1,0 +1,1973 @@
+/*
+Theme Name: Avada Child
+Theme URI: https://avada.theme-fusion.com/
+Template: Avada
+Author: ThemeFusion
+Author URI: https://themeforest.net/user/ThemeFusion
+Description: The Avada Website Builder is the ultimate design and creation suite. Design Anything, Build Everything, Fast. The #1 selling product of all time on ThemeForest.
+Version: 7.4.2.1634572109
+Updated: 2021-10-18 15:48:29
+
+*/
+:root {
+    --sliderBoxes_height: 400px;
+}
+
+.hide {
+    display: none !important;
+}
+
+
+
+/* Custom alert button */
+
+#sr-alert-button {
+    z-index: 12;
+}
+
+#sr-alert-button iframe{
+	width: 160px;
+}
+
+.button--custom {
+    background-color: red !important;
+}
+
+
+/* List */
+
+.paw_icon ul li {
+    margin: 0;
+    padding: 5px 30px;
+    list-style: none;
+    background-image: url(/wp-content/uploads/2021/11/Paw.svg);
+    background-repeat: no-repeat;
+    background-position: left center;
+    background-size: 20px;
+}
+
+
+/* Links */
+
+.readMore a,
+.fusion-text a {
+    color: var(--link_color);
+    border-bottom: 4px solid var(--link_color);
+    top: 0;
+    padding-bottom: 0;
+    transition: top 0.5s ease-in-out;
+    font-weight: bold;
+}
+
+.readMore a:hover,
+.fusion-text a:hover {
+    color: var(--link_color) !important;
+    padding-bottom: 5px;
+    top: -5px;
+    position: relative;
+    transition: all .5s ease-in-out;
+}
+
+.uppercase {
+    text-transform: uppercase;
+}
+
+
+/* Menu */
+
+#menu-main-menu .menu-item a:after {
+    top: calc(50% + 0.8em);
+    transition: transform .2s ease-in-out, margin-bottom .2s ease-in-out;
+}
+
+#menu-main-menu .menu-item a span {
+    margin-bottom: 0px;
+    transition: transform .2s ease-in-out, margin-bottom .2s ease-in-out;
+}
+
+#menu-main-menu .menu-item:hover a span {
+    margin-bottom: 13px;
+    transition: transform .2s ease-in-out, margin-bottom .2s ease-in-out;
+}
+
+
+/* Select */
+
+select {
+    padding-left: 15px;
+    padding-right: 15px;
+}
+
+
+/* Buttons */
+
+.fusion-button,
+.fusion-button:hover {
+    transition: background-color 0.5s;
+}
+
+.fusion-button:active {
+    transform: scale(0.97, 0.97);
+}
+
+
+/* Testimonials */
+
+.fusion-post-cards.flexslider .flex-direction-nav a {
+    opacity: 1;
+    background-color: transparent;
+    color: #5597CD;
+    font-size: 50px !important;
+}
+
+.fusion-post-cards.flexslider:hover .flex-prev,
+.fusion-post-cards.flexslider .flex-prev {
+    left: -10px !important;
+}
+
+.fusion-post-cards.flexslider:hover .flex-next,
+.fusion-post-cards.flexslider .flex-next {
+    right: -10px !important;
+}
+
+.testimonial-pagination a,
+.fusion-post-cards.flexslider .flex-control-paging li a {
+    width: 30px !important;
+    height: 5px !important;
+    background-color: #C6DAE7 !important;
+    border: 1px solid #C6DAE7 !important;
+    border-radius: unset !important;
+}
+
+.testimonial-pagination a.activeSlide,
+.fusion-post-cards.flexslider .flex-control-paging li a.flex-active {
+    width: 60px !important;
+    background-color: #003c71 !important;
+    border: 1px solid #003c71 !important;
+}
+
+.fusion-post-cards.flexslider ul li {
+    padding-top: 40px;
+}
+
+.fusion-post-cards.flexslider ul li>.fusion-column-wrapper .testimonial::before,
+.fusion-post-cards.flexslider ul li>.fusion-column-wrapper .testimonial::after {
+    content: " ";
+    width: 80px;
+    height: 80px;
+    margin-top: -40px;
+}
+
+.fusion-post-cards.flexslider ul li>.fusion-column-wrapper .testimonial::before {
+    background: url(/wp-content/uploads/2021/11/Quote-begin.svg) no-repeat;
+    float: left;
+}
+
+.fusion-post-cards.flexslider ul li>.fusion-column-wrapper .testimonial::after {
+    background: url(/wp-content/uploads/2021/11/Quote-end.svg) no-repeat;
+    float: right;
+}
+
+.fusion-post-cards.flexslider ul li>.fusion-column-wrapper .title-heading-tag {
+    padding-left: 100px;
+    padding-right: 100px;
+}
+
+.fusion-post-cards .swiper-wrapper{
+    height: auto !important;
+}
+
+
+/* Overlay image */
+
+.overlayImage {
+    position: absolute !important;
+    right: 0;
+    bottom: -40px;
+}
+
+
+/* Get In Touch */
+
+.getInTouchAbsolute a {
+    font-size: 16px;
+}
+
+.getInTouchAbsolute {
+    z-index: 13;
+    left: 0;
+    top: 30px;
+}
+
+.getInTouchAbsolute{
+	max-height: 500px;
+}
+
+
+/* Single News */
+
+.single-post #main>.fusion-row {
+    margin-top: 85px;
+}
+
+.single-post .fusion-meta-info {
+    border-top: none;
+    border-bottom: none;
+}
+
+.single-post .entry-title {
+    font-size: var(--h2_typography-font-size) !important;
+}
+
+.single-post .fusion-meta-info {
+    font-size: var(--h4_typography-font-size) !important;
+}
+
+
+/* Partners slider */
+
+.partners_slider .title-heading-center {
+    min-height: 30px;
+}
+
+
+/* Map  */
+
+.mapsvg-marker-image {
+    display: none;
+}
+
+.mapsvg-marker.active .mapsvg-marker-image {
+    display: block;
+}
+
+.mapsvg-region-active {
+    fill: #5597CD !important;
+}
+
+.PartnersItem .websiteLink a {
+    color: #ED1D27 !important;
+    font-weight: bold;
+    border-bottom: 3px solid #ED1D27;
+    /*  transition: all 0.5s; */
+}
+
+.PartnersItem .websiteLink a:hover {
+    border-bottom: 3px solid #c6dae7;
+    color: #c6dae7 !important;
+    /* transition: all 0.5s; */
+}
+
+.post-card.fusion-post-cards-grid-column {
+    width: calc(100% / 3 - 1px) !important;
+}
+
+.PartnersItem {
+    width: 24.9% !important;
+}
+
+
+/* Partners slider */
+
+.partners_slider .clinicAddress h5 {
+    font-style: italic;
+}
+
+.fusion-carousel-nav .fusion-nav-next,
+.fusion-carousel-nav .fusion-nav-prev {
+    background-color: transparent !important;
+}
+
+.fusion-carousel-nav .fusion-nav-next::before,
+.fusion-carousel-nav .fusion-nav-prev::before {
+    color: #003c71 !important;
+    font-size: 45px !important;
+}
+
+
+/* Partners Slider */
+
+.fusion-carousel-wrapper {
+    padding-bottom: 50px !important;
+}
+
+.fusion-carousel-positioner .fusion-carousel-nav {
+    position: absolute;
+    bottom: 0;
+    width: 50px;
+    height: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.fusion-carousel-nav .fusion-nav-prev {
+    margin-left: 0px !important;
+}
+
+.fusion-carousel-nav .fusion-nav-next {
+    left: 72% !important;
+}
+
+
+/* Practices */
+
+.filterState {
+    width: 100%;
+}
+
+
+/* Jobs Listing */
+
+table.dataTable thead th,
+table.dataTable thead td {
+    color: #717171;
+}
+
+.dataTables_wrapper .dataTables_filter {
+    display: none;
+}
+
+#jobsFiltersContainer {
+    float: left;
+    width: 100%;
+    display: flex;
+    justify-content: space-evenly;
+    z-index: 2;
+    margin-bottom: 20px;
+}
+
+#jobsListing {
+    float: left;
+    width: 100%;
+    margin-bottom: 20px;
+}
+
+#jobsListing #loading {
+    float: left;
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 1;
+    background-color: #c6dae747;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    transition: all 1s;
+    visibility: collapse;
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+#jobsListing #loading.active {
+    opacity: 1;
+    visibility: visible;
+    transition: opacity 1s;
+}
+
+#jobsListingContainer {
+    display: none;
+}
+
+#jobsListing #loading img {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+}
+
+#jobsListing .dropdownsContainer {
+    flex-grow: 1;
+    margin: 0px 50px;
+    max-width: calc(100%/4);
+    width: calc(100%/4);
+}
+
+#jobsListing .dropdownsContainer .filterJobs {
+    float: left;
+    width: 100%;
+}
+
+.dataTable th {
+    height: 45px;
+}
+
+#jobsListing .paginate_button.current {
+    background: #3f6aa4 !important;
+    color: #FFFFFF !important;
+    border: none !important;
+}
+
+#jobsListing .paginate_button:hover {
+    background: #003c71 !important;
+    color: #FFFFFF !important;
+}
+
+#jobsListingContainer_previous:hover::before,
+#jobsListingContainer_next:hover::before {
+    color: #FFFFFF !important;
+}
+
+#jobsListing #jobsListingContainer_length {
+    margin-bottom: 20px;
+}
+
+#jobsListing #jobsListingContainer_length select {
+    border-color: #e2e2e2;
+}
+
+#jobsListing #jobsListingContainer_previous,
+#jobsListing #jobsListingContainer_next {
+    color: transparent !important;
+    width: 47px;
+}
+
+#jobsListingContainer_previous::before {
+    font-family: "Font Awesome 5 Free";
+    font-weight: 900;
+    content: "\f104";
+    color: #3f6aa4;
+}
+
+#jobsListingContainer_next::before {
+    font-family: "Font Awesome 5 Free";
+    font-weight: 900;
+    content: "\f105";
+    color: #3f6aa4;
+}
+
+#jobsListing .dataTable thead th {
+    padding: 10px;
+}
+
+#jobsListing .dataTable th {
+    text-align: left;
+}
+
+#jobsListing .dataTable thead th,
+#jobsListing .dataTable thead td {
+    border-bottom: 1px solid rgba(113, 113, 113, 0.3) !important;
+    background-color: #003c71;
+    color: #FFF;
+}
+
+#jobsListing tbody th {
+    font-weight: normal;
+}
+
+#jobsListing .dataTable.dtr-inline.collapsed>tbody>tr>td.dtr-control:before,
+#jobsListing .dataTable.dtr-inline.collapsed>tbody>tr>th.dtr-control:before {
+    background-color: transparent !important;
+    color: #3f6aa4 !important;
+    content: "\f078";
+    font-family: "Font Awesome 5 Free";
+    font-weight: 900;
+    border: none;
+    box-shadow: none;
+    transition: all 0.5s;
+}
+
+#jobsListing .dataTable {
+    border: 1px solid rgb(241, 241, 241);
+    overflow: hidden;
+    margin-bottom: 20px;
+}
+
+#jobsListing .slider {
+    display: none;
+}
+
+#jobsListing .slider table {
+    width: 100%;
+}
+
+#jobsListing tbody th.details-control:before {
+    background-color: transparent !important;
+    color: #3f6aa4 !important;
+    content: "\f078";
+    font-family: "Font Awesome 5 Free";
+    font-weight: 900;
+    border: none;
+    box-shadow: none;
+    transition: all 0.5s;
+    display: inherit;
+}
+
+#jobsListing .shown .details-control:before {
+    color: #003c71 !important;
+    transform: rotate(180deg);
+    transition: all 0.5s;
+}
+
+#jobsListing table tr.shown,
+#jobsListing .slider table tr {
+    background-color: #e6e6e6;
+}
+
+#jobsListing .dataTable tbody td.no-padding {
+    padding: 0;
+}
+
+#jobsListing a {
+    color: #003c71;
+}
+
+#jobsListing .child .details-control {
+    display: none;
+}
+
+
+/**/
+
+
+/* The container must be positioned relative: */
+
+.dropdownsContainer {
+    position: relative;
+}
+
+.dropdownsContainer select {
+    display: none;
+    /*hide original SELECT element: */
+}
+
+.select-selected {
+    background-color: #FFF;
+}
+
+
+/* Style the arrow inside the select element: */
+
+.select-selected:after {
+    position: absolute;
+    font-family: "Font Awesome 5 Free";
+    font-weight: 900;
+    content: "\f078";
+    top: 50%;
+    right: 20px;
+    transition: all 0.5s;
+}
+
+
+/* Point the arrow upwards when the select box is open (active): */
+
+.select-selected.select-arrow-active:after {
+    transform: rotate(180deg);
+    transition: all 0.5s;
+}
+
+
+/* style the items (options), including the selected item: */
+
+.select-selected {
+    padding: 8px 35px 8px 16px;
+    border: 1px solid #CCC;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.select-items div {
+    border-left: 1px solid #CCC;
+    border-right: 1px solid #CCC;
+    border-bottom: 1px solid #CCC;
+    display: flex;
+    align-items: center;
+    min-height: 45px;
+}
+
+.select-items div label {
+    width: 100%;
+    padding-left: 16px;
+    padding-right: 16px;
+    font-size: 14px;
+    line-height: 18px;
+    padding-top: 5px;
+    padding-bottom: 5px;
+}
+
+
+/* Style items (options): */
+
+.select-items {
+    position: absolute;
+    background-color: #FFF;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 99;
+    overflow: auto;
+    max-height: 50vh;
+}
+
+
+/* Hide the items when the select box is closed: */
+
+.select-hide {
+    display: none;
+}
+
+.select-items div:hover,
+.same-as-selected {
+    background-color: #3f6aa4;
+    color: #FFF;
+}
+
+
+/* Lottie Animation */
+
+.fusion-lottie-animation svg {
+    height: 180px !important;
+    max-height: 180px !important;
+}
+
+
+/* Corner images */
+
+svg {
+    width: 100%;
+}
+
+.svg.medium svg {
+    width: 50%;
+}
+
+.svg.small svg {
+    width: 25%;
+}
+
+.animated_content_boxes img{
+	width:35px;
+	height: 35px;
+}
+
+.animated_content_boxes.light-blue svg path {
+    fill: #5597cd;
+}
+
+.animated_content_boxes svg path {
+    fill: #003c71;
+}
+
+.image_background>.fusion-column-wrapper.fusion-flex-justify-content-center {
+    background-size: auto 50px !important;
+}
+
+.image_background.left>.fusion-column-wrapper.fusion-flex-justify-content-center {
+    padding-top: 50px !important;
+    background-position: 0% top !important;
+}
+
+.image_background.center>.fusion-column-wrapper.fusion-flex-justify-content-center {
+    padding-top: 50px !important;
+    background-position: 50% top !important;
+}
+
+.image_background.right>.fusion-column-wrapper.fusion-flex-justify-content-center {
+    padding-top: 50px !important;
+    background-position: 80% top !important;
+}
+
+.image_background>.fusion-column-wrapper * {
+    height: 100%;
+}
+
+
+/* Content Boxes */
+
+.fusion-content-boxes:not(.animated_content_boxes) .heading {
+    margin-bottom: 0px !important;
+}
+
+.fusion-content-boxes:not(.animated_content_boxes) img {
+    min-height: 90px;
+    min-width: 90px;
+}
+
+.hide_readmore .fusion-read-more {
+    display: none;
+}
+
+
+/* Animated Content Boxes */
+
+.animated_content_boxes.fusion-content-boxes .link-area-box {
+    cursor: default !important;
+}
+
+.animated_content_boxes.fusion-content-boxes .content-wrapper-background {
+    padding-top: 0px !important;
+    padding-bottom: 0px !important;
+    padding-left: 15px !important;
+    padding-right: 15px !important;
+}
+
+.animated_content_boxes .content-container {
+    opacity: 0;
+}
+
+.animated_content_boxes .content-container a {
+    color: #e4002b;
+    font-size: 22px;
+    font-weight: bold;
+}
+
+.animated_content_boxes .heading {
+    position: relative;
+    bottom: -45px;
+    transition: all 0.2s ease-in-out;
+    overflow: visible !important;
+}
+
+.animated_content_boxes .heading .content-box-heading {
+    font-size: 100% !important;
+}
+
+.animated_content_boxes .content-box-column:hover .heading .content-box-heading {
+    color: #e4002b;
+}
+
+.animated_content_boxes.fusion-content-boxes.content-boxes-icon-on-top .heading .icon {
+    margin-bottom: -10px;
+}
+
+.animated_content_boxes .content-box-column:hover .heading {
+    bottom: 0 !important;
+    transition: all 0.5s ease-in-out;
+}
+
+.animated_content_boxes .content-box-column .image svg {
+    width: 50px !important;
+    height: auto;
+}
+
+
+/* About us exception */
+
+.page-id-15 .animated_content_boxes .content-box-column .image svg {
+    width: 150px !important;
+    height: auto !important;
+}
+
+.animated_content_boxes .content-box-column .image svg path {
+    transition: all 0.2s ease-in-out;
+}
+
+.animated_content_boxes .content-box-column:hover .image svg path {
+    fill: #e4002b !important;
+    transition: all 0.2s ease-in-out;
+}
+
+.animated_content_boxes .content-box-column:hover .content-container {
+    opacity: 1;
+    transition: all .9s ease-in-out;
+}
+
+.animated_content_boxes .heading img {
+    margin-bottom: 0px !important;
+}
+
+.animated_content_boxes .fusion-read-more {
+    display: none;
+}
+
+
+/* Custom Backgrounds */
+
+.paws_background_header.fusion-fullwidth:before,
+.paws_background.fusion-fullwidth:before,
+.paws_background_right.fusion-fullwidth:before,
+.paws_background .fusion-column-wrapper:before,
+.trail_background_header.fusion-fullwidth:before,
+.trail_background.fusion-fullwidth:before,
+.trail_background_right.fusion-fullwidth:before,
+.trail_background .fusion-column-wrapper:before,
+.clinic_background_header.fusion-fullwidth:before,
+.clinic_background.fusion-fullwidth:before,
+.clinic_background_right.fusion-fullwidth:before,
+.clinic_background .fusion-column-wrapper:before,
+.bone_background_header.fusion-fullwidth:before,
+.bone_background.fusion-fullwidth:before,
+.bone_background_right.fusion-fullwidth:before,
+.bone_background .fusion-column-wrapper:before {
+    content: " ";
+    width: 100%;
+    height: 100%;
+    background-repeat: no-repeat;
+    background-position: cover;
+    background-size: cover;
+    opacity: var(--texture-opacity);
+    position: absolute;
+    margin-left: -5%;
+    z-index: 2;
+}
+
+.fiftyfive_width.paws_background.fusion-fullwidth::before{
+	width: 55% !important;
+}
+
+.trail_background div,
+.clinic_background div,
+.paws_background div,
+.bone_background div {
+    z-index: 10;
+}
+
+.bone_background_header.fusion-fullwidth:before,
+.bone_background.fusion-fullwidth:before,
+.bone_background_right.fusion-fullwidth:before,
+.bone_background>.fusion-column-wrapper:before {
+    background-image: url(/wp-content/uploads/2022/02/Pattern_Bone.png);
+    /* opacity: 0.2; */
+}
+
+.clinic_background_header.fusion-fullwidth:before,
+.clinic_background.fusion-fullwidth:before,
+.clinic_background_right.fusion-fullwidth:before,
+.clinic_background>.fusion-column-wrapper:before {
+    background-image: url(/wp-content/uploads/2022/02/Pattern_Clinic.png);
+    /* opacity: 0.2; */
+}
+
+.bone_background_right.fusion-fullwidth:before,
+.trail_background_right.fusion-fullwidth:before,
+.paws_background_right.fusion-fullwidth:before,
+.clinic_background_right.fusion-fullwidth:before {
+    width: 40%;
+    right: 0;
+    top: 0;
+}
+
+.paws_background_header.fusion-fullwidth:before,
+.paws_background.fusion-fullwidth:before,
+.paws_background_right.fusion-fullwidth:before,
+.paws_background>.fusion-column-wrapper:before {
+    background-image: url(/wp-content/uploads/2024/04/Pattern_Paws.webp);
+}
+
+.bone_background.fusion-fullwidth:before,
+.clinic_background.fusion-fullwidth:before,
+.paws_background.fusion-fullwidth:before {
+    width: 45%;
+    left: 0;
+    top: 0;
+}
+
+.clinic_background_header.fusion-fullwidth:before,
+.bone_background_header.fusion-fullwidth:before,
+.paws_background_header.fusion-fullwidth:before {
+    margin-left: 0px !important;
+    right: 0;
+    width: 50%;
+    top: 0;
+}
+
+.trail_background_header.fusion-fullwidth:before,
+.trail_background.fusion-fullwidth:before,
+.trail_background>.fusion-column-wrapper:before {
+    background-image: url(/wp-content/uploads/2024/04/Pattern_Trail.webp);
+}
+
+
+/* Custom Backgrounds */
+
+
+/* Lottie animation */
+
+.lottie_animation lottie-player {
+    width: 100%;
+    height: auto;
+    position: absolute !important;
+}
+
+.lottie_animation:not(.fish):not(.cat) {
+    overflow: hidden;
+}
+
+.lottie_animation.fish lottie-player {
+    width: 150px !important;
+    height: auto !important;
+    position: absolute !important;
+    right: 0;
+    bottom: 0;
+    z-index: 11;
+}
+
+.lottie_animation.cat lottie-player {
+    width: auto !important;
+    height: 200px !important;
+    bottom: 0;
+    margin-bottom: -9px;
+    left: 50%;
+    transform: translateX(-80%);
+    z-index: 11;
+}
+
+
+/* Text Mark */
+
+.textMark.white {
+    background-color: #FFFFFF;
+    padding: 0px 3px 2px;
+}
+
+.textMark.gray {
+    background-color: #f1f1f1;
+    padding: 0px 3px 2px;
+}
+
+
+/* Text Color */
+
+.colorWhite {
+    color: #FFFFFF !important;
+}
+
+.colorGray {
+    color: #717171 !important;
+}
+
+.colorBlue {
+    color: #003c71 !important;
+}
+
+.textbold {
+    font-weight: bold;
+}
+
+
+/* White Link */
+
+.whiteLink a,
+.whiteLink a:hover {
+    color: #FFFFFF !important;
+    border-bottom-color: #FFFFFF;
+}
+
+.removableContainer .close {
+    cursor: pointer;
+    opacity: 1;
+}
+
+
+/* Toogles */
+
+.accordian .fusion-panel {
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
+.accordian,
+.fusion-toggle-heading:hover,
+.fusion-toggle-heading {
+    color: #003C71;
+}
+
+.accordian .panel-body {
+    padding-left: 65px !important;
+    padding-right: 65px !important;
+}
+
+.accordian .panel-body ul {
+    padding-left: 22px;
+}
+
+.accordian .fusion-panel.fusion-toggle-no-divider.fusion-toggle-boxed-mode {
+    margin-bottom: 3px !important;
+}
+
+.fusion-accordian .panel-title a .fa-fusion-box:before {
+    font-family: "Font Awesome 5 Free" !important;
+    font-weight: 900;
+    content: "\f054" !important;
+    transition: transform .3s ease-in-out;
+}
+
+.fusion-accordian .panel-title a:hover .fusion-toggle-icon-wrapper,
+.fusion-accordian .panel-title a:hover .fusion-toggle-icon-wrapper i,
+.fusion-accordian .fa-fusion-box {
+    background-color: transparent !important;
+}
+
+.fusion-accordian .panel-title .active .fa-fusion-box:before {
+    transform: rotate(90deg);
+    transition: transform .3s ease-in-out;
+}
+
+
+/* Card Boxes */
+
+.full_overlay_description .fusion-imageframe {
+    min-height: 270px;
+}
+
+.full_overlay_description .fusion-imageframe img {
+    min-height: 211px;
+    object-fit: cover;
+}
+
+.full_overlay_description .fusion-title.title {
+    z-index: 11;
+    position: absolute;
+    background-color: #003c71;
+    width: 100%;
+    margin: 0 !important;
+    height: 20%;
+    bottom: 0;
+    transition: height 0.2s ease-in-out;
+}
+
+.full_overlay_description .fusion-title.title .title-heading-center {
+    font-size: 20px !important;
+}
+
+.full_overlay_description:hover .fusion-title.title {
+    height: 100%;
+    padding-top: 10px;
+    transition: height 0.3s ease-in-out;
+}
+
+.full_overlay_description .fusion-text {
+    visibility: collapse;
+    font-size: 12px;
+    height: 80%;
+    opacity: 0;
+    z-index: 12;
+    position: absolute;
+    bottom: 0;
+    width: 90%;
+    transition: opacity 0.3s ease-in-out;
+}
+
+.full_overlay_description:hover .fusion-text {
+    visibility: visible;
+    opacity: 1;
+    transition: opacity 0.7s ease-in-out;
+}
+
+.full_overlay_description:hover .fusion-text ul {
+    padding-left: 20px;
+}
+
+.white_paw ul li,
+.full_overlay_description:hover .fusion-text ul li {
+    list-style: none;
+    background-image: url("/wp-content/uploads/2021/12/white-paw.svg");
+    background-repeat: no-repeat;
+    background-position: left 5px;
+    background-size: 15px;
+    padding: 0px 0 0px 25px;
+}
+
+
+/* Pdf Container */
+
+.pdf_content_link .fontawesome-icon {
+    transition: transform 0.3s ease-in-out;
+}
+
+.pdf_content_link.active .fontawesome-icon {
+    transform: rotate(180deg);
+    transition: transform 0.3s ease-in-out;
+}
+
+.pdf_content {
+    z-index: 0;
+    opacity: 0;
+    transition: opacity .3s ease-in-out, z-index .3s ease-in-out;
+}
+
+.pdf_content.active {
+    opacity: 1;
+    z-index: 11;
+    transition: opacity .3s ease-in-out;
+}
+
+.pdf_content .close {
+    cursor: pointer;
+    opacity: 1;
+}
+
+
+/* Step Process */
+
+.step_process .fusion-layout-column .title-heading-left:after {
+    font-family: "Font Awesome 5 Free";
+    font-weight: 900;
+    content: "\f054";
+    position: absolute;
+    right: 15%;
+    top: 15%;
+    font-size: 32px;
+    /* color: #003C71; */
+}
+
+
+/* Alliance Logos */
+
+
+/* First image */
+
+.alliance_logos.on_hover .sep-single {
+    display: none;
+}
+
+.alliance_logos .fusion-column-wrapper div:nth-child(1) {
+    opacity: 1;
+    position: absolute;
+    top: 0;
+    left: 0%;
+    z-index: 10;
+    width: 100%;
+    transition: opacity .35s ease-in-out, left .3s ease-in-out;
+    cursor: pointer;
+}
+
+.alliance_logos .fusion-column-wrapper div:nth-child(1) .fusion-imageframe::before {
+    content: " ";
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 0 #e4002b;
+    animation: pulse 2s infinite;
+    position: absolute;
+}
+
+.alliance_logos .fusion-imageframe {
+    overflow: visible;
+}
+
+.alliance_logos.active .fusion-column-wrapper>div:nth-child(1) {
+    /* .alliance_logos:hover .fusion-column-wrapper>div:nth-child(1) { */
+    opacity: 0;
+    left: 18%;
+    transition: opacity .35s ease-in-out, left .3s ease-in-out;
+}
+
+
+/* Second Image */
+
+.alliance_logos .fusion-column-wrapper div:nth-child(2) {
+    opacity: 0;
+    position: absolute;
+    top: 0;
+    left: -23%;
+    width: 100%;
+    transition: opacity .35s ease-in-out, left .3s ease-in-out;
+    cursor: pointer;
+}
+
+.alliance_logos.active .fusion-column-wrapper div:nth-child(2) {
+    /* .alliance_logos:hover .fusion-column-wrapper div:nth-child(2) { */
+    opacity: 1;
+    left: 0%;
+    transition: left .3s ease-in-out, opacity .35s ease-in-out;
+}
+
+
+/* Text */
+
+.alliance_logos .fusion-column-wrapper .fusion-text p {
+    line-height: 35px;
+    transition: all .3s ease-in-out;
+}
+
+.alliance_logos .fusion-column-wrapper .fusion-title:nth-of-type(4) .title-heading-center {
+    line-height: 35px !important;
+    height: 30px;
+}
+
+.alliance_logos.active .fusion-column-wrapper .fusion-title:nth-of-type(4) .title-heading-center {
+    /* .alliance_logos:hover .fusion-column-wrapper .fusion-title:nth-child(4) .title-heading-center { */
+    font-size: 28px;
+    color: #003C71 !important;
+    transition: all .3s ease-in-out;
+    line-height: 28px !important;
+}
+
+.alliance_logos .fusion-column-wrapper .fusion-title:nth-of-type(5) {
+    opacity: 0;
+    transition: opacity .3s ease-in-out;
+}
+
+.alliance_logos.active .fusion-column-wrapper .fusion-title {
+    /* .alliance_logos:hover .fusion-column-wrapper .fusion-title { */
+    opacity: 1;
+    transition: opacity .3s ease-in-out;
+}
+
+.fusion-fullwidth.alliance_content {
+    display: none;
+    opacity: 0;
+    transition: opacity .5s ease-in-out;
+}
+
+.alliance_content.active {
+    opacity: 1;
+    display: flex;
+    transition: opacity .5s ease-in-out;
+}
+
+.alliance_content.active .fusion-title.title {
+    display: flex;
+}
+
+.alliance_content ul {
+    padding-left: 0;
+}
+
+.blue_paw ul li,
+.alliance_content ul li {
+    list-style: none;
+    background-image: url("/wp-content/uploads/2021/12/paw-autonomy-alt.png");
+    background-repeat: no-repeat;
+    background-position: left 5px;
+    background-size: 15px;
+    padding: 0px 0 0px 25px;
+}
+
+
+/* Separator */
+
+.alliance_logos .fusion-separator {
+    opacity: 0;
+}
+
+.alliance_logos.active .fusion-separator {
+    opacity: 1;
+}
+
+.alliance_logos.active.right .fusion-separator {
+    animation: slideRight .3s ease-in-out;
+}
+
+.alliance_logos.active.left .fusion-separator {
+    animation: slideLeft .3s ease-in-out;
+}
+
+
+/* .talent_team .fusion-imageframe img {
+        min-height: 440px;
+        width: 100%;
+        object-fit: cover;
+    } */
+
+
+/* Core Values */
+
+.core_values .big_text {
+    font-weight: 700;
+    font-size: 30px;
+    text-decoration: underline;
+}
+
+.fusion-layout-column.core_values_content {
+    display: none !important;
+    opacity: 0;
+    transition: opacity .5s ease-in-out;
+}
+
+.fusion-layout-column.core_values_content.active {
+    opacity: 1;
+    display: flex !important;
+    transition: opacity .5s ease-in-out;
+}
+
+
+/* Filter Buttons */
+
+.filterButton {
+    margin-right: 25px;
+}
+
+.filterButton a {
+    color: #717171;
+    border: none !important;
+}
+
+.filterButton.active a,
+.filterButton a:hover {
+    color: #003C71 !important;
+    top: 0;
+    padding-bottom: 0;
+}
+
+.filterButton a:after {
+    content: " ";
+    width: 0%;
+    float: left;
+    height: 3px;
+    background-color: transparent;
+}
+
+.filterButton.active a:after,
+.filterButton a:hover::after {
+    content: " ";
+    width: 80%;
+    background-color: #003C71;
+    transition: all 0.5s ease-in-out;
+}
+
+
+/* Comments Slider */
+
+.comments_slider .reviews .review {
+    display: flex;
+    flex-direction: column;
+}
+
+.comments_slider .fusion-layout-column:nth-child(1) .fusion-column-wrapper>div,
+.comments_slider .fusion-layout-column:nth-child(1) .fusion-column-wrapper .fusion-imageframe,
+.comments_slider .fusion-layout-column:nth-child(1) .fusion-column-wrapper .fusion-imageframe img {
+    height: 100%;
+    width: 100%;
+}
+
+.comments_slider .fusion-layout-column:nth-child(2) .fusion-column-wrapper>div:not(.fusion-testimonials),
+.comments_slider .fusion-layout-column:nth-child(1) .fusion-column-wrapper>div {
+    display: none;
+}
+
+.comments_slider .fusion-layout-column:nth-child(2) .fusion-column-wrapper>div:not(.fusion-testimonials).active {
+    display: block;
+}
+
+.comments_slider .fusion-layout-column:nth-child(1) .fusion-column-wrapper>div.active {
+    display: flex;
+}
+
+.reviews .review blockquote {
+    order: 2;
+}
+
+.reviews .review blockquote q {
+    color: #717171 !important;
+}
+
+.reviews .review .author {
+    order: 1;
+    font-size: 26px;
+}
+
+.reviews .review .company-name::after {
+    content: " ";
+    width: 80%;
+    float: left;
+    height: 6px;
+    margin-top: 15px;
+    background-color: #003C71;
+}
+
+.fusion-testimonials.classic blockquote q {
+    padding-left: 0px !important;
+}
+
+.fusion-testimonials .testimonial-pagination {
+    margin-top: -20px !important;
+    z-index: 9;
+    position: relative;
+}
+
+.fusion-testimonials .flex-direction-nav {
+    position: absolute;
+    top: 50%;
+    width: 70%;
+}
+
+.fusion-testimonials .flex-direction-nav a:hover,
+.fusion-testimonials .flex-direction-nav a {
+    opacity: 1;
+    background-color: transparent;
+    color: #5597CD;
+    font-size: 50px !important;
+}
+
+.fusion-testimonials .flex-direction-nav .flex-nav-prev a {
+    left: -10%;
+}
+
+
+/* Team Member */
+
+.fusion-post-cards .team_member .fusion-imageframe {
+    width: 100%;
+}
+
+.fusion-post-cards .team_member img {
+    max-height: 350px;
+    object-fit: cover;
+}
+
+.team_head li {
+    margin: 0 auto;
+}
+
+.cat_background .fusion-column-wrapper {
+    background-position: 0% 100% !important;
+    background-size: 300% !important;
+}
+
+.fusion-fullwidth {
+    background-size: 100% auto !important;
+}
+
+.team_head_container .fusion-builder-row {
+    max-width: var(--site_width) !important;
+    padding: 40px;
+    border-width: 1px 1px 1px 1px;
+    border-color: var(--awb-color3);
+    border-style: solid;
+    border-radius: 10px 10px 10px 10px;
+    overflow: hidden;
+    box-shadow: -2px 2px 10px 4px #c6dae780;
+}
+
+
+/* Image Alignement */
+
+.image_center img {
+    object-position: center !important;
+}
+
+.image_left img {
+    object-position: left center !important;
+}
+
+.image_right img {
+    object-position: right center !important;
+}
+
+
+/* sliderBoxes */
+
+.sliderBoxes .fusion-carousel-holder {
+    padding-left: 2px !important;
+}
+
+.sliderBoxes .fusion-carousel-wrapper {
+    padding-left: 4px !important;
+}
+
+.sliderBoxes .fusion-carousel-wrapper,
+.sliderBoxes .fusion-carousel-holder,
+.sliderBoxes li.fusion_builder_column,
+.sliderBoxes li.fusion_builder_column .fusion-column-wrapper {
+    height: var(--sliderBoxes_height) !important;
+    transition: height 0.5s;
+}
+
+.sliderBoxes .fusion-layout-column .fusion-column-wrapper {
+    border-top-color: #003C71 !important;
+}
+
+.sliderBoxes .fusion-carousel-nav {
+    position: absolute;
+    display: none;
+}
+
+.sliderBoxes .custom-nav-prev {
+    background-image: url("/wp-content/uploads/2022/02/sliderArrow.svg");
+    background-size: cover;
+    transform: rotate(180deg);
+    height: 68px;
+    width: 68px;
+    left: 0;
+    position: absolute;
+    top: 35%;
+    z-index: 10;
+    opacity: 0.5;
+}
+
+.sliderBoxes .custom-nav-next {
+    background-image: url(/wp-content/uploads/2022/02/sliderArrow.svg);
+    background-size: cover;
+    height: 68px;
+    width: 68px;
+    right: 0;
+    position: absolute;
+    top: 35%;
+    z-index: 10;
+    opacity: .50;
+}
+
+.sliderBoxes .custom-nav-prev:hover,
+.sliderBoxes .custom-nav-next:hover {
+    opacity: 1;
+}
+
+/* Content boxes title on top BEGIN*/
+.page-id-5240 .link-area-box{
+	cursor:auto !important;
+}
+.title-on-top  .link-area-box{
+	display: flex;
+	flex-flow: column-reverse;
+}
+.title-on-top .fusion-column{
+	width: auto !important;
+}
+/* Content boxes title on top END */
+
+/* DoNotSellShare_modal start */
+.DoNotSellShare_modal{
+	font-family: Barlow;
+	font-size: 14px;
+	margin-top: 14px;
+	font-weight:300;
+	text-align: right;
+}
+
+.DoNotSellShare_modal:hover{
+	text-decoration:underline;
+}
+/* DoNotSellShare_modal end */
+
+/* GF styles start */
+.gform_confirmation_message{
+    line-height: 30px;
+}
+
+/* GF styles start */
+
+/* Exception */
+@media screen and (min-width:1273px) {
+.title-on-top{
+		gap: 45px;
+	}	
+}
+
+@media screen and (min-width:991px) and (max-width:1220px) {
+
+    /* step_process */
+    .step_process .fusion-responsive-typography-calculated {
+        font-size: 16px !important;
+        line-height: 16px !important;
+    }
+    .step_process .title-heading-left:after {
+        font-size: inherit !important;
+    }
+}
+
+
+/* Desktop only */
+
+@media screen and (min-width: 1024px) {
+	
+	.title-on-top{
+		display: flex;
+		justify-content: center;
+		gap: auto;
+	}
+	.align-icons .fusion-column{
+		padding-left:0px;
+		padding-right:0px;
+	}
+	.align-icons  .heading img{
+		width: 100%;
+	}
+	
+    .single-post #content {
+        width: 70% !important;
+        transform: translateX(-50%);
+        left: 50%;
+        position: relative;
+        margin-top: 30px;
+    }
+    /* Footer */
+	.fusion-footer #menu-footer-menu ul ul{
+		display: none !important;
+	}
+    .fusion-footer #menu-footer-menu ul {
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+    .fusion-footer .menu-item:hover a {
+        cursor: pointer;
+    }
+     .fusion-footer #menu-footer-menu ul {
+        border-bottom: none !important;
+    }
+    .fusion-footer .sub-menu .menu-item a {
+        font-size: 15px !important;
+    }
+    .fusion-menu-element-wrapper #menu-footer-menu ul:not(.fusion-megamenu)>li:not(.fusion-menu-item-button)>a {
+        padding-top: 5px !important;
+        padding-bottom: 5px !important;
+    }
+    .fusion-footer nav #menu-footer-menu li > ul {
+        float: left;
+        display: block;
+        position: relative;
+    }
+    .fusion-footer #menu-footer-menu {
+        display: table;
+        width: 100%;
+    }
+    .fusion-footer nav #menu-footer-menu >li {
+        display: table-cell !important;
+    }
+    .fusion-footer .menu-item>a .menu-text {
+        text-align: left !important;
+        width: 100%;
+        padding-left: 20px;
+    }
+    /* Forms */
+    .getInTouchAbsolute {
+        height: calc(100% - 60px);
+    }
+    /* Get in touch exception */
+    /*#gform_fields_1 #input_1_1_3_container {
+        padding-right: 3% !important;
+    }
+    #gform_fields_1 fieldset:nth-child(1).gfield {
+        grid-column: span 6;
+        order: 1;
+    }
+    #gform_fields_1 #field_1_6 {
+        order: 2;
+        grid-column: span 6;
+        z-index: 1;
+    }
+    #gform_fields_1 #field_1_2 {
+        order: 3;
+        grid-column: span 3;
+        top: -67px;
+        position: relative;
+    }
+    #gform_fields_1 #field_1_3 {
+        order: 4;
+        grid-column: span 9;
+        top: -67px;
+        position: relative;
+    }
+    #gform_fields_1 #field_1_3 div {
+        width: 31.5%;
+    }
+    #gform_fields_1 #field_1_4 {
+        order: 5;
+        grid-column: span 3;
+        top: -53px;
+        position: relative;
+    }
+    #gform_fields_1 #field_1_5 {
+        order: 6;
+        grid-column: span 3;
+        top: -53px;
+        position: relative;
+    }
+    #gform_fields_1 #field_1_6 textarea {
+        height: 130px;
+    }
+    #gform_fields_1 #field_1_7 {
+        order: 6;
+        position: absolute;
+        left: 51%;
+        bottom: 35%;
+    }
+    .gform_footer {
+        left: 51%;
+        position: absolute;
+        bottom: -10px;
+    }
+    #gform_fields_1 #field_1_7 .gchoice {
+        width: calc(100% / 3);
+        float: left;
+    }
+    #gform_fields_1 #field_1_8 {
+        order: 10;
+        bottom: 10%;
+        position: absolute;
+    }
+	
+	body:not(.page-id-17) #gform_fields_1 #field_1_8 {
+        position: relative;
+    bottom: 28px;
+    }
+	
+	body:not(.page-id-17) #gform_fields_1 #field_1_7{
+		    bottom: 40%;
+	}
+	
+	body:not(.page-id-17) .gform_footer {
+		bottom: 15%;
+	}
+	
+    .gform_footer {
+        bottom: 11%;
+    }*/
+	
+    /* Map */
+    .mapsvg-buttons {
+        display: none;
+    }
+    /* Jobs Listing */
+    #jobsListing .dtr-control:before,
+    #jobsListing .details-control {
+        display: none;
+    }
+    #jobsListing .dtr-control {
+        padding-left: 10px;
+    }
+}
+
+
+/* Tablet  */
+
+@media screen and (max-width: 1024px) {
+	
+	.fusion-post-cards .team_member img {		
+		height: 200px;
+	}
+
+     .DoNotSellShare_modal {
+        text-align: center;
+    }
+	
+	.parent-pageid-12 .gform_wrapper.gravity-theme .gfield.gfield--width-half{
+		    grid-column: 1/-1 !important;
+	}
+    /* Read more     */
+    .readMore a,
+    .fusion-text a {
+        line-height: 26px;
+    }
+    svg {
+        width: 50%;
+    }
+    /* Home */
+    .animated_content_boxes .heading {
+        transition: none;
+    }
+    .animated_content_boxes .content-box-column {
+        margin-bottom: 0px !important;
+    }
+    .lottie_animation.birds lottie-player {
+        transform: scale(7);
+    }
+    .lottie_animation.fish lottie-player {
+        width: 25% !important;
+        z-index: 11;
+    }
+    /* Hide Paw Icon on Map */
+    .mapsvg-marker {
+        display: none !important;
+    }
+    .mapsvg-buttons {
+        bottom: -18px;
+        top: unset !important;
+    }
+    .mapsvg-buttons .mapsvg-btn-group {
+        display: flex;
+    }
+    /* Hands image overlay */
+    .overlayImage {
+        max-width: 100px !important;
+    }
+    .getInTouch_formContainer>.fusion-builder-row {
+        background: #c6dae7;
+    }
+    .getInTouch_formContainer {
+        background-image: none !important;
+    }
+    #wrapper .fusion-mobile-nav-item a {
+        padding: 8px 30px;
+    }
+    /* Partners Slider */
+    .fusion-carousel-nav .fusion-nav-prev {
+        margin-left: 0px !important;
+    }
+    .fusion-carousel-nav .fusion-nav-next {
+        left: 72% !important;
+    }
+    /* Jobs Listing */
+    #jobsFiltersContainer {
+        display: block;
+    }
+    #jobsListing .dropdownsContainer {
+        width: 100%;
+        margin-bottom: 20px;
+        max-width: 100%;
+    }
+    #jobsListing .dropdownsContainer {
+        margin-left: auto;
+        margin-right: auto;
+    }
+    #jobsListingContainer .slider td {
+        vertical-align: top;
+    }
+    /* dropdowns */
+    .select-items div label,
+    .select-selected {
+        white-space: normal;
+    }
+    /* Image Overlay */
+    .backgroundOverlay::before {
+        content: " ";
+        width: 100%;
+        height: 100%;
+        background-color: rgb(0 0 0 / 20%);
+        left: 0;
+        position: absolute;
+        top: 0;
+    }
+    /* Lottie */
+    .lottie_animation.cat lottie-player {
+        left: 50%;
+        transform: translateX(-50%);
+    }
+    /* Testimonials */
+    .fusion-post-cards.flexslider .flex-direction-nav {
+        display: block;
+    }
+    .fusion-post-cards.flexslider ul li>.fusion-column-wrapper .testimonial::before,
+    .fusion-post-cards.flexslider ul li>.fusion-column-wrapper .testimonial::after {
+        content: " ";
+        width: 20px;
+        height: 20px;
+        margin-top: -10px;
+    }
+    .fusion-post-cards.flexslider ul li>.fusion-column-wrapper .title-heading-tag {
+        padding-left: 30px;
+        padding-right: 30px;
+    }
+    .flex-direction-nav .flex-next {
+        right: -20px !important;
+    }
+    /* Alliance Logos */
+    /* First image */
+    .alliance_logos .fusion-column-wrapper div:nth-child(1) img {
+        max-width: 70px;
+    }
+    /* Card Boxes */
+    .full_overlay_description:hover .fusion-text {
+        width: 93%;
+    }
+    /* Paw */
+    .image_background.left>.fusion-column-wrapper.fusion-flex-justify-content-center,
+    .image_background.center>.fusion-column-wrapper.fusion-flex-justify-content-center,
+    .image_background.right>.fusion-column-wrapper.fusion-flex-justify-content-center {
+        background-position: 36% top !important;
+    }
+    /* Cat Background */
+    .cat_background .fusion-column-wrapper {
+        background-size: 0px !important;
+    }
+    /* lottie_animation */
+    .lottie_animation.cat lottie-player {
+        margin-bottom: -38px;
+    }
+    /* Process */
+    .step_process:nth-child(4) .fusion-layout-column .title-heading-left:after {
+        right: 0px !important;
+    }
+}
+
+
+/* Mobile */
+
+@media screen and (max-width: 661px) {
+    /* Header */
+    .paws_background_header.fusion-fullwidth:before {
+        margin-left: 0px !important;
+        right: 0;
+        width: 100%;
+        top: 0;
+    }
+    .fullWhiteBackground {
+        background-image: none !important;
+    }
+    /* Menu */
+    .fusion-header {
+        background-color: #c6dae7 !important;
+    }
+    /* About us exception */
+    body:not(.page-id-15) .animated_content_boxes .content-box-column {
+        max-height: 130px;
+    }
+    /* Partners Slider */
+    .fusion-carousel-wrapper {
+        padding-top: 50px !important;
+    }
+    .fusion-carousel-positioner .fusion-carousel-nav {
+        position: absolute;
+        top: 0%;
+        width: 50px;
+        height: 28px;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+    .fusion-carousel-nav .fusion-nav-prev {
+        margin-left: 0px !important;
+    }
+    .fusion-carousel-nav .fusion-nav-next {
+        left: 72% !important;
+    }
+    /* Jobs Listings */
+    .dataTables_wrapper .dataTables_paginate .paginate_button {
+        padding: 0.2em 0.5em !important;
+        font-size: 14px;
+    }
+    /* step_process */
+    .step_process .fusion-responsive-typography-calculated {
+        font-size: 15px !important;
+        line-height: 15px !important;
+    }
+    .step_process .title-heading-left:after {
+        font-size: inherit !important;
+        right: 5% !important;
+    }
+    /* Alliance Logos */
+    /* First image */
+    .alliance_logos .fusion-column-wrapper div:nth-child(1) img {
+        max-width: 100%;
+    }
+    /* Lottie */
+    .lottie_animation.cat lottie-player {
+        margin-bottom: -60px;
+    }
+    /* Content Boxes */
+    .animated_content_boxes .content-box-column {
+        top: 0;
+    }
+    /* Form */
+    #input_1_1_6_container {
+        margin-bottom: -2px;
+    }
+    .gform_wrapper.gravity-theme .gform_fields {
+        grid-row-gap: 10px !important;
+    }
+    .fusion-content-boxes.content-boxes-icon-on-top .content-box-column:nth-last-child(3) {
+        margin-bottom: 0 !important;
+    }
+    /* Testimonials */
+    .fusion-testimonials .flex-direction-nav {
+        display: block;
+        top: 120px;
+        width: 18%;
+        left: 50%;
+        transform: translateX(-50%);
+    }
+    .fusion-testimonials .flex-direction-nav .flex-nav-prev a {
+        left: 0;
+    }
+    .fusion-testimonials.classic blockquote q {
+        margin-top: 25px;
+    }
+    .fusion-testimonials .company-name {
+        height: 70px;
+    }
+    /* Partners */
+    .post-card.fusion-post-cards-grid-column {
+        width: 100% !important;
+    }
+    /*full_overlay_description */
+    .full_overlay_description .fusion-title.title .title-heading-center {
+        font-size: 16px !important;
+    }
+    /* New slider */
+    .sliderBoxes .custom-nav-prev,
+    .sliderBoxes .custom-nav-next {
+        top: 200px;
+    }
+}

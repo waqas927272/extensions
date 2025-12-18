@@ -1,0 +1,32 @@
+**Instructions to Load and Use the Chrome Extension:**
+
+**1. Load the Extension in Chrome:**
+
+*   Open your Google Chrome browser.
+*   In the address bar, type `chrome://extensions` and press Enter.
+*   On the Extensions page, ensure "Developer mode" is enabled (toggle the switch in the top right corner if it's off).
+*   Click on the "Load unpacked" button.
+*   Navigate to the directory where you saved the extension files: `C:\Users\saadb\Desktop\AllianceAnimal\`
+*   Select this folder and click "Select Folder".
+
+The "Job Scraper" extension should now appear in your list of installed extensions.
+
+**2. Use the Extension:**
+
+*   Go to the webpage from which you want to scrape job data (the one you provided earlier, e.g., `C:\Users\saadb\Desktop\AllianceAnimal\index.html` opened locally in your browser).
+*   Click on the "Job Scraper" extension icon in your Chrome toolbar (it might be hidden behind the puzzle piece icon, so you may need to pin it for easier access).
+*   A small popup will appear with buttons and statistics:
+    *   **Statistics Display**:
+        *   "Total records on current page": Shows the number of job records visible on the currently active page.
+        *   "Scraped records in progress": Displays the cumulative number of job records collected across all pages scraped so far in the current session.
+        *   "Total pagination pages": Indicates the total number of pages identified in the pagination control.
+    *   **"Start Scraping"**: Click this button to initiate the scraping process. A "Scraping..." message will appear, and the button will be disabled. The extension will now automatically navigate through all available pagination pages, scraping data from each. This process may take some time depending on the number of pages. The "Scraped records in progress" will update dynamically.
+    *   **"Stop Scraping"**: Click this button to stop an ongoing scraping process at any time. When stopped, the extension will save all records scraped *up to that point* and then update the UI (hide the loading indicator, re-enable "Start Scraping" and "View Scraped Records" buttons).
+    *   **"View Scraped Records"**: Click this button to open a new tab displaying all the job records that have been collected from all scraped pages (or until the scraping was stopped).
+*   On the "Scraped Job Records" page, you will see the data presented in a table. You can click the "Clear Records" button to remove all stored job data.
+
+**Important Notes:**
+
+*   Ensure you have the target webpage open and active in your browser when you click "Start Scraping."
+*   The scraping process will interact with the webpage, clicking pagination buttons.
+*   The scraped data is stored locally in your browser's extension storage and will persist even if you close and reopen Chrome, until you clear it using the "Clear Records" button.

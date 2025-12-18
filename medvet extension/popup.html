@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Job Scraper</title>
+  <link rel="stylesheet" type="text/css" href="popup.css">
+</head>
+<body>
+  <button id="startScraping">Start</button>
+  <button id="stopScraping">Stop</button>
+  <button id="viewRecords">View Records</button>
+  <div id="loadingMessage">Scraping in progress...</div>
+  <div id="stats">
+    <p>Scraped this session: <span id="sessionCount">0</span></p>
+    <p>Total jobs on page: <span id="pageTotal">0</span></p>
+    <p>Total records saved: <span id="totalRecords">0</span></p>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

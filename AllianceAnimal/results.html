@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>AAH Job Scraper - Records</title>
+  <link rel="stylesheet" type="text/css" href="results.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <img src="images/logo.webp" alt="AAH Logo" class="sidebar-logo">
+        <h1>Job Scraper</h1>
+      </div>
+
+      <div class="stats-section">
+        <h3>Statistics</h3>
+        <div class="stat-card">
+          <div class="stat-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+              <circle cx="9" cy="7" r="4"></circle>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+            </svg>
+          </div>
+          <div class="stat-info">
+            <span class="stat-number" id="totalRecords">0</span>
+            <span class="stat-text">Total Records</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon stat-icon-green">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="20 6 9 17 4 12"></polyline>
+            </svg>
+          </div>
+          <div class="stat-info">
+            <span class="stat-number" id="withDescriptions">0</span>
+            <span class="stat-text">With Descriptions</span>
+          </div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon stat-icon-orange">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+          </div>
+          <div class="stat-info">
+            <span class="stat-number" id="pendingDescriptions">0</span>
+            <span class="stat-text">Pending</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions-section">
+        <h3>Actions</h3>
+        <button id="getDescriptions" class="btn btn-success">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="7 10 12 15 17 10"></polyline>
+            <line x1="12" y1="15" x2="12" y2="3"></line>
+          </svg>
+          Get Descriptions
+        </button>
+        <button id="downloadCsv" class="btn btn-primary">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+          </svg>
+          Download CSV
+        </button>
+        <button id="clearRecords" class="btn btn-danger">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          Clear All Records
+        </button>
+      </div>
+
+      <div class="progress-section hidden" id="progressSection">
+        <h3>Progress</h3>
+        <div class="progress-bar-container">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <span class="progress-text" id="progressText">0 / 0</span>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="content-header">
+        <h2>Scraped Job Records</h2>
+        <div class="search-box">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="searchInput" placeholder="Search jobs..." class="search-input">
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table id="jobRecordsTable">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Job Title</th>
+              <th>Hospital</th>
+              <th>City</th>
+              <th>State</th>
+              <th>Description</th>
+              <th>Link</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Job records will be inserted here -->
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <!-- Description Modal -->
+  <div id="descriptionModal" class="modal hidden">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalTitle">Job Description</h3>
+        <button class="modal-close" id="closeModal">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+      <div class="modal-body" id="modalBody">
+        <!-- Description content -->
+      </div>
+    </div>
+  </div>
+
+  <script src="results.js"></script>
+</body>
+</html>
