@@ -47,23 +47,74 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (updatedTabId === tabId && info.status === 'complete') {
         chrome.tabs.onUpdated.removeListener(listener);
 
-        // Inject script to extract description
+        // Inject script to extract description and additional details
         chrome.scripting.executeScript({
           target: { tabId: tabId },
           func: () => {
+            // Extract description
             const mainContent = document.querySelector('body > div.jobad.site > div > div > div.column.jobad-container.wide-9of16.medium-5of8.print-block.equal-column > main');
-            return mainContent ? mainContent.innerText.trim() : '';
+            const description = mainContent ? mainContent.innerText.trim() : '';
+
+            // Extract job type
+            const jobTypeEl = document.querySelector('li.job-detail[itemprop="employmentType"]');
+            const jobType = jobTypeEl ? jobTypeEl.textContent.trim() : '';
+
+            // Extract address details from meta tags
+            const streetAddressEl = document.querySelector('meta[itemprop="streetAddress"]');
+            const streetAddress = streetAddressEl ? streetAddressEl.getAttribute('content') : '';
+
+            const cityEl = document.querySelector('meta[itemprop="addressLocality"]');
+            const detailCity = cityEl ? cityEl.getAttribute('content') : '';
+
+            const stateEl = document.querySelector('meta[itemprop="addressRegion"]');
+            const detailState = stateEl ? stateEl.getAttribute('content') : '';
+
+            const postalCodeEl = document.querySelector('meta[itemprop="postalCode"]');
+            const postalCode = postalCodeEl ? postalCodeEl.getAttribute('content') : '';
+
+            const countryEl = document.querySelector('meta[itemprop="addressCountry"]');
+            const country = countryEl ? countryEl.getAttribute('content') : '';
+
+            return {
+              description,
+              jobType,
+              streetAddress,
+              detailCity,
+              detailState,
+              postalCode,
+              country
+            };
           }
         }).then((results) => {
-          const description = results[0]?.result || '';
+          const extractedData = results[0]?.result || {};
 
-          // Save description to the job record
+          // Save extracted data to the job record
           chrome.storage.local.get(['jobs'], (result) => {
             const jobs = result.jobs || [];
             if (jobs[jobIndex]) {
-              jobs[jobIndex].description = description;
+              // Update description
+              jobs[jobIndex].description = extractedData.description || '';
+
+              // Update job type
+              jobs[jobIndex].jobType = extractedData.jobType || '';
+
+              // Update address fields
+              jobs[jobIndex].streetAddress = extractedData.streetAddress || '';
+              jobs[jobIndex].postalCode = extractedData.postalCode || '';
+              jobs[jobIndex].country = extractedData.country || '';
+
+              // Update city if missing or empty
+              if (!jobs[jobIndex].city || jobs[jobIndex].city === 'N/A') {
+                jobs[jobIndex].city = extractedData.detailCity || jobs[jobIndex].city || '';
+              }
+
+              // Update state if missing or empty
+              if (!jobs[jobIndex].state || jobs[jobIndex].state === 'N/A') {
+                jobs[jobIndex].state = extractedData.detailState || jobs[jobIndex].state || '';
+              }
+
               chrome.storage.local.set({ jobs: jobs }, () => {
-                console.log(`Description saved for job ${jobIndex + 1}`);
+                console.log(`Details saved for job ${jobIndex + 1}`);
                 // Close the tab after extracting
                 chrome.tabs.remove(tabId);
                 // Notify that description was saved
