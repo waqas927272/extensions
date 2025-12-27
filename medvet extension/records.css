@@ -72,6 +72,17 @@ th {
   background-color: #f0f0f0;
 }
 
+#sendToWebhook {
+  background-color: #28a745;
+  color: white;
+  border-color: #28a745;
+}
+
+#sendToWebhook:hover {
+  background-color: #218838;
+  border-color: #1e7e34;
+}
+
 /* Modal Styles */
 .modal {
   display: none; /* Hidden by default */

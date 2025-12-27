@@ -96,6 +96,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
     })();
     return true; // Indicates that the response is sent asynchronously
+  } else if (request.command === 'send-to-webhook') {
+    (async () => {
+      try {
+        const webhookUrl = request.url;
+        const records = request.records;
+
+        const response = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(records)
+        });
+
+        if (response.ok) {
+          sendResponse({ success: true });
+        } else {
+          const errorText = await response.text();
+          sendResponse({ success: false, error: `Webhook responded with status ${response.status}: ${errorText}` });
+        }
+      } catch (error) {
+        console.error('Error sending data to webhook:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    })();
+    return true; // Indicates that the response is sent asynchronously
   }
   return true; // Indicates that the response is sent asynchronously
 });

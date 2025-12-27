@@ -182,5 +182,38 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // Send to Webhook button functionality
+  const sendToWebhookButton = document.getElementById('sendToWebhook');
+  sendToWebhookButton.addEventListener('click', async () => {
+    if (allRecords.length === 0) {
+      alert('No records to send to webhook.');
+      return;
+    }
+
+    sendToWebhookButton.disabled = true;
+    sendToWebhookButton.textContent = 'Sending...';
+
+    const webhookUrl = 'http://localhost/zoho-api-main/webhookusvta/';
+    try {
+      const response = await chrome.runtime.sendMessage({
+        command: 'send-to-webhook',
+        url: webhookUrl,
+        records: allRecords
+      });
+
+      if (response && response.success) {
+        alert('Records successfully sent to webhook!');
+      } else {
+        alert('Failed to send records to webhook: ' + (response.error || 'Unknown error.'));
+      }
+    } catch (error) {
+      console.error('Error sending records to webhook:', error);
+      alert('An error occurred while sending records to webhook.');
+    } finally {
+      sendToWebhookButton.disabled = false;
+      sendToWebhookButton.textContent = 'Send to Webhook';
+    }
+  });
+
   loadRecords();
 });
