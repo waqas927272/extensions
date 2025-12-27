@@ -35,10 +35,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     isScraping = true;
     sessionScrapedCount = 0;
     totalOnPage = 0;
-    startScraping();
+    // Inject content script into the current tab to start scraping
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs[0] && tabs[0].id) {
+        chrome.scripting.executeScript({
+          target: { tabId: tabs[0].id },
+          files: ['content.js'],
+        }).catch(err => console.error("Error injecting content script:", err));
+      }
+    });
     sendResponse({ status: 'started' });
   } else if (request.command === 'stop') {
     isScraping = false;
+    chrome.runtime.sendMessage({ command: 'scraping_finished' }); // Inform popup
     sendResponse({ status: 'stopped' });
   } else if (request.command === 'get-status') {
     chrome.storage.local.get({ records: [] }, (result) => {
@@ -53,10 +62,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     totalOnPage = request.count;
     chrome.runtime.sendMessage({ command: 'page-total-update', count: totalOnPage });
   } else if (request.command === 'finished') {
-    isScraping = false;
-    chrome.runtime.sendMessage({ command: 'scraping_finished' });
+    // Content script finished on a page; if isScraping is still true, it means it was the last page
+    if (isScraping) { // If scraping was active, it means this was the final page
+      isScraping = false; // Stop the scraping process
+      chrome.runtime.sendMessage({ command: 'scraping_finished' });
+    }
   } else if (request.command === 'add-records') {
-    if (isScraping) {
+    if (isScraping) { // Only add records if scraping is active
       sessionScrapedCount += request.records.length;
       chrome.runtime.sendMessage({ command: 'session-update', count: sessionScrapedCount });
       chrome.storage.local.get({ records: [] }, (result) => {
@@ -88,13 +100,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return true; // Indicates that the response is sent asynchronously
 });
 
-function startScraping() {
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs[0]) {
-      chrome.scripting.executeScript({
-        target: { tabId: tabs[0].id },
-        files: ['content.js'],
-      });
-    }
-  });
-}
+// Listener for tab updates to reinject content.js if scraping is active
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && tab.url && isScraping) {
+    chrome.scripting.executeScript({
+      target: { tabId: tabId },
+      files: ['content.js'],
+    }).catch(err => console.error("Error injecting content script on tab update:", err));
+  }
+});
