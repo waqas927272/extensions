@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const recordsTableBody = document.querySelector('#recordsTable tbody');
   const clearRecordsButton = document.getElementById('clearRecords');
   const downloadCsvButton = document.getElementById('downloadCsv');
+  const getJobDescriptionsButton = document.getElementById('getJobDescriptions');
   let allRecords = [];
 
   function loadRecords() {
@@ -21,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <td>${record.state}</td>
         <td><a href="${record.link}" target="_blank">View Job</a></td>
         <td>${record.position}</td>
+        <td>${record.description || 'N/A'}</td>
       `;
       recordsTableBody.appendChild(row);
     });
@@ -38,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const headers = ['Title', 'City', 'State', 'Link', 'Position'];
+    const headers = ['Title', 'City', 'State', 'Link', 'Position', 'Description'];
     let csvContent = headers.join(',') + '\n';
 
     allRecords.forEach(record => {
@@ -55,7 +57,8 @@ document.addEventListener('DOMContentLoaded', () => {
         escapeCsvCell(record.city),
         escapeCsvCell(record.state),
         escapeCsvCell(record.link),
-        escapeCsvCell(record.position)
+        escapeCsvCell(record.position),
+        escapeCsvCell(record.description || 'N/A')
       ].join(',');
       csvContent += row + '\n';
     });
@@ -69,6 +72,39 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  });
+
+  getJobDescriptionsButton.addEventListener('click', async () => {
+    getJobDescriptionsButton.disabled = true; // Disable button during fetching
+    getJobDescriptionsButton.textContent = 'Fetching Descriptions...';
+
+    for (let i = 0; i < allRecords.length; i++) {
+      const record = allRecords[i];
+      if (!record.description) { // Only fetch if description is not already present
+        try {
+          const response = await chrome.runtime.sendMessage({
+            command: 'fetch-job-description',
+            url: record.link
+          });
+          if (response && response.description) {
+            record.description = response.description;
+          } else {
+            record.description = 'Could not fetch description.';
+          }
+        } catch (error) {
+          console.error('Error fetching description for record:', record, error);
+          record.description = 'Error fetching description.';
+        }
+      }
+    }
+
+    // Save updated records to local storage
+    chrome.storage.local.set({ records: allRecords }, () => {
+      renderTable(allRecords); // Re-render the table with updated descriptions
+      getJobDescriptionsButton.disabled = false;
+      getJobDescriptionsButton.textContent = 'Get Job Descriptions';
+      alert('Job descriptions fetched and updated!');
+    });
   });
 
   loadRecords();

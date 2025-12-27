@@ -1,5 +1,36 @@
 body {
   font-family: sans-serif;
+  display: flex; /* Use flexbox for layout */
+  padding: 0;
+  margin: 0;
+}
+
+.sidebar {
+  width: 200px; /* Fixed width for sidebar */
+  background-color: #f4f4f4;
+  padding: 20px;
+  box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+  height: 100vh; /* Full height sidebar */
+  position: sticky;
+  top: 0;
+}
+
+.sidebar button {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  background-color: #e0e0e0;
+  cursor: pointer;
+}
+
+.sidebar button:hover {
+  background-color: #d0d0d0;
+}
+
+.main-content {
+  flex-grow: 1; /* Main content takes remaining space */
   padding: 20px;
 }
 

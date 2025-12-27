@@ -5,24 +5,31 @@
   <link rel="stylesheet" type="text/css" href="records.css">
 </head>
 <body>
-  <h1>Scraped Records</h1>
-  <div class="button-container">
-    <button id="clearRecords">Clear Records</button>
-    <button id="downloadCsv">Download CSV</button>
+  <div class="sidebar">
+    <button id="getJobDescriptions">Get Job Descriptions</button>
+    <!-- Sidebar content will go here -->
   </div>
-  <table id="recordsTable">
-    <thead>
-      <tr>
-        <th>Title</th>
-        <th>City</th>
-        <th>State</th>
-        <th>Link</th>
-        <th>Position</th>
-      </tr>
-    </thead>
-    <tbody>
-    </tbody>
-  </table>
+  <div class="main-content">
+    <h1>Scraped Records</h1>
+    <div class="button-container">
+      <button id="clearRecords">Clear Records</button>
+      <button id="downloadCsv">Download CSV</button>
+    </div>
+    <table id="recordsTable">
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>City</th>
+          <th>State</th>
+          <th>Link</th>
+          <th>Position</th>
+        <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+      </tbody>
+    </table>
+  </div>
   <script src="records.js"></script>
 </body>
 </html>
