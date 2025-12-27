@@ -43,10 +43,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       'h2.hospital-name',
       'a.company-name',
       'a.hospital-name',
-      '.job-company-name', // Common for some job boards
-      '.company',          // Generic
-      'h1',               // Fallback to any h1
-      'h2'                // Fallback to any h2
+      '.job-company-name',
+      '.company-name', // More generic
+      '.company-header', // Common
+      '.company',
+      'strong.employer-name', // Specific for some job boards like Indeed
+      'span[itemprop="hiringOrganization"]', // Microdata
+      'div[itemprop="hiringOrganization"]',  // Microdata
+      'h1',
+      'h2'
     ];
 
     for (const selector of possibleHospitalNameContainers) {
@@ -54,6 +59,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       if (element && element.textContent.trim().length > 0) {
         hospitalName = element.textContent.trim();
         break;
+      }
+    }
+
+    // Try to extract from meta tags if not found yet
+    if (hospitalName === 'N/A') {
+      const ogSiteName = doc.querySelector('meta[property="og:site_name"]');
+      if (ogSiteName && ogSiteName.content.trim().length > 0) {
+        hospitalName = ogSiteName.content.trim();
+      } else {
+        const applicationName = doc.querySelector('meta[name="application-name"]');
+        if (applicationName && applicationName.content.trim().length > 0) {
+          hospitalName = applicationName.content.trim();
+        }
       }
     }
 
