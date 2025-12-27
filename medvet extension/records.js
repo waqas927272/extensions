@@ -5,28 +5,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const getJobDescriptionsButton = document.getElementById('getJobDescriptions');
   let allRecords = [];
 
-  const descriptionModal = document.getElementById('descriptionModal');
-  const modalDescriptionContent = document.getElementById('modalDescriptionContent');
-  const closeButton = document.querySelector('.close-button');
-
-  function showDescriptionModal(description) {
-    modalDescriptionContent.textContent = description;
-    descriptionModal.style.display = 'block';
-  }
-
-  function hideDescriptionModal() {
-    descriptionModal.style.display = 'none';
-    modalDescriptionContent.textContent = ''; // Clear content on close
-  }
-
-  closeButton.addEventListener('click', hideDescriptionModal);
-
-  window.addEventListener('click', (event) => {
-    if (event.target === descriptionModal) {
-      hideDescriptionModal();
-    }
-  });
-
   function loadRecords() {
     chrome.storage.local.get({ records: [] }, (result) => {
       allRecords = result.records;
@@ -44,23 +22,9 @@ document.addEventListener('DOMContentLoaded', () => {
         <td>${record.state}</td>
         <td><a href="${record.link}" target="_blank">View Job</a></td>
         <td>${record.position}</td>
-        <td>
-            <button class="view-description-btn" data-description="${record.description || ''}">View Description</button>
-        </td>
+        <td>${record.description || 'N/A'}</td>
       `;
       recordsTableBody.appendChild(row);
-    });
-
-    // Add event listeners to the new buttons
-    document.querySelectorAll('.view-description-btn').forEach(button => {
-        button.addEventListener('click', (event) => {
-            const description = event.target.dataset.description;
-            if (description && description !== 'N/A') {
-                showDescriptionModal(description);
-            } else {
-                alert('No description available.');
-            }
-        });
     });
   }
 
@@ -76,7 +40,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const headers = ['Title', 'City', 'State', 'Link', 'Position'];
+    const headers = ['Title', 'City', 'State', 'Link', 'Position', 'Description'];
     let csvContent = headers.join(',') + '\n';
 
     allRecords.forEach(record => {
@@ -93,7 +57,8 @@ document.addEventListener('DOMContentLoaded', () => {
         escapeCsvCell(record.city),
         escapeCsvCell(record.state),
         escapeCsvCell(record.link),
-        escapeCsvCell(record.position)
+        escapeCsvCell(record.position),
+        escapeCsvCell(record.description || 'N/A')
       ].join(',');
       csvContent += row + '\n';
     });
