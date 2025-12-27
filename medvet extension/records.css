@@ -10,8 +10,8 @@ body {
 
 /* Sidebar Styling */
 .sidebar {
-  width: 220px;
-  min-width: 220px;
+  width: 250px; /* Slightly wider sidebar */
+  min-width: 250px;
   background-color: #343a40;
   color: #ffffff;
   padding: 20px 15px;
@@ -19,6 +19,14 @@ body {
   display: flex;
   flex-direction: column;
   align-items: stretch;
+  gap: 15px; /* Spacing between sidebar items */
+}
+
+.sidebar h1 { /* Style for h1 if it were in sidebar */
+    color: #ffffff;
+    font-size: 1.5em;
+    margin-bottom: 20px;
+    text-align: center;
 }
 
 .sidebar button {
@@ -26,7 +34,7 @@ body {
   color: white;
   border: none;
   padding: 10px 15px;
-  margin-bottom: 10px;
+  margin-bottom: 0; /* Managed by gap in sidebar */
   border-radius: 5px;
   cursor: pointer;
   font-size: 0.95em;
@@ -34,7 +42,7 @@ body {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-.sidebar button:hover {
+.sidebar button:hover:not(:disabled) {
   background-color: #0056b3;
   transform: translateY(-1px);
 }
@@ -44,6 +52,32 @@ body {
   cursor: not-allowed;
   box-shadow: none;
   transform: none;
+}
+
+/* Button Container now inside Sidebar */
+.sidebar .button-container {
+  display: flex;
+  flex-direction: column; /* Stack vertically */
+  align-items: stretch; /* Stretch to full width */
+  gap: 10px; /* Space between buttons/input */
+  margin-top: 20px; /* Space from 'Get Job Descriptions' button */
+  padding: 0; /* Remove padding */
+  background-color: transparent; /* Remove background */
+  box-shadow: none; /* Remove shadow */
+}
+
+.sidebar .button-container button {
+  width: 100%; /* Make buttons full width in sidebar */
+  font-size: 1em; /* Slightly larger font */
+}
+
+.sidebar .button-container > div { /* Wrapper for label and input */
+  width: 100%; /* Take full width */
+  gap: 5px;
+}
+
+.sidebar #webhookUrlInput {
+  width: 100%; /* Make input full width */
 }
 
 /* Main Content Area */
@@ -61,99 +95,29 @@ h1 {
   font-weight: 600;
 }
 
-/* Button Container and Webhook Input */
-.button-container {
-  display: flex;
-  flex-wrap: wrap; /* Allow items to wrap */
-  justify-content: center;
-  align-items: flex-end; /* Align items to the bottom */
-  gap: 15px;
-  margin-bottom: 30px;
-  padding: 15px;
-  background-color: #ffffff;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-
-.button-container button {
-  padding: 10px 20px;
-  border: none;
-  border-radius: 5px;
-  cursor: pointer;
-  font-size: 1em;
-  font-weight: 500;
-  transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.button-container button:hover:not(:disabled) {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-}
-
-.button-container button:disabled {
-  background-color: #adb5bd;
-  cursor: not-allowed;
-  transform: none;
-  box-shadow: none;
-}
-
-#clearRecords {
+/* Specific button colors */
+.sidebar #clearRecords {
   background-color: #dc3545;
-  color: white;
 }
 
-#clearRecords:hover:not(:disabled) {
+.sidebar #clearRecords:hover:not(:disabled) {
   background-color: #c82333;
 }
 
-#downloadCsv {
+.sidebar #downloadCsv {
   background-color: #28a745;
-  color: white;
 }
 
-#downloadCsv:hover:not(:disabled) {
+.sidebar #downloadCsv:hover:not(:disabled) {
   background-color: #218838;
 }
 
-#sendToWebhook {
+.sidebar #sendToWebhook {
   background-color: #6f42c1; /* Purple */
-  color: white;
 }
 
-#sendToWebhook:hover:not(:disabled) {
+.sidebar #sendToWebhook:hover:not(:disabled) {
   background-color: #5a2f9c;
-}
-
-.button-container > div { /* Wrapper for label and input */
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 5px;
-  flex-grow: 1; /* Allows input section to take more space */
-  min-width: 250px; /* Ensure input is not too small */
-}
-
-.button-container label {
-  font-size: 0.9em;
-  color: #495057;
-  font-weight: 500;
-}
-
-#webhookUrlInput {
-  width: 100%;
-  padding: 9px 12px;
-  border: 1px solid #ced4da;
-  border-radius: 5px;
-  font-size: 0.95em;
-  box-sizing: border-box; /* Include padding and border in the element's total width and height */
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
-}
-
-#webhookUrlInput:focus {
-  border-color: #80bdff;
-  outline: 0;
-  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
 }
 
 /* Table Styling */
