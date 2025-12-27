@@ -51,7 +51,8 @@
     chrome.runtime.sendMessage({ command: 'add-records', records: pageRecords });
     
     // Pagination logic
-    const nextPageButton = document.querySelector('a.next-page') || // Common selector
+    const nextPageButton = document.querySelector('.jv-pagination-next') || // Specific selector provided by user
+                           document.querySelector('a.next-page') || // Common selector
                            document.querySelector('a[rel="next"]') || // Common selector
                            document.querySelector('button.next') || // Common selector
                            document.querySelector('.pagination .next-link') || // Example for specific site
