@@ -107,7 +107,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           headers: {
             'Content-Type': 'application/json'
           },
-          body: JSON.stringify(records)
+          body: JSON.stringify({ data: records })
         });
 
         if (response.ok) {
