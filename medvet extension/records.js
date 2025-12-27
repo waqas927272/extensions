@@ -27,6 +27,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // Helper function to HTML-escape a string
+  function escapeHtml(unsafe) {
+    return unsafe
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+
   function loadRecords() {
     chrome.storage.local.get({ records: [] }, (result) => {
       allRecords = result.records;
@@ -45,7 +55,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <td><a href="${record.link}" target="_blank">View Job</a></td>
         <td>${record.position}</td>
         <td>
-            <button class="view-description-btn" data-description="${record.description || ''}">View Description</button>
+            <button class="view-description-btn" data-description="${escapeHtml(record.description || '')}">View Description</button>
         </td>
       `;
       recordsTableBody.appendChild(row);
