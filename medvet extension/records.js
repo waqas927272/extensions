@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <td>${record.state}</td>
         <td><a href="${record.link}" target="_blank">View Job</a></td>
         <td>${record.position}</td>
+        <td>${record.hospitalName || 'N/A'}</td>
         <td>
             <button class="view-description-btn" data-description="${escapeHtml(record.description || '')}">View Description</button>
         </td>
@@ -86,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const headers = ['Title', 'City', 'State', 'Link', 'Position'];
+    const headers = ['Title', 'City', 'State', 'Link', 'Position', 'Hospital Name'];
     let csvContent = headers.join(',') + '\n';
 
     allRecords.forEach(record => {
@@ -103,7 +104,8 @@ document.addEventListener('DOMContentLoaded', () => {
         escapeCsvCell(record.city),
         escapeCsvCell(record.state),
         escapeCsvCell(record.link),
-        escapeCsvCell(record.position)
+        escapeCsvCell(record.position),
+        escapeCsvCell(record.hospitalName || 'N/A')
       ].join(',');
       csvContent += row + '\n';
     });
@@ -140,12 +142,15 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         if (response && response.description) {
           record.description = response.description;
+          record.hospitalName = response.hospitalName || 'N/A'; // Store hospital name
         } else {
           record.description = 'Could not fetch description.';
+          record.hospitalName = 'N/A';
         }
       } catch (error) {
         console.error('Error fetching description for record:', record, error);
         record.description = 'Error fetching description.';
+        record.hospitalName = 'N/A';
       } finally {
         fetchedCount++;
         updateProgress();

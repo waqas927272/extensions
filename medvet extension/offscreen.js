@@ -5,16 +5,25 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     const parser = new DOMParser();
     const doc = parser.parseFromString(html, 'text/html');
     let description = 'Description not found.';
+    let hospitalName = 'N/A'; // Initialize hospitalName
 
     // --- 1. Attempt to extract from JSON-LD (JobPosting schema) ---
     const scriptLdJson = doc.querySelectorAll('script[type="application/ld+json"]');
     for (const script of scriptLdJson) {
       try {
         const json = JSON.parse(script.textContent);
-        if (json['@type'] === 'JobPosting' && json.description && json.description.length > 100) {
-          description = json.description;
-          sendResponse({ description: description });
-          return true; // Stop and send response
+        if (json['@type'] === 'JobPosting') {
+          if (json.description && json.description.length > 100) {
+            description = json.description;
+          }
+          if (json.hiringOrganization && json.hiringOrganization.name) {
+            hospitalName = json.hiringOrganization.name;
+          }
+          // If both found, we can potentially stop early for JSON-LD
+          if (description !== 'Description not found.' && hospitalName !== 'N/A') {
+            sendResponse({ description: description, hospitalName: hospitalName });
+            return true;
+          }
         }
       } catch (e) {
         console.warn('Could not parse JSON-LD script:', e);
@@ -25,6 +34,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     // Create a clone of the body to remove script and style tags without affecting the original doc
     const cleanBody = doc.body.cloneNode(true);
     cleanBody.querySelectorAll('script, style').forEach(el => el.remove());
+
+    // Attempt to find hospital name from prominent elements
+    const possibleHospitalNameContainers = [
+      'h1.company-name',
+      'h1.hospital-name',
+      'h2.company-name',
+      'h2.hospital-name',
+      'a.company-name',
+      'a.hospital-name',
+      '.job-company-name', // Common for some job boards
+      '.company',          // Generic
+      'h1',               // Fallback to any h1
+      'h2'                // Fallback to any h2
+    ];
+
+    for (const selector of possibleHospitalNameContainers) {
+      const element = cleanBody.querySelector(selector);
+      if (element && element.textContent.trim().length > 0) {
+        hospitalName = element.textContent.trim();
+        break;
+      }
+    }
+
 
     // Attempt to find common elements that might contain the job description
     const possibleDescriptionContainers = [
@@ -43,7 +75,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         break;
       }
     }
-    sendResponse({ description: description });
+    sendResponse({ description: description, hospitalName: hospitalName });
   }
   return true; // Indicates that the response is sent asynchronously
 });
