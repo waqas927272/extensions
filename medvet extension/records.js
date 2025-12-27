@@ -184,16 +184,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Webhook URL input and storage
   const webhookUrlInput = document.getElementById('webhookUrlInput');
-  const defaultWebhookUrl = 'http://localhost/zoho-api-main/webhookusvta/'; // Keep default for new users
+  const defaultWebhookBaseUrl = 'http://localhost/zoho-api-main/webhookusvta/'; // Keep default for new users
+
+  // Function to ensure URL has ?action=receive
+  const ensureReceiveAction = (url) => {
+    if (url.includes('?')) {
+        const urlObj = new URL(url);
+        if (!urlObj.searchParams.has('action')) {
+            urlObj.searchParams.set('action', 'receive');
+            return urlObj.toString();
+        }
+        return url;
+    }
+    return `${url}?action=receive`;
+  };
 
   // Load saved webhook URL
-  chrome.storage.local.get({ webhookUrl: defaultWebhookUrl }, (result) => {
+  chrome.storage.local.get({ webhookUrl: ensureReceiveAction(defaultWebhookBaseUrl) }, (result) => {
     webhookUrlInput.value = result.webhookUrl;
   });
 
   // Save webhook URL on input change
   webhookUrlInput.addEventListener('input', () => {
-    chrome.storage.local.set({ webhookUrl: webhookUrlInput.value });
+    chrome.storage.local.set({ webhookUrl: ensureReceiveAction(webhookUrlInput.value) });
   });
 
   // Send to Webhook button functionality
@@ -207,14 +220,7 @@ document.addEventListener('DOMContentLoaded', () => {
     sendToWebhookButton.disabled = true;
     sendToWebhookButton.textContent = 'Sending...';
 
-    const webhookUrl = webhookUrlInput.value; // Get URL from input field
-
-    if (!webhookUrl) {
-      alert('Please enter a webhook URL.');
-      sendToWebhookButton.disabled = false;
-      sendToWebhookButton.textContent = 'Send to Webhook';
-      return;
-    }
+    const webhookUrl = ensureReceiveAction(webhookUrlInput.value); // Get URL from input field and ensure action
 
     try {
       const response = await chrome.runtime.sendMessage({
