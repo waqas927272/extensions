@@ -54,7 +54,6 @@ document.addEventListener('DOMContentLoaded', () => {
         <td>${record.state}</td>
         <td><a href="${record.link}" target="_blank">View Job</a></td>
         <td>${record.position}</td>
-        <td>${record.hospitalName || 'N/A'}</td>
         <td>
             <button class="view-description-btn" data-description="${escapeHtml(record.description || '')}">View Description</button>
         </td>
