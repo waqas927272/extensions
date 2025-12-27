@@ -47,7 +47,13 @@ table {
 th, td {
   border: 1px solid #ccc;
   padding: 8px;
-  text-align: left;
+  text-align: left; /* Default text alignment */
+  vertical-align: middle; /* Vertically align content */
+}
+
+th:last-child, td:last-child { /* Target the Actions column (last th/td) */
+    text-align: center;
+    white-space: nowrap; /* Prevent button from wrapping */
 }
 
 th {

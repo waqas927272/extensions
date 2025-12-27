@@ -44,7 +44,6 @@ document.addEventListener('DOMContentLoaded', () => {
         <td>${record.state}</td>
         <td><a href="${record.link}" target="_blank">View Job</a></td>
         <td>${record.position}</td>
-        <td>${record.description || 'N/A'}</td>
         <td>
             <button class="view-description-btn" data-description="${record.description || ''}">View Description</button>
         </td>
@@ -77,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const headers = ['Title', 'City', 'State', 'Link', 'Position', 'Description'];
+    const headers = ['Title', 'City', 'State', 'Link', 'Position'];
     let csvContent = headers.join(',') + '\n';
 
     allRecords.forEach(record => {
@@ -94,8 +93,7 @@ document.addEventListener('DOMContentLoaded', () => {
         escapeCsvCell(record.city),
         escapeCsvCell(record.state),
         escapeCsvCell(record.link),
-        escapeCsvCell(record.position),
-        escapeCsvCell(record.description || 'N/A')
+        escapeCsvCell(record.position)
       ].join(',');
       csvContent += row + '\n';
     });
