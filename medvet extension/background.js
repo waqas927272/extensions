@@ -2,6 +2,34 @@ let isScraping = false;
 let sessionScrapedCount = 0;
 let totalOnPage = 0;
 
+let offscreenCreating; // A global promise to avoid race conditions and ensure the offscreen document is only created once.
+
+async function setupOffscreenDocument(path) {
+  // Check if an offscreen document is already open
+  const offscreenUrl = chrome.runtime.getURL(path);
+  const existingContexts = await chrome.runtime.getContexts({
+    contextTypes: ['OFFSCREEN_DOCUMENT'],
+    documentUrls: [offscreenUrl],
+  });
+
+  if (existingContexts.length > 0) {
+    return; // An offscreen document is already open
+  }
+
+  // Create and wait for the offscreen document to load
+  if (offscreenCreating) {
+    await offscreenCreating;
+  } else {
+    offscreenCreating = chrome.offscreen.createDocument({
+      url: path,
+      reasons: ['DOM_PARSER'],
+      justification: 'Parse HTML from job descriptions',
+    });
+    await offscreenCreating;
+    offscreenCreating = null;
+  }
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.command === 'start') {
     isScraping = true;
@@ -37,40 +65,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     }
   } else if (request.command === 'fetch-job-description') {
-    const jobUrl = request.url;
-    fetch(jobUrl)
-      .then(response => response.text())
-      .then(html => {
-        // Parse the HTML to extract the job description
-        // This is a very basic example; a more robust solution would involve DOM parsing
-        // and identifying specific elements that contain the job description.
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        let description = 'Description not found.';
+    (async () => {
+      try {
+        await setupOffscreenDocument('offscreen.html');
+        const jobUrl = request.url;
+        const response = await fetch(jobUrl);
+        const html = await response.text();
 
-        // Attempt to find common elements that might contain the job description
-        const possibleDescriptionContainers = [
-          'div.job-description',
-          'div.description',
-          'div#job-details',
-          'div.details',
-          'article',
-          'body' // Fallback to entire body if nothing else is found
-        ];
-
-        for (const selector of possibleDescriptionContainers) {
-          const element = doc.querySelector(selector);
-          if (element && element.textContent.trim().length > 100) { // Look for substantial content
-            description = element.textContent.trim();
-            break;
-          }
-        }
-        sendResponse({ description: description });
-      })
-      .catch(error => {
-        console.error('Error fetching job description:', error);
+        // Send HTML to offscreen document for parsing
+        const parsingResponse = await chrome.runtime.sendMessage({
+          command: 'parse-html',
+          html: html
+        });
+        sendResponse({ description: parsingResponse.description });
+      } catch (error) {
+        console.error('Error in fetch-job-description:', error);
         sendResponse({ description: 'Error fetching description.' });
-      });
+      }
+    })();
     return true; // Indicates that the response is sent asynchronously
   }
   return true; // Indicates that the response is sent asynchronously
