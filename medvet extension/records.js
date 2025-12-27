@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const closeButton = document.querySelector('.close-button');
 
   function showDescriptionModal(description) {
-    modalDescriptionContent.textContent = description;
+    modalDescriptionContent.innerHTML = description;
     descriptionModal.style.display = 'block';
   }
 
