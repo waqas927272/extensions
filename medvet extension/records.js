@@ -78,25 +78,56 @@ document.addEventListener('DOMContentLoaded', () => {
     getJobDescriptionsButton.disabled = true; // Disable button during fetching
     getJobDescriptionsButton.textContent = 'Fetching Descriptions...';
 
-    for (let i = 0; i < allRecords.length; i++) {
-      const record = allRecords[i];
-      if (!record.description) { // Only fetch if description is not already present
-        try {
-          const response = await chrome.runtime.sendMessage({
-            command: 'fetch-job-description',
-            url: record.link
-          });
-          if (response && response.description) {
-            record.description = response.description;
-          } else {
-            record.description = 'Could not fetch description.';
-          }
-        } catch (error) {
-          console.error('Error fetching description for record:', record, error);
-          record.description = 'Error fetching description.';
+    const recordsToFetch = allRecords.filter(record => !record.description);
+    const concurrencyLimit = 5; // Number of concurrent requests
+
+    let activeFetches = 0;
+    let fetchedCount = 0;
+    const updateProgress = () => {
+      getJobDescriptionsButton.textContent = `Fetching Descriptions... (${fetchedCount}/${recordsToFetch.length})`;
+    };
+    updateProgress();
+
+    const fetchDescription = async (record) => {
+      try {
+        const response = await chrome.runtime.sendMessage({
+          command: 'fetch-job-description',
+          url: record.link
+        });
+        if (response && response.description) {
+          record.description = response.description;
+        } else {
+          record.description = 'Could not fetch description.';
         }
+      } catch (error) {
+        console.error('Error fetching description for record:', record, error);
+        record.description = 'Error fetching description.';
+      } finally {
+        fetchedCount++;
+        updateProgress();
       }
+    };
+
+    const queue = [];
+    for (const record of recordsToFetch) {
+      queue.push(record);
     }
+
+    const worker = async () => {
+      while (queue.length > 0) {
+        if (activeFetches >= concurrencyLimit) {
+          await new Promise(resolve => setTimeout(resolve, 100)); // Wait a bit before checking again
+          continue;
+        }
+        activeFetches++;
+        const record = queue.shift();
+        await fetchDescription(record);
+        activeFetches--;
+      }
+    };
+
+    const workers = Array(concurrencyLimit).fill(null).map(worker);
+    await Promise.all(workers);
 
     // Save updated records to local storage
     chrome.storage.local.set({ records: allRecords }, () => {
