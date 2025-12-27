@@ -182,6 +182,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
+  // Webhook URL input and storage
+  const webhookUrlInput = document.getElementById('webhookUrlInput');
+  const defaultWebhookUrl = 'http://localhost/zoho-api-main/webhookusvta/'; // Keep default for new users
+
+  // Load saved webhook URL
+  chrome.storage.local.get({ webhookUrl: defaultWebhookUrl }, (result) => {
+    webhookUrlInput.value = result.webhookUrl;
+  });
+
+  // Save webhook URL on input change
+  webhookUrlInput.addEventListener('input', () => {
+    chrome.storage.local.set({ webhookUrl: webhookUrlInput.value });
+  });
+
   // Send to Webhook button functionality
   const sendToWebhookButton = document.getElementById('sendToWebhook');
   sendToWebhookButton.addEventListener('click', async () => {
@@ -193,7 +207,15 @@ document.addEventListener('DOMContentLoaded', () => {
     sendToWebhookButton.disabled = true;
     sendToWebhookButton.textContent = 'Sending...';
 
-    const webhookUrl = 'http://localhost/zoho-api-main/webhookusvta/';
+    const webhookUrl = webhookUrlInput.value; // Get URL from input field
+
+    if (!webhookUrl) {
+      alert('Please enter a webhook URL.');
+      sendToWebhookButton.disabled = false;
+      sendToWebhookButton.textContent = 'Send to Webhook';
+      return;
+    }
+
     try {
       const response = await chrome.runtime.sendMessage({
         command: 'send-to-webhook',

@@ -72,6 +72,20 @@ th {
   background-color: #f0f0f0;
 }
 
+.button-container div { /* Style the div wrapping the label and input */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+}
+
+#webhookUrlInput {
+  width: 250px; /* Adjust width as needed */
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
 #sendToWebhook {
   background-color: #28a745;
   color: white;
