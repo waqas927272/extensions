@@ -1,11 +1,20 @@
 // offscreen.js
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.command === 'parse-html') {
+    console.log("Offscreen document received 'parse-html' command.");
     const html = message.html;
     const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
     let description = 'Description not found.';
     let hospitalName = 'N/A'; // Initialize hospitalName
+    let doc;
+
+    try {
+      doc = parser.parseFromString(html, 'text/html');
+    } catch (parseError) {
+      console.error("Offscreen document: Error parsing HTML:", parseError);
+      sendResponse({ description: 'Error parsing HTML.', hospitalName: 'N/A' });
+      return true;
+    }
 
     // --- 1. Attempt to extract from JSON-LD (JobPosting schema) ---
     const scriptLdJson = doc.querySelectorAll('script[type="application/ld+json"]');
@@ -21,12 +30,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           }
           // If both found, we can potentially stop early for JSON-LD
           if (description !== 'Description not found.' && hospitalName !== 'N/A') {
+            console.log("Offscreen document: Found description and hospital name from JSON-LD.");
             sendResponse({ description: description, hospitalName: hospitalName });
             return true;
           }
         }
       } catch (e) {
-        console.warn('Could not parse JSON-LD script:', e);
+        console.warn('Offscreen document: Could not parse JSON-LD script:', e);
       }
     }
 
@@ -58,6 +68,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const element = cleanBody.querySelector(selector);
       if (element && element.textContent.trim().length > 0) {
         hospitalName = element.textContent.trim();
+        console.log("Offscreen document: Found hospital name from DOM selector:", selector);
         break;
       }
     }
@@ -67,10 +78,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const ogSiteName = doc.querySelector('meta[property="og:site_name"]');
       if (ogSiteName && ogSiteName.content.trim().length > 0) {
         hospitalName = ogSiteName.content.trim();
+        console.log("Offscreen document: Found hospital name from og:site_name meta tag.");
       } else {
         const applicationName = doc.querySelector('meta[name="application-name"]');
         if (applicationName && applicationName.content.trim().length > 0) {
           hospitalName = applicationName.content.trim();
+          console.log("Offscreen document: Found hospital name from application-name meta tag.");
         }
       }
     }
@@ -90,9 +103,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       const element = cleanBody.querySelector(selector); // Query on the clean body
       if (element && element.textContent.trim().length > 100) { // Look for substantial content
         description = element.textContent.trim();
+        console.log("Offscreen document: Found description from DOM selector:", selector);
         break;
       }
     }
+    console.log("Offscreen document: Sending response with description and hospitalName.");
     sendResponse({ description: description, hospitalName: hospitalName });
   }
   return true; // Indicates that the response is sent asynchronously

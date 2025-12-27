@@ -270,13 +270,22 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             try {
                 await setupOffscreenDocument('offscreen.html');
                 const jobUrl = request.url;
-                const response = await fetch(jobUrl);
+                console.log("Background: Fetching job URL for description:", jobUrl);
+                const response = await fetch(jobUrl); // This response is HTML content
                 const html = await response.text();
+                console.log("Background: HTML fetched, sending to offscreen for parsing.");
 
                 const parsingResponse = await chrome.runtime.sendMessage({
                     command: 'parse-html',
                     html: html
                 });
+                console.log("Background: Received parsingResponse from offscreen:", parsingResponse);
+
+                if (!parsingResponse) {
+                    console.error("Background: parsingResponse is undefined from offscreen script.");
+                    sendResponse({ description: 'Error: No response from offscreen.', hospitalName: 'N/A' });
+                    return;
+                }
                 sendResponse({ description: parsingResponse.description, hospitalName: parsingResponse.hospitalName });
             } catch (error) {
                 console.error('Error in fetch-job-description:', error);
