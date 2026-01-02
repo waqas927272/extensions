@@ -1,10 +1,25 @@
 document.addEventListener('DOMContentLoaded', () => {
   const jobRecordsTableBody = document.querySelector('#jobRecordsTable tbody');
+  const duplicateRecordsTableBody = document.querySelector('#duplicateRecordsTable tbody');
   const clearRecordsBtn = document.getElementById('clearRecords');
   const downloadCsvBtn = document.getElementById('downloadCsv');
   const getDescriptionsBtn = document.getElementById('getDescriptions');
   const sendToWebhooksBtn = document.getElementById('sendToWebhooks');
   const searchInput = document.getElementById('searchInput');
+
+  // Duplicate elements
+  const duplicatesSection = document.getElementById('duplicatesSection');
+  const duplicateCount = document.getElementById('duplicateCount');
+  const goToDuplicatesBtn = document.getElementById('goToDuplicates');
+  const duplicateBtnCount = document.getElementById('duplicateBtnCount');
+
+  // Selection elements
+  const selectAllUnique = document.getElementById('selectAllUnique');
+  const selectAllDuplicate = document.getElementById('selectAllDuplicate');
+  const uniqueSelectionCount = document.getElementById('uniqueSelectionCount');
+  const duplicateSelectionCount = document.getElementById('duplicateSelectionCount');
+  const sendSelectedUniqueBtn = document.getElementById('sendSelectedUnique');
+  const sendSelectedDuplicateBtn = document.getElementById('sendSelectedDuplicate');
 
   // Stats elements
   const totalRecordsEl = document.getElementById('totalRecords');
@@ -45,9 +60,114 @@ document.addEventListener('DOMContentLoaded', () => {
   const copyResultsBtn = document.getElementById('copyResults');
 
   let storedJobs = [];
+  let uniqueJobs = [];
+  let duplicateJobs = [];
   let webhooks = [];
   let currentJobIndex = 0;
   let isGettingDescriptions = false;
+
+  // Function to detect duplicates based on title + hospitalName + city + state
+  function separateDuplicates(jobs) {
+    const seen = new Map();
+    const unique = [];
+    const duplicates = [];
+
+    jobs.forEach((job, index) => {
+      // Create a unique key from title + hospitalName + city + state (case-insensitive)
+      const key = [
+        (job.title || '').toLowerCase().trim(),
+        (job.hospitalName || '').toLowerCase().trim(),
+        (job.city || '').toLowerCase().trim(),
+        (job.state || '').toLowerCase().trim()
+      ].join('|');
+
+      if (seen.has(key)) {
+        // This is a duplicate
+        duplicates.push({ ...job, originalIndex: index });
+      } else {
+        // First occurrence - unique record
+        seen.set(key, index);
+        unique.push({ ...job, originalIndex: index });
+      }
+    });
+
+    return { unique, duplicates };
+  }
+
+  // Selection tracking
+  let selectedUniqueIndices = new Set();
+  let selectedDuplicateIndices = new Set();
+
+  function updateSelectionCount(type) {
+    if (type === 'unique') {
+      const count = selectedUniqueIndices.size;
+      uniqueSelectionCount.textContent = `${count} selected`;
+      sendSelectedUniqueBtn.disabled = count === 0;
+    } else {
+      const count = selectedDuplicateIndices.size;
+      duplicateSelectionCount.textContent = `${count} selected`;
+      sendSelectedDuplicateBtn.disabled = count === 0;
+    }
+  }
+
+  function handleRowCheckbox(checkbox, index, type) {
+    const row = checkbox.closest('tr');
+    const selectedSet = type === 'unique' ? selectedUniqueIndices : selectedDuplicateIndices;
+    const selectAllCheckbox = type === 'unique' ? selectAllUnique : selectAllDuplicate;
+    const jobsArray = type === 'unique' ? uniqueJobs : duplicateJobs;
+
+    if (checkbox.checked) {
+      selectedSet.add(index);
+      row.classList.add('selected');
+    } else {
+      selectedSet.delete(index);
+      row.classList.remove('selected');
+    }
+
+    // Update select all checkbox state
+    selectAllCheckbox.checked = selectedSet.size === jobsArray.length && jobsArray.length > 0;
+    selectAllCheckbox.indeterminate = selectedSet.size > 0 && selectedSet.size < jobsArray.length;
+
+    updateSelectionCount(type);
+  }
+
+  function handleSelectAll(selectAllCheckbox, type) {
+    const tableBody = type === 'unique' ? jobRecordsTableBody : duplicateRecordsTableBody;
+    const selectedSet = type === 'unique' ? selectedUniqueIndices : selectedDuplicateIndices;
+    const jobsArray = type === 'unique' ? uniqueJobs : duplicateJobs;
+
+    const checkboxes = tableBody.querySelectorAll('input[type="checkbox"]');
+
+    if (selectAllCheckbox.checked) {
+      // Select all
+      checkboxes.forEach((cb, idx) => {
+        cb.checked = true;
+        cb.closest('tr').classList.add('selected');
+        selectedSet.add(idx);
+      });
+    } else {
+      // Deselect all
+      checkboxes.forEach((cb) => {
+        cb.checked = false;
+        cb.closest('tr').classList.remove('selected');
+      });
+      selectedSet.clear();
+    }
+
+    selectAllCheckbox.indeterminate = false;
+    updateSelectionCount(type);
+  }
+
+  function resetSelections() {
+    selectedUniqueIndices.clear();
+    selectedDuplicateIndices.clear();
+    selectAllUnique.checked = false;
+    selectAllUnique.indeterminate = false;
+    selectAllDuplicate.checked = false;
+    selectAllDuplicate.indeterminate = false;
+    updateSelectionCount('unique');
+    updateSelectionCount('duplicate');
+  }
 
   function updateStats() {
     const total = storedJobs.length;
@@ -63,6 +183,10 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.storage.local.get(['jobs'], (result) => {
       storedJobs = result.jobs || [];
       jobRecordsTableBody.innerHTML = '';
+      duplicateRecordsTableBody.innerHTML = '';
+
+      // Reset selections when displaying records
+      resetSelections();
 
       updateStats();
 
@@ -71,7 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (storedJobs.length === 0) {
         jobRecordsTableBody.innerHTML = `
           <tr>
-            <td colspan="8" class="no-records">
+            <td colspan="12" class="no-records">
               <svg class="no-records-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14 2 14 8 20 8"></polyline>
@@ -84,25 +208,54 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         downloadCsvBtn.disabled = true;
         getDescriptionsBtn.disabled = true;
+        duplicatesSection.classList.add('hidden');
+        goToDuplicatesBtn.classList.add('hidden');
         return;
       }
 
       downloadCsvBtn.disabled = false;
       getDescriptionsBtn.disabled = false;
 
-      const filteredJobs = filter
-        ? storedJobs.filter(job =>
+      // Separate unique and duplicate records
+      const { unique, duplicates } = separateDuplicates(storedJobs);
+      uniqueJobs = unique;
+      duplicateJobs = duplicates;
+
+      // Update duplicate button and section visibility
+      if (duplicateJobs.length > 0) {
+        duplicateCount.textContent = duplicateJobs.length;
+        duplicateBtnCount.textContent = duplicateJobs.length;
+        duplicatesSection.classList.remove('hidden');
+        goToDuplicatesBtn.classList.remove('hidden');
+      } else {
+        duplicatesSection.classList.add('hidden');
+        goToDuplicatesBtn.classList.add('hidden');
+      }
+
+      // Filter unique jobs
+      const filteredUniqueJobs = filter
+        ? uniqueJobs.filter(job =>
             job.title.toLowerCase().includes(filter.toLowerCase()) ||
             job.hospitalName.toLowerCase().includes(filter.toLowerCase()) ||
             (job.city && job.city.toLowerCase().includes(filter.toLowerCase())) ||
             job.state.toLowerCase().includes(filter.toLowerCase())
           )
-        : storedJobs;
+        : uniqueJobs;
 
-      if (filteredJobs.length === 0) {
+      // Filter duplicate jobs
+      const filteredDuplicateJobs = filter
+        ? duplicateJobs.filter(job =>
+            job.title.toLowerCase().includes(filter.toLowerCase()) ||
+            job.hospitalName.toLowerCase().includes(filter.toLowerCase()) ||
+            (job.city && job.city.toLowerCase().includes(filter.toLowerCase())) ||
+            job.state.toLowerCase().includes(filter.toLowerCase())
+          )
+        : duplicateJobs;
+
+      if (filteredUniqueJobs.length === 0) {
         jobRecordsTableBody.innerHTML = `
           <tr>
-            <td colspan="8" class="no-records">
+            <td colspan="12" class="no-records">
               <svg class="no-records-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <circle cx="11" cy="11" r="8"></circle>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -111,43 +264,104 @@ document.addEventListener('DOMContentLoaded', () => {
             </td>
           </tr>
         `;
-        return;
+      } else {
+        // Display unique jobs in main table
+        filteredUniqueJobs.forEach((job, index) => {
+          const row = document.createElement('tr');
+          const actualIndex = job.originalIndex;
+
+          const hasDescription = job.description && job.description.length > 0;
+          const descriptionHtml = hasDescription
+            ? `<div class="description-preview">
+                 <span class="status-badge status-done">Done</span>
+                 <button class="view-desc-btn" data-index="${actualIndex}">View</button>
+               </div>`
+            : `<span class="status-badge status-pending">Pending</span>`;
+
+          row.innerHTML = `
+            <td class="checkbox-cell">
+              <input type="checkbox" class="row-checkbox" data-index="${index}" data-type="unique">
+            </td>
+            <td>${index + 1}</td>
+            <td class="parent-client-cell">${escapeHtml(PARENT_CLIENT_NAME)}</td>
+            <td class="job-title">${escapeHtml(job.title)}</td>
+            <td class="job-type-cell">${escapeHtml(job.jobType || 'N/A')}</td>
+            <td class="hospital-name">${escapeHtml(job.hospitalName)}</td>
+            <td class="address-cell">${escapeHtml(job.streetAddress || 'N/A')}</td>
+            <td class="city-cell">${escapeHtml(job.city || 'N/A')}</td>
+            <td class="state-cell">${escapeHtml(job.state || 'N/A')}</td>
+            <td class="zip-cell">${escapeHtml(job.postalCode || 'N/A')}</td>
+            <td class="description-cell">${descriptionHtml}</td>
+            <td>
+              <a href="${job.link}" target="_blank" class="link-btn">
+                Open →
+              </a>
+            </td>
+          `;
+          jobRecordsTableBody.appendChild(row);
+        });
       }
 
-      filteredJobs.forEach((job, index) => {
-        const row = document.createElement('tr');
-        const actualIndex = storedJobs.indexOf(job);
+      // Display duplicate jobs in duplicate table
+      if (filteredDuplicateJobs.length > 0) {
+        filteredDuplicateJobs.forEach((job, index) => {
+          const row = document.createElement('tr');
+          const actualIndex = job.originalIndex;
 
-        const hasDescription = job.description && job.description.length > 0;
-        const descriptionHtml = hasDescription
-          ? `<div class="description-preview">
-               <span class="status-badge status-done">Done</span>
-               <button class="view-desc-btn" data-index="${actualIndex}">View</button>
-             </div>`
-          : `<span class="status-badge status-pending">Pending</span>`;
+          const hasDescription = job.description && job.description.length > 0;
+          const descriptionHtml = hasDescription
+            ? `<div class="description-preview">
+                 <span class="status-badge status-done">Done</span>
+                 <button class="view-desc-btn" data-index="${actualIndex}">View</button>
+               </div>`
+            : `<span class="status-badge status-pending">Pending</span>`;
 
-        row.innerHTML = `
-          <td>${index + 1}</td>
-          <td class="parent-client-cell">${escapeHtml(PARENT_CLIENT_NAME)}</td>
-          <td class="job-title">${escapeHtml(job.title)}</td>
-          <td class="hospital-name">${escapeHtml(job.hospitalName)}</td>
-          <td class="city-cell">${escapeHtml(job.city || 'N/A')}</td>
-          <td class="state-cell">${escapeHtml(job.state || 'N/A')}</td>
-          <td class="description-cell">${descriptionHtml}</td>
-          <td>
-            <a href="${job.link}" target="_blank" class="link-btn">
-              Open →
-            </a>
-          </td>
+          row.innerHTML = `
+            <td class="checkbox-cell">
+              <input type="checkbox" class="row-checkbox" data-index="${index}" data-type="duplicate">
+            </td>
+            <td>${index + 1}</td>
+            <td class="parent-client-cell">${escapeHtml(PARENT_CLIENT_NAME)}</td>
+            <td class="job-title">${escapeHtml(job.title)}</td>
+            <td class="job-type-cell">${escapeHtml(job.jobType || 'N/A')}</td>
+            <td class="hospital-name">${escapeHtml(job.hospitalName)}</td>
+            <td class="address-cell">${escapeHtml(job.streetAddress || 'N/A')}</td>
+            <td class="city-cell">${escapeHtml(job.city || 'N/A')}</td>
+            <td class="state-cell">${escapeHtml(job.state || 'N/A')}</td>
+            <td class="zip-cell">${escapeHtml(job.postalCode || 'N/A')}</td>
+            <td class="description-cell">${descriptionHtml}</td>
+            <td>
+              <a href="${job.link}" target="_blank" class="link-btn">
+                Open →
+              </a>
+            </td>
+          `;
+          duplicateRecordsTableBody.appendChild(row);
+        });
+      } else if (duplicateJobs.length > 0) {
+        duplicateRecordsTableBody.innerHTML = `
+          <tr>
+            <td colspan="12" class="no-records">
+              <p class="no-records-text">No duplicates match your search.</p>
+            </td>
+          </tr>
         `;
-        jobRecordsTableBody.appendChild(row);
-      });
+      }
 
-      // Add click handlers for view description buttons
+      // Add click handlers for view description buttons (both tables)
       document.querySelectorAll('.view-desc-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           const index = parseInt(e.target.dataset.index);
           showDescriptionModal(index);
+        });
+      });
+
+      // Add click handlers for row checkboxes
+      document.querySelectorAll('.row-checkbox').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          const index = parseInt(e.target.dataset.index);
+          const type = e.target.dataset.type;
+          handleRowCheckbox(e.target, index, type);
         });
       });
     });
@@ -158,6 +372,7 @@ document.addEventListener('DOMContentLoaded', () => {
     div.textContent = text;
     return div.innerHTML;
   }
+
 
   function showDescriptionModal(index) {
     const job = storedJobs[index];
@@ -184,6 +399,187 @@ document.addEventListener('DOMContentLoaded', () => {
   searchInput.addEventListener('input', (e) => {
     displayRecords(e.target.value);
   });
+
+  // Navigate to duplicates section
+  goToDuplicatesBtn.addEventListener('click', () => {
+    duplicatesSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  // Select all checkboxes
+  selectAllUnique.addEventListener('change', () => {
+    handleSelectAll(selectAllUnique, 'unique');
+  });
+
+  selectAllDuplicate.addEventListener('change', () => {
+    handleSelectAll(selectAllDuplicate, 'duplicate');
+  });
+
+  // Send selected records buttons
+  sendSelectedUniqueBtn.addEventListener('click', () => {
+    sendSelectedToWebhook('unique');
+  });
+
+  sendSelectedDuplicateBtn.addEventListener('click', () => {
+    sendSelectedToWebhook('duplicate');
+  });
+
+  // Send selected records to webhook
+  async function sendSelectedToWebhook(type) {
+    const enabledWebhooks = webhooks.filter(w => w.enabled);
+
+    if (enabledWebhooks.length === 0) {
+      showResultsModal('Warning', 'No enabled webhooks. Please add and enable at least one webhook.', 'warning');
+      return;
+    }
+
+    const selectedIndices = type === 'unique' ? selectedUniqueIndices : selectedDuplicateIndices;
+    const jobsArray = type === 'unique' ? uniqueJobs : duplicateJobs;
+    const sendBtn = type === 'unique' ? sendSelectedUniqueBtn : sendSelectedDuplicateBtn;
+
+    if (selectedIndices.size === 0) {
+      showResultsModal('Warning', 'No records selected. Please select at least one record.', 'warning');
+      return;
+    }
+
+    // Get selected jobs
+    const selectedJobs = Array.from(selectedIndices).map(idx => jobsArray[idx]);
+
+    const BATCH_SIZE = 50;
+    const totalBatches = Math.ceil(selectedJobs.length / BATCH_SIZE);
+    const tableType = type === 'unique' ? 'Unique Records' : 'Duplicate Records';
+
+    if (!confirm(`Send ${selectedJobs.length} selected ${tableType} in ${totalBatches} batch(es) to ${enabledWebhooks.length} webhook(s)?`)) {
+      return;
+    }
+
+    const originalBtnHtml = sendBtn.innerHTML;
+    sendBtn.disabled = true;
+    sendBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><circle cx="12" cy="12" r="10"></circle></svg> Sending...';
+
+    // Show progress section
+    progressSection.classList.remove('hidden');
+    progressBar.style.width = '0%';
+    progressText.textContent = `0 / ${totalBatches} batches`;
+
+    const PARENT_CLIENT_NAME = 'Alliance Animal Health (Parent Client)';
+
+    // Map job records to include all required fields
+    const jobsWithParentClient = selectedJobs.map(job => ({
+      parent_client: PARENT_CLIENT_NAME,
+      job_title: job.title || '',
+      job_type: job.jobType || '',
+      hospital: job.hospitalName || '',
+      address: job.streetAddress || '',
+      city: job.city || '',
+      state: job.state || '',
+      zip_code: job.postalCode || '',
+      description: job.description || '',
+      link: job.link || ''
+    }));
+
+    // Split into batches
+    const batches = [];
+    for (let i = 0; i < jobsWithParentClient.length; i += BATCH_SIZE) {
+      batches.push(jobsWithParentClient.slice(i, i + BATCH_SIZE));
+    }
+
+    const allResults = [];
+    let batchesSent = 0;
+
+    // Generate a unique sync ID for this entire send operation
+    const syncId = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+
+    // Send each batch to all enabled webhooks
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      const batchNumber = batchIndex + 1;
+
+      const payload = {
+        source: 'AAH Job Scraper',
+        parentClientName: PARENT_CLIENT_NAME,
+        recordType: type,
+        syncId: syncId,
+        timestamp: new Date().toISOString(),
+        batchNumber: batchNumber,
+        totalBatches: totalBatches,
+        batchSize: batch.length,
+        totalRecords: selectedJobs.length,
+        data: batch
+      };
+
+      for (const webhook of enabledWebhooks) {
+        const response = await sendWebhookRequest(webhook.url, payload);
+        allResults.push({
+          name: webhook.name,
+          url: webhook.url,
+          batch: batchNumber,
+          ...response
+        });
+      }
+
+      // Update progress
+      batchesSent++;
+      const percent = Math.round((batchesSent / totalBatches) * 100);
+      progressBar.style.width = `${percent}%`;
+      progressText.textContent = `${batchesSent} / ${totalBatches} batches`;
+
+      // Small delay between batches
+      if (batchIndex < batches.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    // Hide progress section
+    progressSection.classList.add('hidden');
+
+    // Build detailed results message
+    const successful = allResults.filter(r => r.success);
+    const failed = allResults.filter(r => !r.success);
+    const timestamp = new Date().toISOString();
+
+    let message = `Webhook Results (${tableType})\n`;
+    message += `${'='.repeat(30)}\n`;
+    message += `Sync ID: ${syncId}\n`;
+    message += `Timestamp: ${timestamp}\n`;
+    message += `Record Type: ${tableType}\n`;
+    message += `Selected Records: ${selectedJobs.length}\n`;
+    message += `Batches Sent: ${totalBatches} (${BATCH_SIZE} records each)\n`;
+    message += `Webhooks: ${enabledWebhooks.length}\n`;
+    message += `Total Requests: ${allResults.length}\n`;
+    message += `Successful: ${successful.length} | Failed: ${failed.length}\n\n`;
+
+    if (successful.length > 0) {
+      message += `Successful Batches:\n`;
+      const successByWebhook = {};
+      successful.forEach(s => {
+        if (!successByWebhook[s.name]) {
+          successByWebhook[s.name] = [];
+        }
+        successByWebhook[s.name].push(s.batch);
+      });
+      Object.entries(successByWebhook).forEach(([name, batchNums]) => {
+        message += `  [OK] ${name}: Batches ${batchNums.join(', ')}\n`;
+      });
+      message += `\n`;
+    }
+
+    if (failed.length > 0) {
+      message += `Failed Batches:\n`;
+      failed.forEach(f => {
+        message += `  [ERROR] ${f.name} (Batch ${f.batch})\n`;
+        message += `          ${f.url}\n`;
+        message += `          Error: ${f.error}\n`;
+      });
+    }
+
+    const modalType = failed.length === 0 ? 'success' : (successful.length === 0 ? 'error' : 'warning');
+    const modalTitle = failed.length === 0 ? 'Success' : (successful.length === 0 ? 'Failed' : 'Partial Success');
+
+    showResultsModal(modalTitle, message, modalType);
+
+    sendBtn.disabled = false;
+    sendBtn.innerHTML = originalBtnHtml;
+  }
 
   function convertToCsv(data) {
     if (data.length === 0) return '';
@@ -559,10 +955,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const PARENT_CLIENT_NAME = 'Alliance Animal Health (Parent Client)';
 
-    // Add parentClientName to each job record
+    // Map job records to include all required fields
     const jobsWithParentClient = storedJobs.map(job => ({
-      parentClientName: PARENT_CLIENT_NAME,
-      ...job
+      parent_client: PARENT_CLIENT_NAME,
+      job_title: job.title || '',
+      job_type: job.jobType || '',
+      hospital: job.hospitalName || '',
+      address: job.streetAddress || '',
+      city: job.city || '',
+      state: job.state || '',
+      zip_code: job.postalCode || '',
+      description: job.description || '',
+      link: job.link || ''
     }));
 
     // Split into batches
@@ -574,6 +978,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const allResults = [];
     let batchesSent = 0;
 
+    // Generate a unique sync ID for this entire send operation
+    const syncId = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+
     // Send each batch to all enabled webhooks
     for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
       const batch = batches[batchIndex];
@@ -582,6 +989,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const payload = {
         source: 'AAH Job Scraper',
         parentClientName: PARENT_CLIENT_NAME,
+        syncId: syncId,
         timestamp: new Date().toISOString(),
         batchNumber: batchNumber,
         totalBatches: totalBatches,
@@ -622,6 +1030,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let message = `Webhook Results\n`;
     message += `===============\n`;
+    message += `Sync ID: ${syncId}\n`;
     message += `Timestamp: ${timestamp}\n`;
     message += `Total Records: ${storedJobs.length}\n`;
     message += `Batches Sent: ${totalBatches} (${BATCH_SIZE} records each)\n`;

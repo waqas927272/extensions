@@ -118,25 +118,52 @@
     <main class="main-content">
       <div class="content-header">
         <h2>Scraped Job Records</h2>
-        <div class="search-box">
-          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input type="text" id="searchInput" placeholder="Search jobs..." class="search-input">
+        <div class="header-actions">
+          <button id="goToDuplicates" class="btn btn-duplicate hidden">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="8" y="8" width="12" height="12" rx="2"></rect>
+              <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>
+            </svg>
+            View Duplicates (<span id="duplicateBtnCount">0</span>)
+          </button>
+          <div class="search-box">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input type="text" id="searchInput" placeholder="Search jobs..." class="search-input">
+          </div>
         </div>
       </div>
 
+      <div class="table-actions">
+        <div class="selection-info">
+          <span id="uniqueSelectionCount">0 selected</span>
+        </div>
+        <button id="sendSelectedUnique" class="btn btn-webhook btn-sm" disabled>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="22" y1="2" x2="11" y2="13"></line>
+            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+          </svg>
+          Send Selected to Webhook
+        </button>
+      </div>
       <div class="table-container">
         <table id="jobRecordsTable">
           <thead>
             <tr>
+              <th class="checkbox-col">
+                <input type="checkbox" id="selectAllUnique" title="Select All">
+              </th>
               <th>#</th>
               <th>Parent Client</th>
               <th>Job Title</th>
+              <th>Job Type</th>
               <th>Hospital</th>
+              <th>Address</th>
               <th>City</th>
               <th>State</th>
+              <th>Zip Code</th>
               <th>Description</th>
               <th>Link</th>
             </tr>
@@ -145,6 +172,57 @@
             <!-- Job records will be inserted here -->
           </tbody>
         </table>
+      </div>
+
+      <!-- Duplicate Records Section -->
+      <div id="duplicatesSection" class="duplicates-section hidden">
+        <div class="duplicates-header">
+          <h2>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="8" y="8" width="12" height="12" rx="2"></rect>
+              <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path>
+            </svg>
+            Duplicate Records
+            <span id="duplicateCount" class="duplicate-count">0</span>
+          </h2>
+        </div>
+        <div class="table-actions duplicate-actions">
+          <div class="selection-info">
+            <span id="duplicateSelectionCount">0 selected</span>
+          </div>
+          <button id="sendSelectedDuplicate" class="btn btn-webhook btn-sm" disabled>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+            Send Selected to Webhook
+          </button>
+        </div>
+        <div class="table-container">
+          <table id="duplicateRecordsTable">
+            <thead>
+              <tr>
+                <th class="checkbox-col">
+                  <input type="checkbox" id="selectAllDuplicate" title="Select All">
+                </th>
+                <th>#</th>
+                <th>Parent Client</th>
+                <th>Job Title</th>
+                <th>Job Type</th>
+                <th>Hospital</th>
+                <th>Address</th>
+                <th>City</th>
+                <th>State</th>
+                <th>Zip Code</th>
+                <th>Description</th>
+                <th>Link</th>
+              </tr>
+            </thead>
+            <tbody>
+              <!-- Duplicate records will be inserted here -->
+            </tbody>
+          </table>
+        </div>
       </div>
     </main>
   </div>
