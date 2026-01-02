@@ -463,10 +463,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const PARENT_CLIENT_NAME = 'Alliance Animal Health (Parent Client)';
 
-    // Add parentClientName to each job record
+    // Map job records to include all required fields
     const jobsWithParentClient = selectedJobs.map(job => ({
-      parentClientName: PARENT_CLIENT_NAME,
-      ...job
+      parent_client: PARENT_CLIENT_NAME,
+      job_title: job.title || '',
+      job_type: job.jobType || '',
+      hospital: job.hospitalName || '',
+      address: job.streetAddress || '',
+      city: job.city || '',
+      state: job.state || '',
+      zip_code: job.postalCode || '',
+      description: job.description || '',
+      link: job.link || ''
     }));
 
     // Split into batches
@@ -947,10 +955,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const PARENT_CLIENT_NAME = 'Alliance Animal Health (Parent Client)';
 
-    // Add parentClientName to each job record
+    // Map job records to include all required fields
     const jobsWithParentClient = storedJobs.map(job => ({
-      parentClientName: PARENT_CLIENT_NAME,
-      ...job
+      parent_client: PARENT_CLIENT_NAME,
+      job_title: job.title || '',
+      job_type: job.jobType || '',
+      hospital: job.hospitalName || '',
+      address: job.streetAddress || '',
+      city: job.city || '',
+      state: job.state || '',
+      zip_code: job.postalCode || '',
+      description: job.description || '',
+      link: job.link || ''
     }));
 
     // Split into batches
