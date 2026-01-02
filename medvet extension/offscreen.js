@@ -1,4 +1,22 @@
 // offscreen.js
+function cleanText(html) {
+  // First, remove all HTML tags using a regular expression
+  let text = html.replace(/<[^>]*>/g, '');
+
+  // Then, decode HTML entities (e.g., &amp; -> &)
+  // We can do this by creating a temporary DOM element, though in an offscreen
+  // document with limited DOM APIs, we should be careful. A DOMParser is safer.
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(text, 'text/html');
+  text = doc.body.textContent || '';
+
+
+  // Finally, normalize whitespace
+  text = text.replace(/(\s*\n\s*){2,}/g, '\n\n').replace(/[ \t]+/g, ' ').trim();
+
+  return text;
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.command === 'parse-html') {
     const html = message.html;
@@ -13,8 +31,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       try {
         const json = JSON.parse(script.textContent);
         if (json['@type'] === 'JobPosting') {
-          if (json.description && json.description.length > 100) {
-            description = json.description;
+          if (json.description) {
+            description = cleanText(json.description);
           }
           if (json.hiringOrganization && json.hiringOrganization.name) {
             hospitalName = json.hiringOrganization.name;
@@ -89,7 +107,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     for (const selector of possibleDescriptionContainers) {
       const element = cleanBody.querySelector(selector); // Query on the clean body
       if (element && element.textContent.trim().length > 100) { // Look for substantial content
-        description = element.textContent.trim();
+        description = cleanText(element.innerHTML); // Use innerHTML to preserve some formatting, then clean
         break;
       }
     }

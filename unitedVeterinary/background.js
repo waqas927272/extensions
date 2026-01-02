@@ -3,6 +3,8 @@ let isScraping = false;
 let currentTabId = null;
 let currentIframeFrameId = null;
 let currentPage = 0;
+let allScrapedJobs = [];
+let uniqueJobLinks = new Set();
 
 const IFRAME_ID = "jv_careersite_iframe_id"; // Define it once globally
 const IFRAME_PARTIAL_SRC = "jobs.jobvite.com/unitedveterinarycare/";
@@ -82,96 +84,67 @@ async function findIframeAndInjectContentScript(tabId) {
     return currentIframeFrameId;
 }
 
-// Main scraping loop
-async function scrapePages() {
-    currentPage = 0;
-    sendStatusToPopup('starting');
+async function scrapeAndGoToNext() {
+    if (!isScraping) return;
 
-    let allScrapedJobs = [];
-    // Use a Set to keep track of unique job links to prevent duplicates
-    let uniqueJobLinks = new Set();
+    currentPage++;
+    sendStatusToPopup('in_progress', `Scraping page ${currentPage}...`, allScrapedJobs.length);
+    console.log(`Scraping page ${currentPage}...`);
 
-    let existingJobs = await new Promise(resolve => {
-        chrome.storage.local.get(['scrapedJobs'], (result) => resolve(result.scrapedJobs || []));
-    });
-    
-    // Populate allScrapedJobs and uniqueJobLinks with existing data
-    existingJobs.forEach(job => {
-        if (job.link) {
-            uniqueJobLinks.add(job.link);
-            allScrapedJobs.push(job);
-        }
-    });
-
-    while (isScraping) {
-        currentPage++;
-        sendStatusToPopup('in_progress', `Scraping page ${currentPage}...`, allScrapedJobs.length);
-        console.log(`Scraping page ${currentPage}...`);
-
-        // Scrape current page
-        let scrapedJobsOnPage;
-        try {
-            const response = await chrome.tabs.sendMessage(currentTabId, { action: 'scrapeCurrentPage' }, { frameId: currentIframeFrameId });
-            scrapedJobsOnPage = response?.jobs || [];
-        } catch (e) {
-            console.error(`Error scraping current page: ${e.message}`);
-            sendStatusToPopup('error', `Error scraping page ${currentPage}: ${e.message}`);
-            isScraping = false;
-            break;
-        }
-
-        if (scrapedJobsOnPage.length > 0) {
-            const newUniqueJobs = [];
-            scrapedJobsOnPage.forEach(job => {
-                if (job.link && !uniqueJobLinks.has(job.link)) {
-                    newUniqueJobs.push(job);
-                    uniqueJobLinks.add(job.link);
-                }
-            });
-            allScrapedJobs.push(...newUniqueJobs);
-            
-            // Update storage with all accumulated unique jobs after each page
-            await new Promise(resolve => {
-                chrome.storage.local.set({ scrapedJobs: allScrapedJobs }, () => {
-                    console.log(`Saved ${newUniqueJobs.length} new unique jobs from page ${currentPage}. Total unique jobs: ${allScrapedJobs.length}`);
-                    resolve();
-                });
-            });
-        }
-
-        // Check for next page
-        let clickedNext = false;
-        try {
-            const response = await chrome.tabs.sendMessage(currentTabId, { action: 'clickNextPage' }, { frameId: currentIframeFrameId });
-            clickedNext = response?.clicked || false;
-            if (response?.error) {
-                console.error(`Error clicking next page: ${response.error}`);
-                sendStatusToPopup('error', `Error clicking next page: ${response.error}`);
-                isScraping = false;
-                break;
-            }
-        } catch (e) {
-            console.error(`Error sending clickNextPage message: ${e.message}`);
-            sendStatusToPopup('error', `Error advancing page: ${e.message}`);
-            isScraping = false;
-            break;
-        }
-
-        if (!clickedNext) {
-            console.log("No next page button found or it's disabled. Stopping scraping.");
-            isScraping = false;
-        }
-
-        if (isScraping) {
-            // Add a fixed delay to allow AJAX content to load after clicking next
-            await new Promise(resolve => setTimeout(resolve, SCRAPING_PAGE_LOAD_DELAY_MS));
-        }
+    // Scrape current page
+    let scrapedJobsOnPage;
+    try {
+        const response = await chrome.tabs.sendMessage(currentTabId, { action: 'scrapeCurrentPage' }, { frameId: currentIframeFrameId });
+        scrapedJobsOnPage = response?.jobs || [];
+    } catch (e) {
+        console.error(`Error scraping current page: ${e.message}`);
+        sendStatusToPopup('error', `Error scraping page ${currentPage}: ${e.message}`);
+        isScraping = false;
+        return;
     }
 
-    // Scraping finished (either completed or stopped by user)
-    sendStatusToPopup(isScraping ? 'completed' : 'stopped', '', allScrapedJobs.length);
-    isScraping = false; // Ensure it's false
-    console.log(`Scraping process finished. Total jobs scraped: ${allScrapedJobs.length}`);
+    if (scrapedJobsOnPage.length > 0) {
+        const newUniqueJobs = [];
+        scrapedJobsOnPage.forEach(job => {
+            if (job.link && !uniqueJobLinks.has(job.link)) {
+                newUniqueJobs.push(job);
+                uniqueJobLinks.add(job.link);
+            }
+        });
+        allScrapedJobs.push(...newUniqueJobs);
+        
+        await new Promise(resolve => {
+            chrome.storage.local.set({ scrapedJobs: allScrapedJobs }, () => {
+                console.log(`Saved ${newUniqueJobs.length} new unique jobs from page ${currentPage}. Total unique jobs: ${allScrapedJobs.length}`);
+                resolve();
+            });
+        });
+    }
+
+    // Check for next page
+    let clickedNext = false;
+    try {
+        const response = await chrome.tabs.sendMessage(currentTabId, { action: 'clickNextPage' }, { frameId: currentIframeFrameId });
+        clickedNext = response?.clicked || false;
+        if (response?.error) {
+            console.error(`Error clicking next page: ${response.error}`);
+            sendStatusToPopup('error', `Error clicking next page: ${response.error}`);
+            isScraping = false;
+            return;
+        }
+    } catch (e) {
+        console.error(`Error sending clickNextPage message: ${e.message}`);
+        sendStatusToPopup('error', `Error advancing page: ${e.message}`);
+        isScraping = false;
+        return;
+    }
+
+    if (!clickedNext) {
+        console.log("No next page button found or it's disabled. Stopping scraping.");
+        isScraping = false;
+        sendStatusToPopup('completed', '', allScrapedJobs.length);
+    }
+    // The rest of the process will be triggered by chrome.tabs.onUpdated
 }
 
 // Listen for messages from popup.js
@@ -192,7 +165,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         return;
     }
     
-    currentTabId = tabId; // Set currentTabId to the explicitly queried active tab ID
+    currentTabId = tabId;
 
     if (request.action === 'startScraping') {
         if (isScraping) {
@@ -201,10 +174,24 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
             return;
         }
         isScraping = true;
+        currentPage = 0;
+        allScrapedJobs = [];
+        uniqueJobLinks = new Set();
+
+        let existingJobs = await new Promise(resolve => {
+            chrome.storage.local.get(['scrapedJobs'], (result) => resolve(result.scrapedJobs || []));
+        });
+        
+        existingJobs.forEach(job => {
+            if (job.link) {
+                uniqueJobLinks.add(job.link);
+                allScrapedJobs.push(job);
+            }
+        });
         
         const iframeFrameId = await findIframeAndInjectContentScript(currentTabId);
         if (iframeFrameId) {
-            scrapePages();
+            scrapeAndGoToNext();
         } else {
             isScraping = false; // Failed to find iframe or inject script
             sendStatusToPopup('error', 'Failed to initialize scraping.');
@@ -217,6 +204,21 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
         } else {
             console.log("Scraping is not active.");
             sendStatusToPopup('stopped', 'Scraping is not active.');
+        }
+    }
+});
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+    if (tabId === currentTabId && changeInfo.status === 'complete' && isScraping) {
+        console.log('Tab updated, re-injecting content script and continuing scraping.');
+        const iframeFrameId = await findIframeAndInjectContentScript(tabId);
+        if (iframeFrameId) {
+            // Add a small delay to ensure the content script is ready
+            setTimeout(scrapeAndGoToNext, 2000);
+        } else {
+            console.error("Failed to find iframe after navigation, stopping scraping.");
+            isScraping = false;
+            sendStatusToPopup('error', 'Failed to find the job listings iframe after page navigation.');
         }
     }
 });

@@ -11,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function showDescriptionModal(description) {
     modalDescriptionContent.innerHTML = description;
-    descriptionModal.style.display = 'block';
+    descriptionModal.style.display = 'flex !important';
   }
 
   function hideDescriptionModal() {

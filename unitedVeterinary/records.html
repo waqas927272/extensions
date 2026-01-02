@@ -44,13 +44,18 @@
   <h1>Scraped Job Records</h1>
   <p id="jobCount">Total Scraped Jobs: 0</p>
   <button id="clearRecords" class="clear-button">Clear All Records</button>
+
+  <div style="margin-top: 20px;">
+    <input type="text" id="webhookUrl" placeholder="Enter Webhook URL (e.g., http://localhost/webhook)" style="width: 100%; padding: 8px; box-sizing: border-box;">
+    <button id="sendToWebhook" class="clear-button" style="background-color: #4CAF50;">Send to Webhook</button>
+  </div>
   <table id="jobRecordsTable">
     <thead>
       <tr>
         <th data-sort="title">Job Title</th>
         <th data-sort="hospital">Hospital</th>
-        <th data-sort="state">State</th>
-        <th data-sort="country">Country</th>
+        <th data-sort="city">City</th>
+        <th data-sort="location">Location</th>
         <th data-sort="link">Link</th>
       </tr>
     </thead>

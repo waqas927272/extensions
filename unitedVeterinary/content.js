@@ -13,22 +13,29 @@ function scrapeCurrentPage() {
       const hospital = companyElement ? companyElement.innerText.trim() : 'N/A';
       const link = jobItem.href;
 
+      let city = 'N/A';
       let state = 'N/A';
-      let country = 'N/A';
+      let country = 'USA';
+      let location = 'N/A';
+
       if (locationElement && locationElement.innerText) {
         const locationText = locationElement.innerText.trim();
-        const parts = locationText.split(',').map(s => s.trim()).filter(s => s !== '');
+        location = locationText;
+        const parts = locationText.split(',').map(s => s.trim()).filter(s => s);
 
         if (parts.length >= 2) {
+          city = parts.slice(0, -1).join(', '); // Handle cases like "Washington, D.C."
           state = parts[parts.length - 1];
-          country = 'USA';
         } else if (parts.length === 1) {
-          state = parts[0];
-          country = 'USA';
+          if (parts[0].length > 2) {
+            city = parts[0];
+          } else {
+            state = parts[0];
+          }
         }
       }
 
-      scrapedJobs.push({ title, hospital, state, country, link });
+      scrapedJobs.push({ title, hospital, city, state, country, link, location });
     });
     return scrapedJobs;
 }
