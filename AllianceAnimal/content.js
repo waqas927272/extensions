@@ -28,13 +28,15 @@ if (!window.geminiJobScraperInitialized) {
           const hospitalNameEl = row.querySelector('th:nth-child(1)');
           const jobTitleEl = row.querySelector('th:nth-child(2) a');
           const locationEl = row.querySelector('th:nth-child(3)');
+          const jobTypeEl = row.querySelector('th:nth-child(4)');
 
           if (hospitalNameEl && jobTitleEl && locationEl) {
             const hospitalName = hospitalNameEl.innerText.trim();
             const jobTitle = jobTitleEl.innerText.trim();
             const link = jobTitleEl.href;
             const locationText = locationEl.innerText.trim();
-            
+            const jobType = jobTypeEl ? jobTypeEl.innerText.trim() : '';
+
             let city = '';
             let state = '';
             let country = 'USA'; // Assuming USA for now, if more countries are present, this logic needs refinement
@@ -54,7 +56,8 @@ if (!window.geminiJobScraperInitialized) {
               city: city,
               state: state,
               country: country,
-              link: link
+              link: link,
+              jobType: jobType
             });
           }
         }
