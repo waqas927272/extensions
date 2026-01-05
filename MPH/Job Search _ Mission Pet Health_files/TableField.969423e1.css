@@ -1,0 +1,9 @@
+.TableSampleRow {
+    visibility: hidden !important;
+    position: absolute !important;
+    overflow: hidden;
+    width: 0 !important;
+    height: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}

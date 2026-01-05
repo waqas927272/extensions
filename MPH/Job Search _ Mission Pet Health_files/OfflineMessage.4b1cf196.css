@@ -1,0 +1,7 @@
+.RouterOfflineMessageRetryLink {
+    font-weight: normal;
+}
+
+.RouterOfflineMessageRetryLinkTrying {
+    color: var(--tin-neutral600);
+}

@@ -1,0 +1,1982 @@
+/* ===========================================================================
+    GLOBAL STYLES: BASE VARIABLES
+    --------------------------------------------------------------------------
+    Root
+      : Space
+      : Size
+      : Shadow
+      : Border radius
+      : Border width
+      : Font
+      : Swatches
+    Mobile
+      : Font
+
+    --------------------------------------------------------------------------
+    GLOBAL STYLES: CALCULATED VARIABLES
+    --------------------------------------------------------------------------
+    Root
+      : Space
+      : Shadow sizes
+      : Border radius
+      : Border width
+      : Font
+      : Swatches
+
+    --------------------------------------------------------------------------
+    GLOBAL STYLES: COLOR VARIABLES SETS
+    --------------------------------------------------------------------------
+    Default
+    Transparent
+    Link
+    Button
+      : Primary
+      : Secondary
+      : Tertiary
+      : Tonal
+    Brand
+    Emphasis
+    Error
+    Info
+    Success
+    Warning
+
+    --------------------------------------------------------------------------
+    TEMPLATES CORE STYLES: LAYOUTS
+    --------------------------------------------------------------------------
+    Grid
+    Widths
+
+    --------------------------------------------------------------------------
+    TEMPLATES CORE STYLES: ELEMENTS
+    --------------------------------------------------------------------------
+    Brand
+      : Icons
+      : Logo
+    Buttons
+      : Fields
+        : File input
+      : Iconograpics
+        : Close
+        : Toggles
+      : Main
+        : Primary
+        : Secondary
+        : Tertiary
+      : Tonal
+      : Vendors
+        : Registration/application
+          : Customizables
+        : Share
+    Dividers
+    External
+      : Thumbnails
+    Fields
+    Typography
+      : Body
+      : Descriptions
+      : Labels
+      : Paragraphs
+      : Titles
+
+    --------------------------------------------------------------------------
+    TEMPLATES CORE STYLES: COMPONENTS
+    --------------------------------------------------------------------------
+    Cards
+      : Result
+    Navigation
+      : Menu
+        : Toggleable
+        : Visible
+      : Subtabs
+    Overlays
+      : Modals
+    Tables
+
+    --------------------------------------------------------------------------
+    TEMPLATES CORE STYLES: WIDGETS
+    --------------------------------------------------------------------------
+    Forms
+      : Structures
+        : fieldSpec
+      : Types
+        : SchedulingField
+
+    --------------------------------------------------------------------------
+    TEMPLATES CORE STYLES: MODULES
+    --------------------------------------------------------------------------
+    Banner
+    Footer
+    Header
+    Main
+
+    --------------------------------------------------------------------------
+    TEMPLATES CORE STYLES: PAGETYPES
+    --------------------------------------------------------------------------
+    Login
+
+    --------------------------------------------------------------------------
+    TEMPLATES CORE STYLES: UTILITIES
+    --------------------------------------------------------------------------
+    Boxed
+=========================================================================== */
+
+/*
+    GLOBAL STYLES: BASE VARIABLES/Root
+*/
+
+/* Brandon Grotesque custom font */
+@font-face {
+    font-family: 'BrandonGrotesque';
+    src: url('../fonts/BrandonGrotesque-regular.otf') format('opentype');
+    font-style: normal;
+    font-weight: 400;
+}
+@font-face {
+    font-family: 'BrandonGrotesque';
+    src: url('../fonts/BrandonGrotesque-medium.otf') format('opentype');
+    font-style: normal;
+    font-weight: 600;
+}
+@font-face {
+    font-family: 'BrandonGrotesque';
+    src: url('../fonts/BrandonGrotesque-bold.otf') format('opentype');
+    font-style: normal;
+    font-weight: 700;
+}
+
+:root {
+/*
+    portalStyler: Custom Colors
+*/
+    --custom--scout: rgba(0, 102, 131, 1.0);
+    --custom--whisker: rgba(226, 232, 241, 1.0);
+    --custom--CustomScout30: rgba(178, 209, 217, 1.0);
+
+/*
+    GLOBAL STYLES: BASE VARIABLES/Root: Space
+*/
+
+    --t-gs--space--base: .4rem;
+
+/*
+    GLOBAL STYLES: BASE VARIABLES/Root: Size
+*/
+
+    --t-gs--size--base: .4rem;
+
+/*
+    GLOBAL STYLES: BASE VARIABLES/Root: Shadow
+*/
+
+    /* Shadow properties by size */
+
+    /* Shadow xs */
+    --t-gs--shadow--xs--x: 0;
+    --t-gs--shadow--xs--y: .1rem;
+    --t-gs--shadow--xs--blur: .2rem;
+    --t-gs--shadow--xs--spread: .1rem;
+    --t-gs--shadow--xs--swatch: rgba(0, 0, 0, 0.08);
+
+    /* Shadow s */
+    --t-gs--shadow--s--x: 0;
+    --t-gs--shadow--s--y: .2rem;
+    --t-gs--shadow--s--blur: .3rem;
+    --t-gs--shadow--s--spread: .2rem;
+    --t-gs--shadow--s--swatch: rgba(0, 0, 0, 0.10);
+
+    /* Shadow m */
+    --t-gs--shadow--m--x: 0;
+    --t-gs--shadow--m--y: .4rem;
+    --t-gs--shadow--m--blur: .8rem;
+    --t-gs--shadow--m--spread: .2rem;
+    --t-gs--shadow--m--swatch: rgba(0, 0, 0, 0.10);
+
+    /* Shadow l */
+    --t-gs--shadow--l--x: 0;
+    --t-gs--shadow--l--y: .6rem;
+    --t-gs--shadow--l--blur: 1.6rem;
+    --t-gs--shadow--l--spread: .4rem;
+    --t-gs--shadow--l--swatch: rgba(0, 0, 0, 0.12);
+
+    /* Shadow xl */
+    --t-gs--shadow--xl--x: 0;
+    --t-gs--shadow--xl--y: 1rem;
+    --t-gs--shadow--xl--blur: 2rem;
+    --t-gs--shadow--xl--spread: .4rem;
+    --t-gs--shadow--xl--swatch: rgba(0, 0, 0, 0.16);
+
+    /* Shadow xxl */
+    --t-gs--shadow--xxl--x: 0;
+    --t-gs--shadow--xxl--y: 1.6rem;
+    --t-gs--shadow--xxl--blur: 2.4rem;
+    --t-gs--shadow--xxl--spread: .8rem;
+    --t-gs--shadow--xxl--swatch: rgba(0, 0, 0, 0.16);
+
+/*
+    GLOBAL STYLES: BASE VARIABLES/Root: Border radius
+*/
+
+    --t-gs--border--radius--base: calc(var(--t-gs--size--base) * 1);
+
+/*
+    GLOBAL STYLES: BASE VARIABLES/Root: Border width
+*/
+
+    --t-gs--border--width--base: .1rem;
+
+/*
+    GLOBAL STYLES: BASE VARIABLES/Root: Font
+*/
+
+    --t-gs--font--family--default: 'OpenSans';
+    --t-gs--font--family--emphasis: 'BrandonGrotesque';
+    --t-gs--font--weight--regular: 400;
+    --t-gs--font--weight--bold: 700;
+    --t-gs--font--size--default: 1.6rem;
+    --t-gs--font--size--01: 1rem;
+    --t-gs--font--size--02: 1.2rem;
+    --t-gs--font--size--03: 1.4rem;
+    --t-gs--font--size--04: 1.6rem;
+    --t-gs--font--size--05: 1.8rem;
+    --t-gs--font--size--06: 2rem;
+    --t-gs--font--size--07: 2.2rem;
+    --t-gs--font--size--08: 2.4rem;
+    --t-gs--font--size--09: 2.6rem;
+    --t-gs--font--size--10: 2.8rem;
+    --t-gs--font--size--11: 3rem;
+    --t-gs--font--size--12: 3.2rem;
+    --t-gs--font--size--13: 3.6rem;
+
+/*
+    GLOBAL STYLES: BASE VARIABLES/Root: Swatches
+*/
+
+    --t-gs--swatch--neutral--hue: 208;
+    --t-gs--swatch--neutral--sat: 8%;
+    --t-gs--swatch--neutral--lig: 36%;
+    --t-gs--swatch--link--hue: 190;
+    --t-gs--swatch--link--sat: 100%;
+    --t-gs--swatch--link--lig: 42%;
+    --t-gs--swatch--button--hue: 216;
+    --t-gs--swatch--button--sat: 60%;
+    --t-gs--swatch--button--sat--brand: 34.88%;
+    --t-gs--swatch--button--lig: 18%;
+    --t-gs--swatch--brand--hue: 216;
+    --t-gs--swatch--brand--sat: 60%;
+    --t-gs--swatch--brand--lig: 18%;
+    --t-gs--swatch--emphasis--hue: 71;
+    --t-gs--swatch--emphasis--sat: 65%;
+    --t-gs--swatch--emphasis--lig: 43%;
+    --t-gs--swatch--error--hue: 0;
+    --t-gs--swatch--error--sat: 72%;
+    --t-gs--swatch--error--lig: 51%;
+    --t-gs--swatch--info--hue: 208;
+    --t-gs--swatch--info--sat: 8%;
+    --t-gs--swatch--info--lig: 36%;
+    --t-gs--swatch--success--hue: 151;
+    --t-gs--swatch--success--sat: 81%;
+    --t-gs--swatch--success--lig: 38%;
+    --t-gs--swatch--warning--hue: 45;
+    --t-gs--swatch--warning--sat: 90%;
+    --t-gs--swatch--warning--lig: 50%;
+    --t-gs--swatch--cookies--hue: 192.31;
+    --t-gs--swatch--cookies--sat: 33.91%;
+    --t-gs--swatch--cookies--lig: 77.45%;
+    --t-gs--swatch--disabled--hue: 0;
+    --t-gs--swatch--disabled--sat: 0%;
+    --t-gs--swatch--disabled--lig: 80%;
+}
+
+/*
+    GLOBAL STYLES: CALCULATED VARIABLES/Root
+*/
+
+:root {
+
+/*
+    GLOBAL STYLES: CALCULATED VARIABLES/Root: Space
+*/
+
+    --t-gs--space--0: calc(var(--t-gs--space--base) * 0);
+    --t-gs--space--xxs: calc(var(--t-gs--space--base) * .5);
+    --t-gs--space--xs: calc(var(--t-gs--space--base) * 1);
+    --t-gs--space--s: calc(var(--t-gs--space--base) * 2);
+    --t-gs--space--s2: calc(var(--t-gs--space--base) * 3);
+    --t-gs--space--m: calc(var(--t-gs--space--base) * 4);
+    --t-gs--space--m2: calc(var(--t-gs--space--base) * 5);
+    --t-gs--space--l: calc(var(--t-gs--space--base) * 6);
+    --t-gs--space--xl: calc(var(--t-gs--space--base) * 8);
+    --t-gs--space--xxl: calc(var(--t-gs--space--base) * 10);
+    --t-gs--space--xxxl: calc(var(--t-gs--space--base) * 12);
+
+/*
+    GLOBAL STYLES: CALCULATED VARIABLES/Root: Shadow sizes
+*/
+
+    --t-gs--shadow--xs: var(--t-gs--shadow--xs--x) var(--t-gs--shadow--xs--y) var(--t-gs--shadow--xs--blur) var(--t-gs--shadow--xs--spread) var(--t-gs--shadow--xs--swatch);
+    --t-gs--shadow--s: var(--t-gs--shadow--s--x) var(--t-gs--shadow--s--y) var(--t-gs--shadow--s--blur) var(--t-gs--shadow--s--spread) var(--t-gs--shadow--s--swatch);
+    --t-gs--shadow--m: var(--t-gs--shadow--m--x) var(--t-gs--shadow--m--y) var(--t-gs--shadow--m--blur) var(--t-gs--shadow--m--spread) var(--t-gs--shadow--m--swatch);
+    --t-gs--shadow--l: var(--t-gs--shadow--l--x) var(--t-gs--shadow--l--y) var(--t-gs--shadow--l--blur) var(--t-gs--shadow--l--spread) var(--t-gs--shadow--l--swatch);
+    --t-gs--shadow--xl: var(--t-gs--shadow--xl--x) var(--t-gs--shadow--xl--y) var(--t-gs--shadow--xl--blur) var(--t-gs--shadow--xl--spread) var(--t-gs--shadow--xl--swatch);
+    --t-gs--shadow--xxl: var(--t-gs--shadow--xxl--x) var(--t-gs--shadow--xxl--y) var(--t-gs--shadow--xxl--blur) var(--t-gs--shadow--xxl--spread) var(--t-gs--shadow--xxl--swatch);
+
+/*
+    GLOBAL STYLES: CALCULATED VARIABLES/Root: Border radius
+*/
+
+    --t-gs--border--radius--0: calc(var(--t-gs--border--radius--base) * 0);
+    --t-gs--border--radius--xs: calc(var(--t-gs--border--radius--base) * .5);
+    --t-gs--border--radius--s: calc(var(--t-gs--border--radius--base) * 1);
+    --t-gs--border--radius--m: calc(var(--t-gs--border--radius--base) * 2);
+    --t-gs--border--radius--l: calc(var(--t-gs--border--radius--base) * 3);
+    --t-gs--border--radius--xl: calc(var(--t-gs--border--radius--base) * 4);
+    --t-gs--border--radius--full: calc(var(--t-gs--border--radius--base) * 9999);
+
+/*
+    GLOBAL STYLES: CALCULATED VARIABLES/Root: Border width
+*/
+
+    --t-gs--border--width--0: calc(var(--t-gs--border--width--base) * 0);
+    --t-gs--border--width--s: calc(var(--t-gs--border--width--base) * 1);
+    --t-gs--border--width--m: calc(var(--t-gs--border--width--base) * 2);
+    --t-gs--border--width--l: calc(var(--t-gs--border--width--base) * 4);
+
+/*
+    GLOBAL STYLES: CALCULATED VARIABLES/Root: Font
+*/
+
+    --t-gs--font--size--bigger: 120%;
+    --t-gs--font--size--smaller: 80%;
+
+/*
+    GLOBAL STYLES: CALCULATED VARIABLES/Root: Swatches
+
+    (TSA hosted in 03__elements.css, under Brand: Swatches subtitle)
+*/
+    --t-gs--swatch--cookies: hsl(var(--t-gs--swatch--cookies--hue) var(--t-gs--swatch--cookies--sat) var(--t-gs--swatch--cookies--lig));
+    --t-gs--swatch--cookies--100: hsl(var(--t-gs--swatch--cookies--hue) var(--t-gs--swatch--cookies--sat) 100%);
+    --t-gs--swatch--cookies--095: hsl(var(--t-gs--swatch--cookies--hue) var(--t-gs--swatch--cookies--sat) 95%);
+    --t-gs--swatch--cookies--090: hsl(var(--t-gs--swatch--cookies--hue) var(--t-gs--swatch--cookies--sat) 90%);
+    --t-gs--swatch--cookies--080: hsl(var(--t-gs--swatch--cookies--hue) var(--t-gs--swatch--cookies--sat) 80%);
+    --t-gs--swatch--link--025: hsl(var(--t-gs--swatch--link--hue)var(--t-gs--swatch--link--sat)25%);
+    --t-gs--color--fill--banner--small: hsl(var(--t-gs--swatch--button--hue) var(--t-gs--swatch--button--sat--brand) 91.57%);
+    --t-gs--swatch--disabled: hsl(var(--t-gs--swatch--disabled--hue) var(--t-gs--swatch--disabled--sat) var(--t-gs--swatch--disabled--lig));
+
+/*
+    GLOBAL STYLES: COLOR VARIABLES SETS/Default
+*/
+
+    --t-gs--color--outline--default: var(--t-gs--swatch--neutral--100);
+    --t-gs--color--border--default: var(--t-gs--swatch--neutral--070);
+    --t-gs--color--border--default--hover: var(--t-gs--swatch--neutral--020);
+    --t-gs--color--border--default--focus: var(--t-gs--swatch--button);
+    --t-gs--color--border--default--active: var(--t-gs--swatch--neutral--020);
+    --t-gs--color--border--default--selected: var(--t-gs--swatch--link);
+    --t-gs--color--border--default--disabled: var(--t-gs--swatch--neutral--080);
+    --t-gs--color--border--contrast: var(--t-gs--swatch--neutral--100);
+    --t-gs--color--background--default: var(--t-gs--swatch--neutral--100);
+    --t-gs--color--background--secondary: var(--t-gs--swatch--neutral--095);
+    --t-gs--color--background--tertiary: var(--t-gs--swatch--neutral--090);
+    --t-gs--color--surface--default: var(--t-gs--swatch--neutral--100);
+    --t-gs--color--surface--default--hover: var(--t-gs--swatch--neutral--100);
+    --t-gs--color--surface--default--focus: var(--t-gs--swatch--neutral--100);
+    --t-gs--color--surface--default--disabled: var(--t-gs--swatch--neutral--090);
+    --t-gs--color--surface--secondary: var(--t-gs--swatch--neutral--095);
+    --t-gs--color--surface--tertiary: var(--t-gs--swatch--neutral--090);
+    --t-gs--color--surface--overlay--dark: rgba(51, 51, 51, .75);
+    --t-gs--color--surface--overlay--light: rgba(255, 255, 255, .8);
+    --t-gs--color--text--default: var(--t-gs--swatch--neutral--020);
+    --t-gs--color--text--strong: var(--t-gs--swatch--brand);
+    --t-gs--color--text--subdued: var(--t-gs--swatch--neutral--030);
+    --t-gs--color--text--disabled: var(--t-gs--swatch--neutral--080);
+    --t-gs--color--fill--default: var(--t-gs--swatch--neutral--100);
+    --t-gs--color--fill--default--hover: var(--t-gs--swatch--neutral--095);
+    --t-gs--color--fill--default--focus: var(--t-gs--swatch--neutral--100);
+    --t-gs--color--fill--default--active: var(--t-gs--swatch--neutral--090);
+    --t-gs--color--fill--default--selected: var(--t-gs--swatch--neutral--090);
+    --t-gs--color--fill--default--disabled: var(--t-gs--swatch--neutral--095);
+    --t-gs--color--text--on--fill--default: var(--t-gs--swatch--neutral--020);
+    --t-gs--color--text--on--fill--default--hover: var(--t-gs--swatch--link--020);
+    --t-gs--color--text--on--fill--default--focus: var(--t-gs--swatch--link--020);
+    --t-gs--color--text--on--fill--default--active: var(--t-gs--swatch--link--020);
+    --t-gs--color--text--on--fill--default--selected: var(--t-gs--swatch--link--000);
+    --t-gs--color--text--on--fill--default--disabled: var(--t-gs--swatch--neutral--080);
+    --t-gs--color--border--on--fill--default: var(--t-gs--swatch--neutral--070);
+    --t-gs--color--border--on--fill--default--hover: var(--t-gs--swatch--neutral--020);
+    --t-gs--color--border--on--fill--default--focus: var(--t-gs--color--border--default--focus);
+    --t-gs--color--border--on--fill--default--active: var(--t-gs--swatch--neutral--020);
+    --t-gs--color--border--on--fill--default--selected: var(--t-gs--swatch--neutral--000);
+    --t-gs--color--border--on--fill--default--disabled: var(--t-gs--swatch--neutral--080);
+
+/*
+    GLOBAL STYLES: COLOR VARIABLES SETS/Transparent
+*/
+
+    --t-gs--color--border--transparent: var(--t-gs--swatch--neutral--transparent);
+    --t-gs--color--background--transparent: var(--t-gs--swatch--neutral--transparent);
+    --t-gs--color--surface--transparent: var(--t-gs--swatch--neutral--transparent);
+    --t-gs--color--fill--transparent: var(--t-gs--swatch--neutral--transparent);
+    --t-gs--color--text--transparent: var(--t-gs--swatch--neutral--transparent);
+
+/*
+    GLOBAL STYLES: COLOR VARIABLES SETS/Link
+*/
+
+    --t-gs--color--outline--link: var(--t-gs--swatch--link--030);
+    --t-gs--color--text--link: var(--t-gs--swatch--link);
+    --t-gs--color--text--link--hover: var(--t-gs--swatch--link--050);
+    --t-gs--color--text--link--focus: var(--t-gs--swatch--link--030);
+    --t-gs--color--text--link--active: var(--t-gs--swatch--link--030);
+    --t-gs--color--text--link--selected: var(--t-gs--swatch--link--000);
+    --t-gs--color--text--link--disabled: var(--t-gs--swatch--neutral--080);
+    --t-gs--color--fill--link: var(--t-gs--swatch--link--100);
+    --t-gs--color--fill--link--hover: var(--t-gs--swatch--link--095);
+    --t-gs--color--fill--link--focus: var(--t-gs--swatch--link--095);
+    --t-gs--color--fill--link--active: var(--t-gs--swatch--link--095);
+    --t-gs--color--fill--link--selected: var(--t-gs--swatch--link--100);
+    --t-gs--color--fill--link--disabled: var(--t-gs--swatch--neutral--100);
+    --t-gs--color--text--on--fill--link: var(--t-gs--swatch--link);
+    --t-gs--color--text--on--fill--link--hover: var(--t-gs--swatch--link--030);
+    --t-gs--color--text--on--fill--link--focus: var(--t-gs--swatch--link--030);
+    --t-gs--color--text--on--fill--link--active: var(--t-gs--swatch--link--030);
+    --t-gs--color--text--on--fill--link--selected: var(--t-gs--swatch--link--000);
+    --t-gs--color--text--on--fill--link--disabled: var(--t-gs--swatch--neutral--080);
+    --t-gs--color--border--on--fill--link: var(--t-gs--swatch--link--100);
+    --t-gs--color--border--on--fill--link--hover: var(--t-gs--swatch--link--095);
+    --t-gs--color--border--on--fill--link--focus: var(--t-gs--color--border--default--focus);
+    --t-gs--color--border--on--fill--link--active: var(--t-gs--swatch--link--095);
+    --t-gs--color--border--on--fill--link--selected: var(--t-gs--swatch--link--100);
+    --t-gs--color--border--on--fill--link--disabled: var(--t-gs--swatch--neutral--100);
+
+/*
+    GLOBAL STYLES: COLOR VARIABLES SETS/Button: Primary
+*/
+
+    --t-gs--color--fill--primary: var(--t-gs--swatch--button);
+    --t-gs--color--fill--primary--hover: var(--t-gs--swatch--button--050);
+    --t-gs--color--fill--primary--focus: var(--t-gs--swatch--button--030);
+    --t-gs--color--fill--primary--active: var(--t-gs--swatch--button--030);
+    --t-gs--color--fill--primary--selected: var(--t-gs--swatch--button--095);
+    --t-gs--color--fill--primary--disabled: var(--t-gs--swatch--neutral--090);
+    --t-gs--color--text--on--fill--primary: var(--t-gs--swatch--button--100);
+    --t-gs--color--text--on--fill--primary--hover: var(--t-gs--swatch--button--100);
+    --t-gs--color--text--on--fill--primary--focus: var(--t-gs--swatch--button--100);
+    --t-gs--color--text--on--fill--primary--active: var(--t-gs--swatch--button--100);
+    --t-gs--color--text--on--fill--primary--selected: var(--t-gs--swatch--button--010);
+    --t-gs--color--text--on--fill--primary--disabled: var(--t-gs--swatch--neutral--070);
+    --t-gs--color--border--on--fill--primary: var(--t-gs--swatch--button);
+    --t-gs--color--border--on--fill--primary--hover: var(--t-gs--swatch--button--050);
+    --t-gs--color--border--on--fill--primary--focus: var(--t-gs--color--border--default--focus);
+    --t-gs--color--border--on--fill--primary--active: var(--t-gs--swatch--button--030);
+    --t-gs--color--border--on--fill--primary--selected: var(--t-gs--swatch--button--010);
+    --t-gs--color--border--on--fill--primary--disabled: var(--t-gs--swatch--neutral--070);
+
+/*
+    GLOBAL STYLES: COLOR VARIABLES SETS/Button: Secondary
+*/
+
+    --t-gs--color--fill--secondary: var(--t-gs--swatch--button--100);
+    --t-gs--color--fill--secondary--hover: var(--t-gs--swatch--button--095);
+    --t-gs--color--fill--secondary--focus: var(--t-gs--swatch--button--095);
+    --t-gs--color--fill--secondary--active: var(--t-gs--swatch--button--095);
+    --t-gs--color--fill--secondary--selected: var(--t-gs--swatch--button--095);
+    --t-gs--color--fill--secondary--disabled: var(--t-gs--swatch--neutral--100);
+    --t-gs--color--text--on--fill--secondary: var(--t-gs--swatch--button);
+    --t-gs--color--text--on--fill--secondary--hover: var(--t-gs--swatch--link--030);
+    --t-gs--color--text--on--fill--secondary--focus: var(--t-gs--swatch--link--030);
+    --t-gs--color--text--on--fill--secondary--active: var(--t-gs--swatch--link--030);
+    --t-gs--color--text--on--fill--secondary--selected: var(--t-gs--swatch--button--010);
+    --t-gs--color--text--on--fill--secondary--disabled: var(--t-gs--swatch--neutral--070);
+    --t-gs--color--border--on--fill--secondary: var(--t-gs--swatch--link);
+    --t-gs--color--border--on--fill--secondary--hover: var(--t-gs--swatch--link--030);
+    --t-gs--color--border--on--fill--secondary--focus: var(--t-gs--swatch--link--030);
+    --t-gs--color--border--on--fill--secondary--active: var(--t-gs--swatch--link--030);
+    --t-gs--color--border--on--fill--secondary--selected: var(--t-gs--swatch--button--010);
+    --t-gs--color--border--on--fill--secondary--disabled: var(--t-gs--swatch--neutral--070);
+
+/*
+    GLOBAL STYLES: COLOR VARIABLES SETS/Button: Tertiary
+*/
+
+    --t-gs--color--fill--tertiary: var(--t-gs--swatch--neutral--transparent);
+    --t-gs--color--fill--tertiary--hover: var(--t-gs--swatch--neutral--transparent);
+    --t-gs--color--fill--tertiary--focus: var(--t-gs--swatch--neutral--transparent);
+    --t-gs--color--fill--tertiary--active: var(--t-gs--swatch--neutral--transparent);
+    --t-gs--color--fill--tertiary--selected: var(--t-gs--swatch--neutral--transparent);
+    --t-gs--color--fill--tertiary--disabled: var(--t-gs--swatch--neutral--transparent);
+    --t-gs--color--text--on--fill--tertiary: var(--t-gs--swatch--button);
+    --t-gs--color--text--on--fill--tertiary--hover: var(--t-gs--swatch--button--050);
+    --t-gs--color--text--on--fill--tertiary--focus: var(--t-gs--swatch--button--030);
+    --t-gs--color--text--on--fill--tertiary--active: var(--t-gs--swatch--button--030);
+    --t-gs--color--text--on--fill--tertiary--selected: var(--t-gs--swatch--button--010);
+    --t-gs--color--text--on--fill--tertiary--disabled: var(--t-gs--swatch--neutral--070);
+    --t-gs--color--border--on--fill--tertiary: var(--t-gs--swatch--neutral--transparent);
+    --t-gs--color--border--on--fill--tertiary--hover: var(--t-gs--swatch--neutral--transparent);
+    --t-gs--color--border--on--fill--tertiary--focus: var(--t-gs--color--border--default--focus);
+    --t-gs--color--border--on--fill--tertiary--active: var(--t-gs--swatch--neutral--transparent);
+    --t-gs--color--border--on--fill--tertiary--selected: var(--t-gs--swatch--neutral--transparent);
+    --t-gs--color--border--on--fill--tertiary--disabled: var(--t-gs--swatch--neutral--transparent);
+
+/*
+    GLOBAL STYLES: COLOR VARIABLES SETS/Button: Tonal
+*/
+
+    --t-gs--color--fill--tonal: var(--t-gs--swatch--emphasis);
+    --t-gs--color--fill--tonal--hover: var(--t-gs--swatch--emphasis--070);
+    --t-gs--color--fill--tonal--focus: var(--t-gs--swatch--emphasis--040);
+    --t-gs--color--fill--tonal--active: var(--t-gs--swatch--emphasis--040);
+    --t-gs--color--fill--tonal--selected: var(--t-gs--swatch--emphasis--090);
+    --t-gs--color--fill--tonal--disabled: var(--t-gs--swatch--neutral--090);
+    --t-gs--color--text--on--fill--tonal: var(--t-gs--swatch--emphasis--020);
+    --t-gs--color--text--on--fill--tonal--hover: var(--t-gs--swatch--emphasis--020);
+    --t-gs--color--text--on--fill--tonal--focus: var(--t-gs--swatch--emphasis--100);
+    --t-gs--color--text--on--fill--tonal--active: var(--t-gs--swatch--emphasis--100);
+    --t-gs--color--text--on--fill--tonal--selected: var(--t-gs--swatch--emphasis--010);
+    --t-gs--color--text--on--fill--tonal--disabled: var(--t-gs--swatch--neutral--070);
+    --t-gs--color--border--on--fill--tonal: var(--t-gs--swatch--emphasis);
+    --t-gs--color--border--on--fill--tonal--hover: var(--t-gs--swatch--emphasis--070);
+    --t-gs--color--border--on--fill--tonal--focus: var(--t-gs--color--border--default--focus);
+    --t-gs--color--border--on--fill--tonal--active: var(--t-gs--swatch--emphasis--070);
+    --t-gs--color--border--on--fill--tonal--selected: var(--t-gs--swatch--emphasis--010);
+    --t-gs--color--border--on--fill--tonal--disabled: var(--t-gs--swatch--neutral--090);
+
+/*
+    GLOBAL STYLES: COLOR VARIABLES SETS/Brand
+*/
+
+    --t-gs--color--border--brand: var(--t-gs--swatch--neutral--060);
+    --t-gs--color--surface--brand: var(--t-gs--swatch--brand--095);
+    --t-gs--color--text--brand: var(--t-gs--swatch--brand);
+    --t-gs--color--fill--brand: var(--t-gs--swatch--brand);
+    --t-gs--color--fill--brand--hover: var(--t-gs--swatch--brand--050);
+    --t-gs--color--fill--brand--focus: var(--t-gs--swatch--brand--030);
+    --t-gs--color--fill--brand--active: var(--t-gs--swatch--brand--030);
+    --t-gs--color--fill--brand--selected: var(--t-gs--swatch--brand--095);
+    --t-gs--color--fill--brand--disabled: var(--t-gs--swatch--neutral--095);
+    --t-gs--color--text--on--fill--brand: var(--t-gs--swatch--brand--100);
+    --t-gs--color--text--on--fill--brand--hover: var(--t-gs--swatch--brand--100);
+    --t-gs--color--text--on--fill--brand--focus: var(--t-gs--swatch--brand--100);
+    --t-gs--color--text--on--fill--brand--active: var(--t-gs--swatch--brand--100);
+    --t-gs--color--text--on--fill--brand--selected: var(--t-gs--swatch--brand--010);
+    --t-gs--color--text--on--fill--brand--disabled: var(--t-gs--swatch--neutral--070);
+    --t-gs--color--border--on--fill--brand: var(--t-gs--swatch--brand);
+    --t-gs--color--border--on--fill--brand--hover: var(--t-gs--swatch--brand--050);
+    --t-gs--color--border--on--fill--brand--focus: var(--t-gs--color--border--default--focus);
+    --t-gs--color--border--on--fill--brand--active: var(--t-gs--swatch--brand--030);
+    --t-gs--color--border--on--fill--brand--selected: var(--t-gs--swatch--brand--010);
+    --t-gs--color--border--on--fill--brand--disabled: var(--t-gs--swatch--neutral--070);
+
+/*
+    GLOBAL STYLES: COLOR VARIABLES SETS/Emphasis
+*/
+
+    --t-gs--color--border--emphasis: var(--t-gs--swatch--emphasis);
+    --t-gs--color--surface--emphasis: var(--t-gs--swatch--emphasis--095);
+    --t-gs--color--text--emphasis: var(--t-gs--swatch--emphasis);
+    --t-gs--color--fill--emphasis: var(--t-gs--swatch--emphasis);
+    --t-gs--color--fill--emphasis--hover: var(--t-gs--swatch--emphasis--050);
+    --t-gs--color--fill--emphasis--focus: var(--t-gs--swatch--emphasis--030);
+    --t-gs--color--fill--emphasis--active: var(--t-gs--swatch--emphasis--030);
+    --t-gs--color--fill--emphasis--selected: var(--t-gs--swatch--emphasis--095);
+    --t-gs--color--fill--emphasis--disabled: var(--t-gs--swatch--neutral--095);
+    --t-gs--color--text--on--fill--emphasis: var(--t-gs--swatch--emphasis--100);
+    --t-gs--color--text--on--fill--emphasis--hover: var(--t-gs--swatch--emphasis--100);
+    --t-gs--color--text--on--fill--emphasis--focus: var(--t-gs--swatch--emphasis--100);
+    --t-gs--color--text--on--fill--emphasis--active: var(--t-gs--swatch--emphasis--100);
+    --t-gs--color--text--on--fill--emphasis--selected: var(--t-gs--swatch--emphasis--010);
+    --t-gs--color--text--on--fill--emphasis--disabled: var(--t-gs--swatch--neutral--070);
+    --t-gs--color--border--on--fill--emphasis: var(--t-gs--swatch--emphasis);
+    --t-gs--color--border--on--fill--emphasis--hover: var(--t-gs--swatch--emphasis--050);
+    --t-gs--color--border--on--fill--emphasis--focus: var(--t-gs--color--border--default--focus);
+    --t-gs--color--border--on--fill--emphasis--active: var(--t-gs--swatch--emphasis--030);
+    --t-gs--color--border--on--fill--emphasis--selected: var(--t-gs--swatch--emphasis--010);
+    --t-gs--color--border--on--fill--emphasis--disabled: var(--t-gs--swatch--neutral--070);
+
+/*
+    GLOBAL STYLES: COLOR VARIABLES SETS/Error
+*/
+
+    --t-gs--color--outline--error: var(--t-gs--swatch--error);
+    --t-gs--color--border--error: var(--t-gs--swatch--error);
+    --t-gs--color--text--error: var(--t-gs--swatch--error);
+    --t-gs--color--fill--error: var(--t-gs--swatch--error--095);
+    --t-gs--color--text--on--fill--error: var(--t-gs--swatch--error--010);
+    --t-gs--color--border--on--fill--error: var(--t-gs--swatch--error);
+
+/*
+    GLOBAL STYLES: COLOR VARIABLES SETS/Info
+*/
+
+    --t-gs--color--border--info: var(--t-gs--swatch--info);
+    --t-gs--color--text--info: var(--t-gs--swatch--info);
+    --t-gs--color--fill--info: var(--t-gs--swatch--info--095);
+    --t-gs--color--text--on--fill--info: var(--t-gs--swatch--info--010);
+    --t-gs--color--border--on--fill--info: var(--t-gs--swatch--info);
+
+/*
+    GLOBAL STYLES: COLOR VARIABLES SETS/Success
+*/
+
+    --t-gs--color--border--success: var(--t-gs--swatch--success);
+    --t-gs--color--text--success: var(--t-gs--swatch--success);
+    --t-gs--color--fill--success: var(--t-gs--swatch--success--095);
+    --t-gs--color--text--on--fill--success: var(--t-gs--swatch--success--010);
+    --t-gs--color--border--on--fill--success: var(--t-gs--swatch--success);
+
+/*
+    GLOBAL STYLES: COLOR VARIABLES SETS/Warning
+*/
+
+    --t-gs--color--border--warning: var(--t-gs--swatch--warning);
+    --t-gs--color--text--warning: var(--t-gs--swatch--warning--040);
+    --t-gs--color--fill--warning: var(--t-gs--swatch--warning--095);
+    --t-gs--color--text--on--fill--warning: var(--t-gs--swatch--warning--010);
+    --t-gs--color--border--on--fill--warning: var(--t-gs--swatch--warning);
+}
+
+/*
+    TEMPLATES CORE STYLES: LAYOUTS/Grid
+*/
+
+:root {
+    --t-tc--grid--laterals: var(--t-gs--space--xl);
+        /* ↳ safe space between the mockup grid and the viewport sides - may or may not equal the column's gap */
+        /* ↳ measurement really available only in mobile and tablet mockups - we assume the tablet value for desktop as well */
+    --t-tc--grid--width: 120.8rem;
+    --t-tc--grid--columns--amount: 16;
+    --t-tc--grid--columns--gap: var(--t-gs--space--l);
+    --t-tc--grid--columns--1: calc((var(--t-tc--grid--width) - (var(--t-tc--grid--columns--amount) - 1) * var(--t-tc--grid--columns--gap)) / var(--t-tc--grid--columns--amount));
+        /* ↳ beware we could hardcode this value straight from the mockup, but we calculate it instead, to keep it dynamic through other variables. */
+}
+
+/* Media query to target only tablet */
+@media all and (min-width:751px) and (max-width:1024px) {
+    :root {
+        --t-tc--grid--width: 70.6rem;
+        --t-tc--grid--columns--amount: 10;
+    }
+
+}
+
+/* Media query to target only mobile */
+@media all and (max-width:750px) {
+    :root {
+        --t-tc--grid--laterals: var(--t-gs--space--m);
+        --t-tc--grid--width: 34.3rem;
+        --t-tc--grid--columns--amount: 4;
+        --t-tc--grid--columns--gap: var(--t-gs--space--m);
+    }
+
+}
+
+/*
+    TEMPLATES CORE STYLES: LAYOUTS/Widths
+*/
+
+:root {
+    --t-tc--content--w--full: var(--t-tc--grid--width);
+        /* ↳ 16/16 mockup columns + gaps between */
+        /* ↳ the site content's full width */
+    --t-tc--content--w--reduced: calc(.875 * var(--t-tc--grid--columns--1) * var(--t-tc--grid--columns--amount) + ((.875 * var(--t-tc--grid--columns--amount)) - 1) * var(--t-tc--grid--columns--gap));
+        /* ↳ 14/16 mockup columns + gaps between */
+        /* ↳ to limit the site's content to a centered 87,5% of the available space */
+    --t-tc--content--w--narrow: calc(.75 * var(--t-tc--grid--columns--1) * var(--t-tc--grid--columns--amount) + ((.75 * var(--t-tc--grid--columns--amount)) - 1) * var(--t-tc--grid--columns--gap));
+        /* ↳ 12/16 mockup columns + gaps between */
+        /* ↳ to limit the site's content to a centered 75% of the available space */
+    --t-tc--content--w--narrow--2: calc(.625 * var(--t-tc--grid--columns--1) * var(--t-tc--grid--columns--amount) + ((.625 * var(--t-tc--grid--columns--amount)) - 1) * var(--t-tc--grid--columns--gap));
+        /* ↳ 10/16 mockup columns + gaps between */
+        /* ↳ to limit the site's content to a centered 62.5% of the available space */
+    --t-tc--content--w--narrower: calc(.5 * var(--t-tc--grid--columns--1) * var(--t-tc--grid--columns--amount) + ((.5 * var(--t-tc--grid--columns--amount)) - 1) * var(--t-tc--grid--columns--gap));
+        /* ↳ 08/16 mockup columns + gaps between */
+        /* ↳ to limit the site's content to a centered 50% of the available space */
+    --t-tc--content--w--narrowest: calc(.25 * var(--t-tc--grid--columns--1) * var(--t-tc--grid--columns--amount) + ((.25 * var(--t-tc--grid--columns--amount)) - 1) * var(--t-tc--grid--columns--gap));
+        /* ↳ 04/16 mockup columns + gaps between */
+        /* ↳ to limit the site's content to a centered 25% of the available space */
+    --t-tc--content--w--sidebar: calc(.30 * var(--t-tc--grid--columns--1) * var(--t-tc--grid--columns--amount) + ((.25 * var(--t-tc--grid--columns--amount)) - 1) * var(--t-tc--grid--columns--gap));
+        /* ↳ 04/16 mockup columns + gaps between */
+        /* ↳ to limit the sidebar grid column to a 25% of the available space */
+    --t-tc--content--w--subtabs: calc(.1875 * var(--t-tc--grid--columns--1) * var(--t-tc--grid--columns--amount) + ((.1875 * var(--t-tc--grid--columns--amount)) - 1) * var(--t-tc--grid--columns--gap));
+        /* ↳ 03/16 mockup columns + gaps between */
+        /* ↳ to limit the subtabs grid column to a 18.75% of the available space */
+    --t-tc--content--w--filters: calc(.25 * var(--t-tc--grid--columns--1) * var(--t-tc--grid--columns--amount) + ((.1875 * var(--t-tc--grid--columns--amount)) - 1) * var(--t-tc--grid--columns--gap));
+        /* ↳ 03/16 mockup columns + gaps between */
+        /* ↳ to limit the filters grid column to a 18.75% of the available space */
+}
+
+/* Media query to target only tablet */
+@media all and (min-width:751px) and (max-width:1024px) {
+    :root {
+        --t-tc--content--w--narrow: var(--t-tc--grid--width);
+            /* ↳ the site content's width (ej: 10/10 columns + gaps between) */
+        --t-tc--content--w--narrower: calc(.8 * var(--t-tc--grid--columns--1) * var(--t-tc--grid--columns--amount) + ((.8 * var(--t-tc--grid--columns--amount)) - 1) * var(--t-tc--grid--columns--gap));
+            /* ↳ 80% the site content's width (ej: 08/10 columns + gaps between) */
+        --t-tc--content--w--narrowest: calc(.5 * var(--t-tc--grid--columns--1) * var(--t-tc--grid--columns--amount) + ((.5 * var(--t-tc--grid--columns--amount)) - 1) * var(--t-tc--grid--columns--gap));
+            /* ↳ 50% the site content's width (ej: 05/10 columns + gaps between) */
+    }
+
+}
+
+/*
+    MARK: TEMPLATES CORE STYLES: ELEMENTS/Brand: Icons
+*/
+
+:root {
+    --t-tc--icon--font--size: 1.2em;
+    --t-tc--icon--font--weight: var(--t-tc--icon--wght);
+    --t-tc--icon--wght: var(--t-gs--font--weight--regular);
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/Brand: Logo
+*/
+
+:root {
+    --t-tc--logo--height: calc(var(--t-gs--size--base) * 9);
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/Buttons
+*/
+
+:root {
+    --t-tc--buttons--outline--width: var(--t-gs--border--width--0);
+    --t-tc--buttons--outline--color: var(--t-gs--color--outline--default);
+    --t-tc--buttons--border--radius: var(--t-gs--border--radius--full);
+    --t-tc--buttons--border--width: var(--t-gs--border--width--s);
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--default);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--default);
+    --t-tc--buttons--width--min: 14rem;
+    --t-tc--buttons--height: calc(var(--t-gs--size--base) * 10);
+    --t-tc--buttons--padding--v: var(--t-gs--space--s);
+    --t-tc--buttons--padding--h: var(--t-gs--space--m);
+    --t-tc--buttons--font--family: var(--t-gs--font--family--default);
+    --t-tc--buttons--font--size: var(--t-gs--font--size--04);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--default);
+}
+
+html[data-animations="default"] {
+    --t-tc--buttons__before--border--radius: calc(var(--t-gs--space--base) * 37.5);
+    --t-tc--buttons__before--background--color--initial: var(--t-gs--color--fill--default);
+    --t-tc--buttons__before--background--color--final: var(--t-gs--color--fill--default--hover);
+    --t-tc--buttons__before--animation--duration: 0.45s;
+}
+
+/* Media query to target only mobile */
+@media all and (max-width:750px) {
+    :root {
+        --t-tc--buttons--height: calc(var(--t-gs--size--base) * 11);
+    }
+
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/Buttons: Fields: File input
+*/
+
+.form input[type="file"]::-webkit-file-upload-button {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--default);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--default);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--default);
+}
+
+.form input[type="file"]::file-selector-button {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--default);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--default);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--default);
+}
+
+.form input[type="file"]::-webkit-file-upload-button:hover {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--default--hover);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--default--hover);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--default--hover);
+}
+
+.form input[type="file"]::file-selector-button:hover {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--default--hover);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--default--hover);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--default--hover);
+}
+
+.form input[type="file"]:disabled::-webkit-file-upload-button {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--default--disabled);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--default--disabled);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--default--disabled);
+}
+
+.form input[type="file"]:disabled::file-selector-button {
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--default--disabled);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--default--disabled);
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--default--disabled);
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/Buttons: Iconographics: Close
+*/
+
+.gclose, /* Close in gLightbox dialog */
+.ui-dialog-titlebar-close, /* Close in expired session dialog */
+.TIN_display_CloserButton_NotificationAndDialog, /* Close in autoscheduler dialog */
+.autoschedule_editor_availability_header_Container_HeaderButton, /* Next and prev in autoscheduler calendar */
+.datepicker-skin-scheduling .ui-datepicker .ui-datepicker-header .ui-datepicker-prev, /* Prev in Scheduling field in wizards */
+.datepicker-skin-scheduling .ui-datepicker .ui-datepicker-header .ui-datepicker-next /* Next in Scheduling field in wizards */ {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--tertiary);
+    --t-tc--buttons--height: calc(var(--t-gs--size--base) * 0);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--tertiary);
+    --t-tc--buttons--padding--v: var(--t-gs--space--xxs);
+    --t-tc--buttons--padding--h: var(--t-gs--space--xxs);
+    --t-tc--buttons--font--size: 0;
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--tertiary);
+}
+
+.gclose:hover,
+.ui-dialog-titlebar-close:hover,
+.TIN_display_CloserButton_NotificationAndDialog:hover,
+.autoschedule_editor_availability_header_Container_HeaderButton:hover,
+.datepicker-skin-scheduling .ui-datepicker .ui-datepicker-header .ui-datepicker-prev:hover,
+.datepicker-skin-scheduling .ui-datepicker .ui-datepicker-header .ui-datepicker-next:hover {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--tertiary--hover);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--tertiary--hover);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--tertiary--hover);
+}
+
+.gclose:focus,
+.gclose:active,
+.ui-dialog-titlebar-close:focus,
+.ui-dialog-titlebar-close:active,
+.TIN_display_CloserButton_NotificationAndDialog:focus,
+.TIN_display_CloserButton_NotificationAndDialog:active,
+.autoschedule_editor_availability_header_Container_HeaderButton:focus,
+.autoschedule_editor_availability_header_Container_HeaderButton:active,
+.datepicker-skin-scheduling .ui-datepicker .ui-datepicker-header .ui-datepicker-prev:focus,
+.datepicker-skin-scheduling .ui-datepicker .ui-datepicker-header .ui-datepicker-prev:active,
+.datepicker-skin-scheduling .ui-datepicker .ui-datepicker-header .ui-datepicker-next:focus,
+.datepicker-skin-scheduling .ui-datepicker .ui-datepicker-header .ui-datepicker-next:active {
+    --t-tc--buttons--outline--width: var(--t-gs--border--width--m);
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--tertiary--focus);
+    --t-tc--buttons--border--width: var(--t-gs--border--width--m);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--tertiary--focus);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--tertiary--focus);
+}
+
+.autoschedule_Availability_AvailableIcon,
+.autoschedule_Availability_UnavailableIcon,
+.autoschedule_Availability_BusyIcon,
+.autoschedule_Availability_SelectedIcon {
+    --t-tc--thumbnail--width: 3.4rem;
+    --t-tc--thumbnail--height: 3.4rem;
+}
+
+.autoschedule_Availability_AvailableIcon {
+    --t-tc--thumbnail--background--color: var(--t-gs--swatch--link--095);
+
+}
+
+.autoschedule_Availability_SelectedIcon {
+    --t-tc--thumbnail--background--color: var(--t-gs--color--fill--primary);
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/Buttons: Iconograpics: Toggles
+*/
+:root {
+    --t-tc--toggle--border--radius: var(--t-gs--border--radius--0);
+    --t-tc--toggle--border--width: var(--t-gs--border--width--0);
+    --t-tc--toggle--border--color: var(--t-gs--color--border--transparent);
+    --t-tc--toggle--width: calc(var(--t-gs--size--base) * 13);
+    --t-tc--toggle--height: var(--t-tc--toggle--width);
+    --t-tc--toggle--background--color: var(--t-gs--color--fill--transparent);
+    --t-tc--toggle--font--size: inherit;
+    --t-tc--toggle--font--color: var(--t-gs--swatch--neutral--100);
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/Buttons: Main: Primary
+*/
+
+.button--primary,
+.saveButton,
+.article--alert .submitButton,
+.search__panel .tc_formButton,
+.nextButton,
+.formNextButton,
+.redirectUrlButton,
+.gotoButton,
+.ui-dialog-buttonset .ui-button:nth-of-type(1),
+.TIN_input_button_Primary,
+.cookiesButton {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--primary);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--primary);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--primary);
+    /* templatebuilder .button--primary --t-tc--buttons--border--radius - to be deleted on basePortalCloner */
+
+    html[data-animations="default"] & {
+        --t-tc--buttons__before--background--color--initial: var(--t-gs--swatch--button--090);
+        --t-tc--buttons__before--background--color--final: var(--t-gs--color--fill--primary--hover);
+    }
+}
+
+.button--primary:hover,
+.saveButton:hover,
+.article--alert .submitButton:hover,
+.search__panel .tc_formButton:hover,
+.nextButton:hover,
+.formNextButton:hover,
+.redirectUrlButton:hover,
+.gotoButton:hover,
+.ui-dialog-buttonset .ui-button:nth-of-type(1):hover,
+.TIN_input_button_Primary:hover,
+.cookiesButton:hover {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--primary--selected);
+    --t-tc--buttons--background--color: var(--t-gs--color--border--on--fill--primary--selected);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--primary--hover);
+}
+
+.button--primary:focus,
+.button--primary:active,
+.saveButton:focus,
+.saveButton:active,
+.article--alert .submitButton:focus,
+.article--alert .submitButton:active,
+.search__panel .tc_formButton:focus,
+.search__panel .tc_formButton:active,
+.nextButton:focus,
+.nextButton:active,
+.formNextButton:focus,
+.formNextButton:active,
+.redirectUrlButton:focus,
+.redirectUrlButton:active,
+.gotoButton:focus,
+.gotoButton:active,
+.ui-dialog-buttonset .ui-button:nth-of-type(1):focus,
+.ui-dialog-buttonset .ui-button:nth-of-type(1):active,
+.TIN_input_button_Primary:focus,
+.TIN_input_button_Primary:active,
+.cookiesButton:active,
+.cookiesButton:focus {
+    --t-tc--buttons--outline--width: var(--t-gs--border--width--m);
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--primary--selected);
+    --t-tc--buttons--border--width: var(--t-gs--border--width--m);
+    --t-tc--buttons--background--color: var(--t-gs--color--border--on--fill--primary--selected);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--primary--focus);
+}
+
+.button--primary.button--disabled,
+.button--primary:disabled,
+.saveButton:disabled,
+.article--alert .submitButton:disabled,
+.search__panel .tc_formButton:disabled,
+.nextButton:disabled,
+.gotoButton:disabled,
+.redirectUrlButton:disabled,
+.formNextButton:disabled,
+.TIN_input_button_Primary:disabled,
+.cookiesButton.button--disabled,
+.cookiesButton:disabled {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--primary--disabled);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--primary--disabled);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--primary--disabled);
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/Buttons: Main: Secondary
+*/
+
+.button--secondary,
+.submitButton,
+.previousButton,
+.formPreviousButton,
+.partialSaveButton,
+.homeButton,
+.ui-dialog-buttonset .ui-button:nth-of-type(2),
+.cookiesButton+.cookiesButton,
+.cookies__settings__buttons .cookiesButton {
+    --t-tc--buttons--border--color: var(--t-gs--swatch--link);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--secondary);
+    --t-tc--buttons--font--color: var(--t-gs--swatch--link);
+    color: var(--t-tc--buttons--font--color);
+    --a-cookieBannerWidget-rejectAllButton-border-color: var(--t-gs--swatch--link);
+    --a-cookieBannerWidget-rejectAllButton-background-color: var(--t-gs--color--fill--secondary);
+    --a-cookieBannerWidget-rejectAllButton-color: var(--t-gs--swatch--link);
+    --a-cookieBannerWidget-secondaryButton-border-color: var(--t-gs--swatch--link);
+    --a-cookieBannerWidget-secondaryButton-background-color: var(--t-gs--color--fill--secondary);
+    --a-cookieBannerWidget-secondaryButton-color: var(--t-gs--swatch--link);
+    /* templatebuilder .button--secondary --t-tc--buttons--border--radius - to be deleted on basePortalCloner */
+
+    html[data-animations="default"] & {
+        --t-gs--color--fill--secondary--hover: var(--t-gs--color--fill--secondary);
+        --t-gs--color--fill--secondary--focus: var(--t-gs--color--fill--secondary);
+        --t-gs--color--fill--secondary--active: var(--t-gs--color--fill--secondary);
+        --t-gs--color--text--on--fill--secondary--hover: var(--t-gs--swatch--link--030);
+        --t-gs--color--border--on--fill--secondary--hover: var(--t-gs--swatch--link--030);
+
+        --t-tc--buttons__before--background--color--initial: var(--t-gs--swatch--button--090);
+        --t-tc--buttons__before--background--color--final: var(--t-gs--color--fill--secondary--hover);
+    }
+}
+
+.button--secondary:hover,
+.submitButton:hover,
+.previousButton:hover,
+.formPreviousButton:hover,
+.partialSaveButton:hover,
+.homeButton:hover,
+.ui-dialog-buttonset .ui-button:nth-of-type(2):hover,
+.cookiesButton+.cookiesButton:hover,
+.cookies__settings__buttons .cookiesButton:hover {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--secondary--hover);
+    --t-tc--buttons--background--color: var(--t-gs--swatch--button--095);
+    --t-tc--buttons--font--color: var(--t-gs--swatch--link--030);
+    --a-cookieBannerWidget-rejectAllButton-border-color: var(--t-gs--color--border--on--fill--secondary--hover);
+    --a-cookieBannerWidget-rejectAllButton-background-color: var(--t-gs--swatch--button--095);
+    --a-cookieBannerWidget-rejectAllButton-color: var(--t-gs--swatch--link--030);
+    --a-cookieBannerWidget-secondaryButton-border-color: var(--t-gs--color--border--on--fill--secondary--hover);
+    --a-cookieBannerWidget-secondaryButton-background-color: var(--t-gs--swatch--button--095);
+    --a-cookieBannerWidget-secondaryButton-color: var(--t-gs--swatch--link--030);
+}
+
+.button--secondary:focus,
+.button--secondary:active,
+.submitButton:focus,
+.submitButton:active,
+.previousButton:focus,
+.previousButton:active,
+.formPreviousButton:focus,
+.formPreviousButton:active,
+.partialSaveButton:focus,
+.partialSaveButton:active,
+.homeButton:focus,
+.homeButton:active,
+.ui-dialog-buttonset .ui-button:nth-of-type(2):focus,
+.ui-dialog-buttonset .ui-button:nth-of-type(2):active,
+.cookiesButton+.cookiesButton:active,
+.cookiesButton+.cookiesButton:focus,
+.cookies__settings__buttons .cookiesButton:active,
+.cookies__settings__buttons .cookiesButton:focus {
+    --t-tc--buttons--outline--width: var(--t-gs--border--width--m);
+    --t-tc--buttons--border--color: var(--t-gs--swatch--link--030);
+    --t-tc--buttons--border--width: var(--t-gs--border--width--m);
+    --t-tc--buttons--background--color: var(--t-gs--swatch--button--095);
+    --t-tc--buttons--font--color: var(--t-gs--swatch--link--030);
+    --a-cookieBannerWidget-rejectAllButton-border-color: var(--t-gs--swatch--link--030);
+    --a-cookieBannerWidget-rejectAllButton-background-color: var(--t-gs--swatch--button--095);
+    --a-cookieBannerWidget-rejectAllButton-color: var(--t-gs--swatch--link--030);
+    --a-cookieBannerWidget-secondaryButton-border-color: var(--t-gs--swatch--link--030);
+    --a-cookieBannerWidget-secondaryButton-background-color: var(--t-gs--swatch--button--095);
+    --a-cookieBannerWidget-secondaryButton-color: var(--t-gs--swatch--link--030);
+}
+
+.button--secondary.button--disabled,
+.button--secondary:disabled,
+.submitButton:disabled,
+.previousButton:disabled,
+.formPreviousButton:disabled,
+.partialSaveButton:disabled,
+.homeButton:disabled,
+.cookiesButton+.cookiesButton.button--disabled,
+.cookiesButton+.cookiesButton :disabled,
+.cookies__settings__buttons .cookiesButton.button--disabled,
+.cookies__settings__buttons .cookiesButton:disabled{
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--secondary--disabled);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--secondary--disabled);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--secondary--disabled);
+    --a-cookieBannerWidget-rejectAllButton-border-color: var(--t-gs--color--border--on--fill--secondary--disabled);
+    --a-cookieBannerWidget-rejectAllButton-background-color: var(--t-gs--color--fill--secondary--disabled);
+    --a-cookieBannerWidget-rejectAllButton-color: var(--t-gs--color--text--on--fill--secondary--disabled);
+    --a-cookieBannerWidget-secondaryButton-border-color: var(--t-gs--color--border--on--fill--secondary--disabled);
+    --a-cookieBannerWidget-secondaryButton-background-color: var(--t-gs--color--fill--secondary--disabled);
+    --a-cookieBannerWidget-secondaryButton-color: var(--t-gs--color--text--on--fill--secondary--disabled);
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/Buttons: Main: Tertiary
+*/
+
+.button--tertiary,
+.button--cancel,
+.cancelButton,
+.clearButton,
+.TIN_display_Anchor,
+.TIN_input_button_Cancel {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--tertiary);
+    --t-tc--buttons--width--min: calc(var(--t-gs--size--base) * 0);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--tertiary);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--tertiary);
+}
+
+.button--tertiary:hover,
+.button--cancel:hover,
+.cancelButton:hover,
+.clearButton:hover,
+.TIN_display_Anchor:hover,
+.TIN_input_button_Cancel:hover {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--tertiary--hover);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--tertiary--hover);
+    --t-tc--buttons--font--color: var(--t-gs--swatch--link--030);
+}
+
+.button--tertiary:focus,
+.button--tertiary:active,
+.button--cancel:focus,
+.button--cancel:active,
+.cancelButton:focus,
+.cancelButton:active,
+.clearButton:focus,
+.clearButton:active,
+.TIN_display_Anchor:focus,
+.TIN_display_Anchor:active,
+.TIN_input_button_Cancel:focus,
+.TIN_input_button_Cancel:active {
+    --t-tc--buttons--outline--width: var(--t-gs--border--width--m);
+    --t-tc--buttons--border--color:var(--t-gs--swatch--link--030);
+    --t-tc--buttons--border--width: var(--t-gs--border--width--m);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--tertiary--focus);
+    --t-tc--buttons--font--color: var(--t-gs--swatch--link--030);
+}
+
+.button--tertiary.button--disabled,
+.button--tertiary:disabled,
+.button--cancel.button--disabled,
+.button--cancel:disabled,
+.cancelButton:disabled,
+.clearButton:disabled,
+.TIN_display_Anchor.TIN_display_Anchor_disabled,
+.TIN_input_button_Cancel:disabled {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--tertiary--disabled);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--tertiary--disabled);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--tertiary--disabled);
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/Buttons: Main: Tonal
+*/
+
+.button--tonal,
+.button--tonal .tc_formButton {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--tonal);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--tonal);
+    --t-tc--buttons--font--color: var(--t-gs--color--border--on--fill--primary);
+
+    html[data-animations="default"] & {
+        --t-tc--buttons__before--background--color--initial: var(--t-gs--color--fill--tonal--selected);
+        --t-tc--buttons__before--background--color--final: var(--t-gs--color--fill--tonal--hover);
+    }
+}
+
+.button--tonal:hover,
+.button--tonal .tc_formButton:hover {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--tonal--hover);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--tonal--hover);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--tonal--hover);
+}
+
+.button--tonal:focus,
+.button--tonal:active,
+.button--tonal .tc_formButton:focus,
+.button--tonal .tc_formButton:active {
+    --t-tc--buttons--outline--width: .2rem;
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--tonal--focus);
+    --t-tc--buttons--border--width: .2rem;
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--tonal--focus);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--tonal--focus);
+}
+
+.button--tonal.button--disabled,
+.button--tonal:disabled,
+.button--tonal .tc_formButton:disabled,
+.button--tonal .tc_formButton .button--disabled {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--tonal--disabled);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--tonal--disabled);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--tonal--disabled);
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/Buttons: Vendors: Registration/application: Customizables
+*/
+
+.methodButton--later,
+.methodButton--file,
+.methodButton--paste,
+.methodButton--dropbox {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--secondary);
+    --t-tc--buttons--width--min: 18.5rem;
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--secondary);
+    --t-tc--buttons--padding--v: var(--t-gs--space--xxs);
+    --t-tc--buttons--padding--h: var(--t-gs--space--s);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--secondary);
+}
+
+.methodButton--later:hover,
+.methodButton--file:hover,
+.methodButton--paste:hover,
+.methodButton--dropbox:hover {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--secondary);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--secondary--hover);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--secondary--hover);
+}
+
+.methodButton--later:focus,
+.methodButton--later:active,
+.methodButton--file:focus,
+.methodButton--file:active,
+.methodButton--paste:focus,
+.methodButton--paste:active,
+.methodButton--dropbox:focus,
+.methodButton--dropbox:active {
+    --t-tc--buttons--outline--width: var(--t-gs--border--width--m);
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--secondary--focus);
+    --t-tc--buttons--border--width: var(--t-gs--border--width--m);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--secondary--focus);
+    --t-tc--buttons--font--color: var(--t-gs--swatch--link--030);
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/Buttons: Vendors: Share
+*/
+
+.button--share {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--tertiary);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--tertiary);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--tertiary);
+
+}
+
+.button--share:hover {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--tertiary--hover);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--tertiary--hover);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--tertiary--hover);
+}
+
+.button--share:focus,
+.button--share:active {
+    --t-tc--buttons--outline--width: var(--t-gs--border--width--m);
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--tertiary--focus);
+    --t-tc--buttons--border--width: var(--t-gs--border--width--m);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--tertiary--focus);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--tertiary--focus);
+}
+
+.button--share[aria-expanded="true"] {
+    --t-tc--buttons--border--color: var(--t-gs--color--border--on--fill--tertiary--focus);
+    --t-tc--buttons--background--color: var(--t-gs--color--fill--tertiary--focus);
+    --t-tc--buttons--font--color: var(--t-gs--color--text--on--fill--tertiary--focus);
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/External: Thumbnails
+*/
+
+:root {
+    --t-tc--thumbnail--border--radius: var(--t-gs--border--radius--full);
+    --t-tc--thumbnail--border--width: var(--t-gs--border--width--0);
+    --t-tc--thumbnail--border--color: var(--t-gs--color--border--contrast);
+    --t-tc--thumbnail--width: calc(var(--t-gs--size--base) * 8);
+    --t-tc--thumbnail--height: calc(var(--t-gs--size--base) * 8);
+}
+
+.menu__link {
+    --t-tc--thumbnail--width: calc(var(--t-gs--size--base) * 6);
+    --t-tc--thumbnail--height: calc(var(--t-gs--size--base) * 6);
+}
+
+.submenu__link,
+.portalLanguages__link {
+    --t-tc--thumbnail--width: calc(var(--t-gs--size--base) * 4);
+    --t-tc--thumbnail--height: calc(var(--t-gs--size--base) * 4);
+}
+
+.banner {
+    --t-tc--thumbnail--border--width: var(--t-gs--border--width--m);
+    --t-tc--thumbnail--width: calc(var(--t-gs--size--base) * 16);
+    --t-tc--thumbnail--height: calc(var(--t-gs--size--base) * 16);
+}
+
+.banner--scrolling {
+    --t-tc--thumbnail--width: calc(var(--t-gs--size--base) * 10);
+    --t-tc--thumbnail--height: calc(var(--t-gs--size--base) * 10);
+}
+
+/* Media query to target mobile and tablet */
+@media all and (max-width:1024px) {
+    .banner {
+        --t-tc--thumbnail--width: calc(var(--t-gs--size--base) * 10);
+        --t-tc--thumbnail--height: calc(var(--t-gs--size--base) * 10);
+    }
+
+}
+
+.table--cards {
+    --t-tc--thumbnail--width: calc(var(--t-gs--size--base) * 10);
+    --t-tc--thumbnail--height: calc(var(--t-gs--size--base) * 10);
+}
+
+.section__header__image {
+    --t-tc--thumbnail--width: calc(var(--t-gs--size--base) * 14);
+    --t-tc--thumbnail--height: calc(var(--t-gs--size--base) * 14);
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/Fields
+*/
+
+:root {
+    --t-tc--fields--outline--width: var(--t-gs--border--width--0);
+    --t-tc--fields--outline--color: var(--t-gs--color--outline--default);
+    --t-tc--fields--border--radius: 1.6rem;
+    --t-tc--fields--border--width: var(--t-gs--border--width--s);
+    --t-tc--fields--border--color: var(--t-gs--color--border--default);
+    --t-tc--fields--background--color: var(--t-gs--color--fill--default);
+    --t-tc--fields--height: calc(var(--t-gs--size--base) * 10);
+    --t-tc--fields--padding--v: var(--t-gs--space--xs);
+    --t-tc--fields--padding--h: var(--t-gs--space--s2);
+    --t-tc--fields--area: calc(var(--t-gs--size--base) * 46);
+    --t-tc--fields--font--family: inherit;
+    --t-tc--fields--font--size: var(--t-gs--font--size--04);
+    --t-tc--fields--font--color: var(--t-gs--color--text--default);
+    --t-tc--fields--placeholder--color: var(--t-gs--color--text--subdued);
+    --t-tc--fields__icon--width: calc(var(--t-gs--size--base) * 8);
+}
+
+/* Media query to target only mobile */
+@media all and (max-width:750px) {
+    :root {
+        --t-tc--fields--height: calc(var(--t-gs--size--base) * 11);
+    }
+
+}
+
+.form input:focus,
+.form select:focus,
+.form textarea:focus,
+.select2-container--focus,
+.dropdown__placeholder:focus,
+.uicore_advancedselect_BaseAdvancedSelect_AdvancedSelectFocused .AdvancedSelectInput,
+.LiveSearchFocused,
+.TIN_input_TextArea:focus {
+    --t-tc--fields--outline--width: var(--t-gs--border--width--m);
+    --t-tc--fields--border--width: var(--t-gs--border--width--m);
+    --t-tc--fields--border--color: var(--t-gs--swatch--neutral--060);
+}
+
+.dropdown__item:hover,
+.dropdown__item:focus {
+    --t-tc--fields--font--color: var(--t-gs--color--text--on--fill--link--hover);
+}
+
+.form select[multiple] option:checked,
+.select2-container--default .select2-results__option[aria-selected=true],
+.dropdown__item--active,
+.dropdown--recordsPerPage .dropdown__item.currentRecordsPerPageLink {
+    --t-tc--fields--background--color: var(--t-gs--color--fill--default--selected);
+}
+
+.select2-container--default .select2-results__option--highlighted[aria-selected],
+.dropdown:hover .dropdown__item:hover {
+    --t-tc--fields--background--color: var(--t-gs--color--fill--link--hover);
+    --t-tc--fields--font--color: var(--t-gs--color--text--on--fill--link--hover);
+}
+
+.form input:disabled,
+.form select:disabled,
+.form textarea:disabled,
+.fieldSpec--disabled input,
+.fieldSpec--disabled textarea,
+.fieldSpec--disabled select,
+.select2-container--default .select2-results__option[aria-disabled=true] {
+    --t-tc--fields--border--color: var(--t-gs--color--border--on--fill--default--disabled);
+    --t-tc--fields--background--color: var(--t-gs--color--fill--default--disabled);
+    --t-tc--fields--font--color: var(--t-gs--color--text--on--fill--default--disabled);
+    --t-tc--fields--placeholder--color: var(--t-gs--color--text--on--fill--default--disabled);
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/Typography: Body
+*/
+
+:root {
+    --t-tc--body--font--size: var(--t-gs--font--size--default);
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/Typography: Descriptions
+*/
+
+:root {
+    --t-tc--descriptions--font--size: var(--t-gs--font--size--03);
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/Typography: Labels
+*/
+
+:root {
+    --t-tc--labels--font--size: var(--t-gs--font--size--04);
+    --t-tc--labels--font--weight: var(--t-gs--font--weight--bold);
+    --t-tc--labels--font--color: var(--t-gs--color--text--default);
+    --t-tc--sublabels--font--size: var(--t-tc--labels--font--size);
+    --t-tc--sublabels--font--weight: var(--t-tc--labels--font--weight);
+    --t-tc--sublabels--font--color: var(--t-tc--labels--font--color);
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/Typography: Paragraphs
+*/
+
+:root {
+    --t-tc--paragraph--font--size: var(--t-gs--font--size--default);
+}
+
+/*
+    TEMPLATES CORE STYLES: ELEMENTS/Typography: Titles
+*/
+:root {
+    --t-tc--title--font--family: var(--t-gs--font--family--emphasis);
+    --t-tc--title--font--size: var(--t-gs--font--size--default);
+    --t-tc--title--font--weight: var(--t-gs--font--weight--bold);
+    --t-tc--title--font--color: var(--t-gs--color--text--default);
+
+    /* ex title--10 & title--banner */
+    --t-tc--title--hero: var(--t-gs--font--size--13);
+    --t-tc--title--hero--mobile: var(--t-gs--font--size--12);
+    /* ex title--09 */
+    --t-tc--title--h1: var(--t-gs--font--size--12);
+    --t-tc--title--h1--mobile: var(--t-gs--font--size--11);
+    /* ex title--08 */
+    --t-tc--title--h2: var(--t-gs--font--size--11);
+    --t-tc--title--h2--mobile: var(--t-gs--font--size--10);
+    /* ex title--07 */
+    --t-tc--title--h3: var(--t-gs--font--size--10);
+    --t-tc--title--h3--mobile: var(--t-gs--font--size--09);
+    /* ex title--06 */
+    --t-tc--title--h4: var(--t-gs--font--size--09);
+    --t-tc--title--h4--mobile: var(--t-gs--font--size--08);
+    /* ex title--05 */
+    --t-tc--title--h5: var(--t-gs--font--size--08);
+    --t-tc--title--h5--mobile: var(--t-gs--font--size--07);
+    /* ex title--04 */
+    --t-tc--title--h6: var(--t-gs--font--size--07);
+    --t-tc--title--h6--mobile: var(--t-gs--font--size--06);
+    /* ex title--03 */
+    --t-tc--title--h7: var(--t-gs--font--size--06);
+    --t-tc--title--h7--mobile: var(--t-gs--font--size--05);
+    /* ex title--02 */
+    --t-tc--title--h8: var(--t-gs--font--size--05);
+    --t-tc--title--h8--mobile: var(--t-gs--font--size--04);
+    /* ex title--01 */
+    --t-tc--title--h9: var(--t-gs--font--size--04);
+    --t-tc--title--h9--mobile: var(--t-gs--font--size--04);
+
+    /* Media query to target only mobile */
+    @media all and (max-width: 750px) {
+        --t-tc--title--hero: var(--t-tc--title--hero--mobile);
+        --t-tc--title--h1: var(--t-tc--title--h1--mobile);
+        --t-tc--title--h2: var(--t-tc--title--h2--mobile);
+        --t-tc--title--h3: var(--t-tc--title--h3--mobile);
+        --t-tc--title--h4: var(--t-tc--title--h4--mobile);
+        --t-tc--title--h5: var(--t-tc--title--h5--mobile);
+        --t-tc--title--h6: var(--t-tc--title--h6--mobile);
+        --t-tc--title--h7: var(--t-tc--title--h7--mobile);
+        --t-tc--title--h8: var(--t-tc--title--h8--mobile);
+        --t-tc--title--h9: var(--t-tc--title--h9--mobile);
+    }
+
+}
+
+.title--h9 {
+    --t-tc--title--font--size: var(--t-tc--title--h9);
+}
+
+.title--h8 {
+    --t-tc--title--font--size: var(--t-tc--title--h8);
+}
+
+.title--h7 {
+    --t-tc--title--font--size: var(--t-tc--title--h7);
+}
+
+.title--h6 {
+    --t-tc--title--font--size: var(--t-tc--title--h6);
+}
+
+.title--h5 {
+    --t-tc--title--font--size: var(--t-tc--title--h5);
+}
+
+.title--h4 {
+    --t-tc--title--font--size: var(--t-tc--title--h4);
+}
+
+.title--h3 {
+    --t-tc--title--font--size: var(--t-tc--title--h3);
+}
+
+.title--h2 {
+    --t-tc--title--font--size: var(--t-tc--title--h2);
+}
+
+.title--h1 {
+    --t-tc--title--font--size: var(--t-tc--title--h1);
+}
+
+.title--hero {
+    --t-tc--title--font--size: var(--t-tc--title--hero);
+}
+
+.title--hero {
+    --t-tc--title--font--size: var(--t-tc--title--hero);
+}
+
+.banner--scrolling .title--hero {
+    --t-tc--title--font--size: var(--t-tc--title--h3);
+}
+
+.title--tabs {
+    --t-tc--title--font--size: var(--t-tc--title--h6);
+}
+
+.ui-dialog-title,
+.autoschedule_NoAvailableHeader_Title {
+    --t-tc--title--font--size: var(--t-tc--title--h6);
+}
+
+.Separator {
+    --t-tc--title--font--size: var(--t-tc--title--h3);
+}
+
+.article--details.regular-fields-label--title .article__content__view__field__label,
+.article--details .regular-field-label--title .article__content__view__field__label {
+    --t-tc--title--font--size: var(--t-tc--title--h3);
+}
+
+.autoschedule_Availability_Title {
+    --t-tc--title--font--size: var(--t-tc--title--h4);
+}
+
+.autoschedule_Availability_endPage h1 {
+    --t-tc--title--font--size: var(--t-tc--title--h6);
+}
+
+/*
+    TEMPLATES CORE STYLES: COMPONENTS/Cards
+*/
+
+:root {
+    --t-tc--card--border--radius: var(--t-gs--border--radius--s);
+    --t-tc--card--border--width: var(--t-gs--border--width--s);
+    --t-tc--card--border--color: var(--t-gs--color--border--default);
+    --t-tc--card--background--color: var(--t-gs--color--surface--default);
+    --t-tc--card--padding--outers: var(--t-gs--space--m);
+    --t-tc--card--padding--inners: var(--t-gs--space--s2);
+    --t-tc--card__header--height: calc(var(--t-gs--size--base) * 19);
+}
+
+/*
+    TEMPLATES CORE STYLES: COMPONENTS/Cards: Result
+*/
+
+:root {
+    --t-tc--result--border--radius: var(--t-gs--border--radius--s);
+    --t-tc--result--border--width: var(--t-gs--border--width--0);
+    --t-tc--result--border--color: var(--t-gs--color--border--default);
+    --t-tc--result--background--color:var(--t-gs--color--surface--transparent);
+    --t-tc--result--padding--outers--v: var(--t-gs--space--l);
+    --t-tc--result--padding--outers--h: var(--t-gs--space--xl);
+    --t-tc--result--padding--inners--v: var(--t-gs--space--m);
+    --t-tc--result--padding--inners--h: var(--t-gs--space--xl);
+}
+
+/*
+    TEMPLATES CORE STYLES: COMPONENTS/Navigation: Menu: Toggleable
+*/
+
+html[menu-type="toggleable"] {
+    --t-tc--menu--width: calc(var(--t-gs--size--base) * 69);
+}
+
+.menu--toggleable {
+    --t-tc--menu--dividers--color: var(--t-gs--swatch--button--030);
+    --t-tc--menu__overlay--background--color: hsla(190, 100%, 42%, 0.329);
+
+    --t-tc--menu__link--border--radius: var(--t-gs--border--radius--0);
+    --t-tc--menu__link--border--width: var(--t-gs--border--width--0);
+    --t-tc--menu__link--border--color: var(--t-gs--color--border--transparent);
+
+    --t-tc--menu__link--background--color: var(--t-gs--color--fill--transparent);
+    --t-tc--menu__link--padding--v: var(--t-gs--space--l);
+    --t-tc--menu__link--padding--h: var(--t-gs--space--0);
+    --t-tc--menu__link--font--size: var(--t-gs--font--size--default);
+    --t-tc--menu__link--font--color: var(--t-gs--color--fill--link);
+    --t-tc--menu__link--font--weight: var(--t-gs--font--weight--bold);
+
+    --t-tc--submenu__link--background--color: var(--t-gs--color--fill--transparent);
+    --t-tc--submenu__link--padding--v: var(--t-gs--space--s);
+    --t-tc--submenu__link--padding--h: var(--t-gs--space--s);
+    --t-tc--submenu__link--font--size: var(--t-gs--font--size--03);
+    --t-tc--submenu__link--font--color: var(--t-gs--color--fill--link);
+    --t-tc--submenu__link--font--weight: var(--t-gs--font--weight--default);
+}
+
+.menu--toggleable .menu__item[aria-current="page"] .menu__link {
+    --t-tc--menu__link--font--color: var(--t-gs--swatch--neutral--100);
+}
+
+.menu--toggleable .submenu__item[aria-current="page"] .submenu__link,
+.menu--toggleable .portalLanguages__item--selected .portalLanguages__link {
+    --t-tc--submenu__link--font--color: var(--t-gs--color--text--on--fill--link--selected);
+}
+
+.menu--toggleable .menu__item:not([aria-current="page"]):hover .menu__link {
+    --t-tc--menu__link--font--color: var(--t-gs--color--text--on--fill--link--hover);
+}
+
+.menu--toggleable .submenu__item:not([aria-current="page"]):hover .submenu__link,
+.menu--toggleable .portalLanguages__item:not(.portalLanguages__item--selected):hover .portalLanguages__link {
+    --t-tc--submenu__link--background--color: var(--t-gs--color--border--transparent); /* templatebuilder .menu--visible - to be deleted on basePortalCloner */
+    --t-tc--submenu__link--font--color: var(--t-gs--color--text--on--fill--link--hover); /* templatebuilder .menu--visible - to be deleted on basePortalCloner */
+}
+
+/*
+    TEMPLATES CORE STYLES: COMPONENTS/Navigation: Menu: Visible
+*/
+
+.menu--visible {
+    --t-tc--menu--dividers--color: var(--t-gs--swatch--button--030);
+
+    --t-tc--menu__link--border--radius: var(--t-gs--border--radius--0);
+    --t-tc--menu__link--border--width: var(--t-gs--border--width--s);
+    --t-tc--menu__link--border--color: var(--t-gs--color--border--transparent);
+    --t-tc--menu__link--background--color: var(--t-gs--color--fill--transparent);
+    --t-tc--menu__link--padding--v: var(--t-gs--space--s);
+    --t-tc--menu__link--padding--h: var(--t-gs--space--s2);
+    --t-tc--menu__link--font--size: var(--t-gs--font--size--default);
+    --t-tc--menu__link--font--color: var(--t-gs--color--fill--link);
+    --t-tc--menu__link--font--weight: var(--t-gs--font--weight--bold);
+
+    --t-tc--submenu__link--background--color: var(--t-gs--color--border--on--fill--primary);
+    --t-tc--submenu__link--padding--v: var(--t-gs--space--s2);
+    --t-tc--submenu__link--padding--h: var(--t-gs--space--s2);
+    --t-tc--submenu__link--font--size: var(--t-gs--font--size--03);
+    --t-tc--submenu__link--font--color: var(--t-gs--color--fill--link);
+    --t-tc--submenu__link--font--weight: var(--t-gs--font--weight--regular);
+}
+
+.menu--visible .menu__item:hover .menu__link[aria-haspopup="true"],
+.menu--visible .menu__item:hover .menu__link[aria-haspopup="true"] + .submenu__list,
+.menu--visible .menu__link[aria-haspopup="true"][aria-expanded="true"],
+.menu--visible .menu__link[aria-haspopup="true"][aria-expanded="true"] + .submenu__list {
+    --t-tc--menu__link--border--radius: var(--t-gs--border--radius--0);
+    --t-tc--menu__link--border--color: var(--t-gs--color--border--transparent);
+    --t-tc--menu__link--background--color: var(--t-gs--color--border--on--fill--primary);
+}
+
+.menu--visible .menu__item[aria-current="page"] .menu__link {
+    --t-tc--menu__link--font--color: var(--t-gs--color--text--on--fill--link);
+}
+
+.menu--visible .submenu__item[aria-current="page"] .submenu__link,
+.menu--visible .portalLanguages__item--selected .portalLanguages__link {
+    --t-tc--submenu__link--font--color: var(--t-gs--color--text--on--fill--link);
+}
+
+.menu--visible .menu__item:not([aria-current="page"]):hover .menu__link {
+    --t-tc--menu__link--font--color: var(--t-gs--color--text--on--fill--link);
+}
+
+.menu--visible .submenu__item:not([aria-current="page"]):hover .submenu__link,
+.menu--visible .portalLanguages__item:not(.portalLanguages__item--selected):hover .portalLanguages__link {
+    --t-tc--submenu__link--background--color: var(--t-gs--color--border--on--fill--primary); /* templatebuilder .menu--visible - to be deleted on basePortalCloner */
+    --t-tc--submenu__link--font--color: var(--t-gs--color--text--on--fill--link); /* templatebuilder .menu--visible - to be deleted on basePortalCloner */
+}
+
+/*
+    TEMPLATES CORE STYLES: COMPONENTS/Navigation: Subtabs
+*/
+
+:root {
+    --t-tc--subtabs__list__item--font--color: var(--t-gs--swatch--link--040);
+    --t-tc--subtabs__list__item--border--color: var(--t-gs--swatch--neutral--transparent);
+    --t-tc--subtabs__list__item--transition--duration: 0.3s;
+    --t-tc--subtabs__list__item--transition--function: ease-out;
+    --t-tc--subtabs__list__item__box--translate: -1.2rem;
+    --t-tc--subtabs__list__item__icon--translate: -2rem;
+}
+
+.subtabs__list__item:not(.subtabs__list__item--selected):hover {
+    --t-tc--subtabs__list__item--font--color: var(--t-gs--swatch--link--050);
+}
+
+.subtabs__list__item:not(.subtabs__list__item--selected):active {
+    --t-tc--subtabs__list__item--font--color: var(--t-gs--swatch--link--030);
+}
+
+.subtabs__list__item:not(.subtabs__list__item--selected):focus-within {
+    --t-tc--subtabs__list__item--font--color: var(--t-gs--swatch--link--030);
+    --t-tc--subtabs__list__item--border--color: var(--t-gs--color--border--default--focus);
+}
+
+.subtabs__list__item--selected {
+    --t-tc--subtabs__list__item--font--color: var(--t-gs--swatch--link--030);
+}
+
+.subtabs__list__item--disabled {
+    --t-tc--subtabs__list__item--font--color: var(--t-gs--swatch--neutral--080);
+}
+
+/*
+    TEMPLATES CORE STYLES: COMPONENTS/Overlays: Modals
+*/
+
+:root {
+    --t-tc--modal__overlay--background--color: var(--t-gs--color--surface--overlay--dark);
+
+    --t-tc--modal--shadow: var(--t-gs--shadow--xl);
+    --t-tc--modal--border--radius: var(--t-gs--border--radius--s);
+    --t-tc--modal--border--width: var(--t-gs--border--width--0);
+    --t-tc--modal--border--color: var(--t-gs--color--border--default);
+    --t-tc--modal--background--color: var(--t-gs--color--surface--default);
+    --t-tc--modal--padding--outers--v: var(--t-gs--space--xxl);
+    --t-tc--modal--padding--outers--h: var(--t-gs--space--l);
+    --t-tc--modal--padding--inners--v: var(--t-gs--space--m);
+    --t-tc--modal--padding--inners--h: var(--t-gs--space--m);
+}
+
+/*
+    TEMPLATES CORE STYLES: COMPONENTS/Tables
+*/
+
+:root {
+    --t-tc--table--border--radius: var(--t-gs--border--radius--s);
+    --t-tc--table--border--color: var(--t-gs--color--border--default);
+    --t-tc--table--background--color: var(--t-gs--color--surface--default);
+
+    --t-tc--table__th--height: 5rem;
+    --t-tc--table__th--background--color: var(--t-gs--color--surface--brand);
+    --t-tc--table__th--padding: var(--t-gs--space--s2);
+    --t-tc--table__th--font--size: var(--t-gs--font--size--03);
+
+    --t-tc--table__td--height: 7rem;
+    --t-tc--table__td--padding: var(--t-gs--space--s2);
+    --t-tc--table__td--font--size: var(--t-gs--font--size--03);
+
+    --t-tc--table--fixed-column--width: calc(var(--t-gs--size--base) * 50);
+}
+
+/* Media query to target mobile and tablet */
+@media all and (max-width:1024px) {
+    :root {
+        --t-tc--table__th--height: 4.6rem;
+        --t-tc--table__td--height: 4.6rem;
+    }
+
+}
+
+/*
+    TEMPLATES CORE STYLES: WIDGETS/Forms: Structures: fieldSpec
+*/
+
+:root {
+    --t-tc--fieldSpec--padding--outers: var(--t-gs--space--m);
+    --t-tc--fieldSpec--padding--inners: var(--t-gs--space--s);
+}
+
+/*
+    TEMPLATES CORE STYLES: WIDGETS/Forms: Types: SchedulingField
+*/
+
+:root {
+    --t-tc--schedulerWidget__calendar__day--background--color: var(--t-gs--color--fill--transparent);
+    --t-tc--schedulerWidget__calendar__day--font--color: var(--t-gs--color--text--default);
+    --t-tc--schedulerWidget__slot__item--background--color: var(--t-gs--color--fill--transparent);
+    --t-tc--schedulerWidget__slot__item--font--color: var(--t-gs--color--text--default);
+}
+
+.datepicker-skin-scheduling .ui-datepicker .ui-datepicker-calendar td.ui-datepicker-today span,
+.datepicker-skin-scheduling .ui-datepicker .ui-datepicker-calendar td.ui-datepicker-today span.ui-state-hover,
+.datepicker-skin-scheduling .ui-datepicker .ui-datepicker-calendar td.ui-datepicker-today a,
+.datepicker-skin-scheduling .ui-datepicker .ui-datepicker-calendar td.ui-datepicker-today a.ui-state-hover {
+    --t-tc--schedulerWidget__calendar__day--font--color: var(--t-gs--color--text--strong);
+}
+
+.datepicker-skin-scheduling .ui-datepicker .ui-datepicker-calendar td.selectable-day a {
+    --t-tc--schedulerWidget__calendar__day--font--color: var(--t-gs--color--text--link);
+}
+
+.datepicker-skin-scheduling .ui-datepicker .ui-datepicker-calendar td.ui-datepicker-current-day a,
+.datepicker-skin-scheduling .ui-datepicker .ui-datepicker-calendar td.ui-datepicker-current-day a.ui-state-hover,
+.datepicker-skin-scheduling .ui-datepicker .ui-datepicker-calendar td.ui-datepicker-current-day a.ui-state-active {
+    --t-tc--schedulerWidget__calendar__day--background--color: var(--t-gs--swatch--link--040);
+    --t-tc--schedulerWidget__calendar__day--font--color: var(--t-gs--swatch--link--100);
+}
+
+.schedulerWidget .results .resultsList .resultItem:hover,
+.schedulerWidget .results .resultsList .resultItem.selected {
+    --t-tc--schedulerWidget__calendar__day--background--color: var(--t-gs--swatch--link--040);
+    --t-tc--schedulerWidget__calendar__day--font--color: var(--t-gs--swatch--link--100);
+    --t-tc--schedulerWidget__slot__item--background--color: var(--t-gs--swatch--link--040);
+    --t-tc--schedulerWidget__slot__item--font--color: var(--t-gs--swatch--link--100);
+}
+
+/*
+    TEMPLATES CORE STYLES: MODULES/Banner
+*/
+
+:root {
+    --t-tc--banner--height: 23rem;
+    --t-tc--banner--background--color: var(--t-gs--color--surface--transparent);
+    --t-tc--banner--background--image--position: center 18%;
+    --t-tc--banner--background--image--size: contain;
+    --t-tc--banner--padding--top: var(--t-gs--space--m);
+    --t-tc--banner--padding--bottom: var(--t-gs--space--m);
+    --t-tc--banner--font--color: var(--t-gs--color--text--default);
+
+}
+
+/* templatebuilder .banner --t-gs--color--text--link - to be deleted on basePortalCloner */
+
+/* Media query to target only tablet */
+@media all and (min-width:751px) and (max-width:1024px) {
+    :root {
+        --t-tc--banner--height: 23rem;
+        --t-tc--banner--background--image--position: right top;
+    }
+
+}
+
+/* Media query to target only tablet */
+@media all and (min-width:751px) and (max-width:1441px) {
+    :root {
+        --t-tc--banner--background--image--size: cover;
+    }
+
+}
+
+/* Media query to target only mobile */
+@media all and (max-width:750px) {
+    :root {
+        --t-tc--banner--height: 15rem;
+        --t-tc--banner--background--image--position: right top;
+        --t-tc--banner--background--image--size: contain;
+    }
+
+}
+
+/*
+    TEMPLATES CORE STYLES: MODULES/Footer
+*/
+
+:root {
+    --t-tc--footer--background--color: var(--t-gs--color--border--on--fill--primary);
+    --t-tc--footer--padding--top: var(--t-gs--space--m);
+    --t-tc--footer--padding--bottom: var(--t-gs--space--m);
+    --t-tc--footer--font--color: var(--t-gs--swatch--neutral--100);
+}
+
+/* templatebuilder .footer --t-gs--color--text--link - to be deleted on basePortalCloner */
+
+/* Media query to target only mobile */
+@media all and (max-width:750px) {
+    :root {
+        --t-tc--footer--padding--top: var(--t-gs--space--l);
+        --t-tc--footer--padding--bottom: var(--t-gs--space--l);
+    }
+
+}
+
+/*
+    TEMPLATES CORE STYLES: MODULES/Header
+*/
+
+:root {
+    --t-tc--header--height: 10rem;
+    --t-tc--header--background--color: var(--t-gs--color--border--on--fill--primary);
+    --t-tc--header--padding--top: var(--t-gs--space--s);
+    --t-tc--header--padding--bottom: var(--t-gs--space--s);
+    --t-tc--header--font--color: var(--t-gs--swatch--neutral--100);
+}
+
+/* templatebuilder .header --t-gs--color--text--on--fill--link - to be deleted on basePortalCloner */
+
+/* Media query to target only mobile */
+@media all and (max-width:750px) {
+    :root {
+        --t-tc--header--padding--top: var(--t-gs--space--xs);
+        --t-tc--header--padding--bottom: var(--t-gs--space--xs);
+    }
+
+}
+
+/*
+    TEMPLATES CORE STYLES: MODULES/Main
+*/
+
+:root {
+    --t-tc--main--background--color: var(--t-gs--color--surface--default);
+    --t-tc--main--padding--top: var(--t-gs--space--xl);
+    --t-tc--main--padding--bottom: var(--t-gs--space--xl);
+    --t-tc--main--font--color: var(--t-gs--color--text--default);
+}
+
+/* templatebuilder .main --t-gs--color--text--link, --t-tc--toggle--font--color - to be deleted on basePortalCloner */
+
+/* Media query to target only mobile */
+@media all and (max-width:750px) {
+    :root {
+        --t-tc--main--padding--top: var(--t-gs--space--l);
+        --t-tc--main--padding--bottom: var(--t-gs--space--l);
+    }
+
+}
+
+/*
+    TEMPLATES CORE STYLES: MODULES/Strip
+*/
+
+:root {
+    --t-tc--strip--background--color: var(--t-gs--color--fill--banner--small);
+    --t-tc--strip--font--color: var(--t-gs--color--text--default);
+}
+
+/*
+    TEMPLATES CORE STYLES: PAGETYPES/Login
+*/
+
+:root {
+    --t-tc--login__body--background--color: var(--t-gs--color--background--transparent);
+    --t-tc--login__body--background--image--position: right bottom;
+    --t-tc--login__body--background--image--size: cover;
+
+    --t-tc--login__box--border--radius: var(--t-gs--border--radius--m);
+    --t-tc--login__box--background--color: var(--t-gs--color--surface--default);
+    --t-tc--login__box--width: calc(var(--t-gs--size--base) * 83);
+    --t-tc--login__box--padding--outers: var(--t-gs--space--l);
+    --t-tc--login__box__footer--background--color: var(--t-gs--color--surface--secondary);
+}
+
+/* Media query to target only tablet */
+@media all and (min-width:751px) and (max-width:1024px) {
+    :root {
+        --t-tc--login__body--background--image--position: right bottom;
+    }
+
+}
+
+/* Media query to target only mobile */
+@media all and (max-width:750px) {
+    :root {
+        --t-tc--login__body--background--image--position: right bottom;
+    }
+
+}
+
+/*
+    TEMPLATES CORE STYLES: UTILITIES/Boxed
+*/
+
+:root {
+    --t-tc--boxes--border--radius: var(--t-gs--border--radius--s);
+    --t-tc--boxes--border--color: var(--t-gs--color--border--default);
+    --t-tc--boxes--background--color: var(--t-gs--color--surface--default);
+    --t-tc--boxes--padding--outers: var(--t-gs--space--m);
+    --t-tc--boxes--padding--inners: var(--t-gs--space--s2);
+    --t-tc--boxes__heading--height: calc(var(--t-gs--size--base) * 19);
+}

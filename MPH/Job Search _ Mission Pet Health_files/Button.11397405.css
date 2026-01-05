@@ -1,0 +1,49 @@
+.ControlsItem .Button {
+    background-color: var(--video--color--white);
+    border-radius: var(--video--spacer--50);
+    border: var(--video--border--basic);
+    box-shadow: var(--video--button--shadow);
+    font-family: var(--video--font--family);
+    font-size: var(--video--body--text);
+    font-weight: var(--video--font--weight--bold);
+    color: var(--video--color--black);
+    text-decoration: none;
+    line-height: normal;
+    height: var(--video--spacer--40);
+    min-width: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--video--spacer--8);
+    padding: 0 var(--video--spacer--12) 0 var(--video--spacer--8);
+}
+
+.IsRecording .ControlsContainer {
+    --video--justify--content: space-between;
+}
+
+.ControlsItem .Button:hover {
+    background-color: var(--video--color--button--hover);
+}
+
+.ControlsItem .Button:focus {
+    background-color: var(--video--color--button--hover);
+    border: var(--video--border--black);
+    outline: var(--video--border--white);
+}
+
+.ControlsItem .Button:active {
+    background-color: var(--video--color--button--pressed);
+    border: var(--video--border--transparent);
+    outline: var(--video--border--transparent);
+}
+
+@media (width <= 425px) {
+    .ControlsItem {
+        inline-size: 100%;
+    }
+
+    .ControlsItem .Button {
+        height: 44px;
+    }
+}

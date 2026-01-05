@@ -1,0 +1,338 @@
+@media (min-width: 1200px) {
+  .container {
+    max-width: 1224px;
+    margin-right: auto;
+    margin-left: auto;
+  }
+  .page-template-news .banner-title-wrapp {
+    width: 60%;
+  }
+  .page-template-professional-dev #hero-video-banner {
+    padding-bottom: 115px;
+  }
+}
+@media (min-width: 1400px) {
+  .container-big {
+    max-width: 1555px;
+    margin-right: auto;
+    margin-left: auto;
+  }
+  .page-template-partner .sec {
+    position: relative;
+  }
+  .page-template-partner .sec.left img {
+    position: absolute;
+    left: -70px;
+    top: -100px;
+  }
+  .page-template-partner .sec.right img {
+    position: absolute;
+    bottom: -100px;
+    right: -70px;
+  }
+}
+@media (max-width: 1399px) {
+  .container-big {
+    max-width: 98%;
+  }
+}
+@media (max-width: 1200px) {
+  .header-menu #menu-header-menu {
+    gap: 20px;
+  }
+  .header-menu #menu-header-menu a {
+    font-size: 16px;
+  }
+  #hero-video-banner .row-hb-column {
+    gap: 40px;
+  }
+  #hero-video-banner .container {
+    gap: 0;
+  }
+  .block-hb {
+    min-width: 40%;
+  }
+  .connect-subscribe .form {
+    width: 35%;
+  }
+  #statistic .row-statistic {
+    -webkit-box-pack: center;
+    -ms-flex-pack: center;
+    justify-content: center;
+  }
+  #statistic .col-statistic {
+    width: 33%;
+  }
+  #statistic .col-specialties {
+    width: 100%;
+  }
+  .prof-growth .row-prof {
+    gap: 50px;
+  }
+  .prof-growth .student-col {
+    margin: auto;
+  }
+  #blog-short .news-col + .news-col {
+    -webkit-box-pack: initial;
+    -ms-flex-pack: initial;
+    justify-content: initial;
+  }
+  #blog-short .news-col + .news-col .news-wrapp {
+    height: auto;
+  }
+}
+@media all and (max-width: 991px) {
+  body {
+    font-size: 16px;
+  }
+  .header-menu {
+    display: none;
+  }
+  .header-menu #menu-header-menu {
+    -webkit-box-orient: vertical;
+    -webkit-box-direction: normal;
+    -ms-flex-direction: column;
+    flex-direction: column;
+    padding: 30px 0;
+  }
+  header.mobile-menu-active .header-menu {
+    display: block;
+    position: fixed;
+    left: 0;
+    top: 65px;
+    background: #ffffff;
+    width: 100%;
+    min-height: 100%;
+  }
+  .footer-main {
+    padding: 50px 0;
+  }
+  .footer-main .custom-logo-link img {
+    margin: auto;
+    margin-bottom: 50px;
+  }
+  .footer-content {
+    -webkit-box-pack: justify;
+    -ms-flex-pack: justify;
+    justify-content: space-between;
+  }
+  .footer-col {
+    width: 25%;
+  }
+  .connect-subscribe .labels-wrapp {
+    -webkit-box-pack: center;
+    -ms-flex-pack: center;
+    justify-content: center;
+  }
+  .connect-subscribe .labels-wrapp .email-label {
+    display: none;
+  }
+  .connect-subscribe .form-wrapp {
+    gap: 15px;
+    -webkit-box-pack: center;
+    -ms-flex-pack: center;
+    justify-content: center;
+  }
+  .connect-subscribe .form-wrapp .btn {
+    margin: auto;
+  }
+  .connect-subscribe .form {
+    padding: 0 12px;
+    width: 100%;
+  }
+  .connect-subscribe .email-label-mob {
+    display: block;
+  }
+  .connect-team-container .row,
+  .form-inner-container .row {
+    gap: 35px;
+  }
+  #partnership {
+    display: -webkit-box;
+    display: -ms-flexbox;
+    display: flex;
+    -webkit-box-orient: vertical;
+    -webkit-box-direction: normal;
+    -ms-flex-direction: column;
+    flex-direction: column;
+    -webkit-box-align: center;
+    -ms-flex-align: center;
+    align-items: center;
+    gap: 60px;
+    padding: 50px 0;
+  }
+  #partnership .image-section {
+    position: inherit;
+    -webkit-transform: none;
+    -ms-transform: none;
+    transform: none;
+    left: auto;
+    top: auto;
+  }
+  #partnership .right-col {
+    width: 100%;
+  }
+  #partnership .right-col img {
+    margin: auto;
+  }
+  #testimonials {
+    margin-top: 0;
+  }
+  #testimonials .row-testimonial {
+    position: relative;
+    -webkit-box-orient: vertical;
+    -webkit-box-direction: normal;
+    -ms-flex-direction: column;
+    flex-direction: column;
+    height: auto;
+    max-height: initial;
+  }
+  #testimonials .row-testimonial.reverse {
+    -webkit-box-orient: vertical;
+    -webkit-box-direction: normal;
+    -ms-flex-direction: column;
+    flex-direction: column;
+  }
+  #testimonials .row-testimonial.reverse .content-wrapp {
+    border-radius: 0 0 28px 28px;
+  }
+  #testimonials .row-testimonial.reverse .img-wrapp img {
+    border-radius: 28px 28px 0 0;
+  }
+  #testimonials .img-wrapp {
+    max-width: 100%;
+    width: 100%;
+  }
+  #testimonials .img-wrapp img {
+    width: 100%;
+    border-radius: 28px 28px 0 0;
+    max-height: 580px;
+  }
+  #testimonials .content-wrapp {
+    max-height: initial;
+    padding: 50px 50px 50px 100px;
+    border-radius: 0 0 28px 28px;
+  }
+  .logo-col img {
+    margin: auto;
+  }
+  .logo-row {
+    gap: 50px;
+  }
+  #statistic {
+    padding-bottom: 0;
+  }
+  #statistic .number-wrapp {
+    font-size: 66px;
+  }
+  #statistic .specialties-block {
+    height: auto;
+  }
+  #statistic .col-statistic {
+    width: 50%;
+  }
+  #blog-short .news-col {
+    min-width: 100%;
+    padding: 0 12px;
+  }
+  #blog-short .news-col:first-child {
+    -webkit-box-orient: vertical;
+    -webkit-box-direction: normal;
+    -ms-flex-direction: column;
+    flex-direction: column;
+  }
+  #blog-short .news-col:first-child .image-wrapp {
+    height: 275px;
+    width: 100%;
+    min-width: 100%;
+  }
+  #blog-short .news-col:first-child .image-wrapp .bg-overlay-image {
+    border-radius: 25px 25px 0 0;
+  }
+  .prof-growth .row-prof {
+    padding: 0 12px;
+  }
+  .page-template-join-our-team #open-positions {
+    margin-bottom: 50px;
+  }
+  .page-template-join-our-team #our-culture-team {
+    padding-top: 0;
+  }
+  .page-template-join-our-team #our-culture-team .our-culture-main-info {
+    margin-top: 50px;
+  }
+  .site-content {
+    padding-bottom: 0;
+  }
+  .page-template-partner #advantages-content .sec {
+    margin-bottom: 50px;
+  }
+  .page-template-refer-a-colleague .hospitals-wrapp li {
+    width: 50%;
+  }
+}
+@media (max-width: 576px) {
+  .footer-content {
+    -webkit-box-pack: center;
+    -ms-flex-pack: center;
+    justify-content: center;
+    gap: 25px;
+  }
+  .footer-col + .footer-col {
+    -webkit-box-pack: left;
+    -ms-flex-pack: left;
+    justify-content: left;
+  }
+  .footer-col {
+    display: -webkit-box;
+    display: -ms-flexbox;
+    display: flex;
+    width: 40%;
+    -webkit-box-pack: left;
+    -ms-flex-pack: left;
+    justify-content: left;
+  }
+  .connect-subscribe .connect-team,
+  .form-wrapper .form-block {
+    padding: 80px 0;
+  }
+  #statistic .specialties-block {
+    height: auto;
+    width: 275px;
+    margin: auto;
+  }
+  #statistic .specialties-block ul li {
+    width: 100%;
+  }
+  #statistic .col-statistic {
+    width: 100%;
+  }
+  .prof-growth .prof-col,
+  .prof-growth .student-col {
+    padding: 25px;
+  }
+  .prof-growth .prof-col .content-wrapp,
+  .prof-growth .student-col .content-wrapp {
+    margin-left: auto;
+  }
+  .prof-growth .element-list a {
+    gap: 5px;
+  }
+  .prof-growth .ul-list {
+    max-width: 80%;
+  }
+  .page-template-refer-a-colleague .hospitals-wrapp {
+    margin-left: 15px;
+  }
+  .page-template-refer-a-colleague .hospitals-wrapp li {
+    width: 100%;
+  }
+
+  #vimeo_frame {
+    max-width: 100%;
+    height: 400px;
+  }
+  #vimeo_frame iframe{
+    max-height: 400px !important;
+  }
+}

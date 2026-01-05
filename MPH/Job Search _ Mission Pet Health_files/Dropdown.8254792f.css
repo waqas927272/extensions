@@ -1,0 +1,85 @@
+.SettingsModalDropdownSelected {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    border: 1px solid #666;
+    border-radius: 4px;
+    width: 100%;
+    background-color: #666;
+}
+
+.SettingsModalDropdownContent,
+.SettingsModalDpd {
+    font-family: var(--video--font--family);
+    font-size: 14px;
+    font-weight: normal;
+    color: var(--video--color--white);
+    text-decoration: none;
+    line-height: normal;
+    height: var(--video--spacer--40);
+}
+
+.SettingsModalDropdownContent {
+    display: none;
+    background-color: #666;
+    flex-direction: column;
+    position: absolute;
+    width: calc(100% - 55px);
+    border: 1px solid #1A1A1A;
+    border-radius: 0 0 var(--video--spacer--8) var(--video--spacer--8);
+    margin-top: -4px;
+}
+
+.SettingsModalDpd {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    background-color: transparent;
+    width: 360px;
+    margin-left: var(--video--spacer--10);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.SettingsModalDpdArrow {
+    display: flex;
+    height: var(--video--spacer--40);
+    width: var(--video--spacer--40);
+    background: #666 url(/portalpacks/web/assets/body/images/arrow_drop_down.7a07ebfd.svg) no-repeat right 10px center;
+}
+
+.SettingsModalDropdownItem {
+    display: flex;
+    align-items: center;
+    padding-left: var(--video--spacer--10);
+    height: var(--video--spacer--40);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.SettingsModalDropdownSelected:hover,
+.SettingsModalDropdownSelected:focus {
+    border: var(--video--border--black);
+    outline: var(--video--border--white);
+}
+
+.SettingsModalDpdArrow.DropdownDeployed {
+    background-image: url(/portalpacks/web/assets/body/images/arrow_drop_up.61d0b219.svg);
+}
+
+.SettingsModalDropdownItem:hover {
+    background-color: #333;
+}
+
+.SettingsModalDropdownItem:active {
+    background-color: var(--video--color--black);
+}
+
+@media (width <= 425px) {
+    .SettingsModalDpd {
+        width: 200px;
+    }
+}
+

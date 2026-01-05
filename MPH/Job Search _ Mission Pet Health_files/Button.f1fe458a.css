@@ -1,0 +1,23 @@
+:where(.pkg) {
+    display: inline;
+    border-width: 0;
+    border-style: solid;
+    padding: 0;
+    cursor: pointer;
+    text-align: start;
+    text-decoration: none;
+}
+
+:where(.pkg:hover),
+:where(.pkg:focus) {
+    text-decoration: underline;
+}
+
+:where(.pkg[disabled]) {
+    cursor: auto;
+    color: var(--tin-neutral500);
+}
+
+.pkg::-moz-focus-inner {
+    border: none;
+}

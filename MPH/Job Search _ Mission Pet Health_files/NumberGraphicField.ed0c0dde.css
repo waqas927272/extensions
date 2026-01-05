@@ -1,0 +1,269 @@
+/* ==========================================================================
+   PROGRESS BAR RATING
+   --------------------------------------------------------------------------
+   * README
+
+   * PROGRESS BAR: VARIABLES
+   * PROGRESS BAR: INPUT RANGE STYLES
+   * PROGRESS BAR: NUMERICAL INDICATOR
+
+   * HELPER CLASS: VISIBILITY
+   ========================================================================== */
+
+/* README
+   ========================================================================== */
+
+/*!
+ * Styles on this stylesheet are the progress bar styles, used in the
+ * social share widget.
+
+ * These styles follow a Studio mockup: https://zpl.io/aM6qde7.
+ */
+
+:root {
+    --stars-color-passive: var(--color--clickeable, #1063BA);
+    --stars-color-hover: #CCCCCC;
+    --stars-color-active: var(--color--clickeable, #1063BA);
+    --progress-bar-track-color: #CCCCCC;
+    --progress-bar-track-height: 4px;
+    --progress-bar-track-radius: 2px;
+    --progress-bar-dot-color: var(--color--clickeable, #1063BA);
+    --progress-bar-dot-width: 8px;
+    --progress-bar-dot-height: 8px;
+    --progress-bar-dot-radius: 50%;
+    --progress-bar-progress-color: var(--color--clickeable, #1063BA);
+    --progress-bar-indicator-color: #333333;
+}
+
+/*
+ * 1. Add relative position to be able to align the numeric
+ * value with absolute position.
+ * 2. Add margin right to avoid the numeric value ending outside
+ * the container
+ */
+.wizard .progress-bar  {
+    position: relative;
+    margin-left: -8px;
+    margin-bottom: 40px;
+    margin-right: 50px;
+}
+
+/*
+ * Reset default appearance in all browsers to apply custom styles.
+ */
+.wizard .progress-bar .progress-bar__selector {
+    -webkit-appearance: none;
+    appearance: none;
+    width: calc(100% - 10px);
+    width: -webkit-calc(100% - 10px);
+    margin: 0 20px;
+    padding: 0 0;
+    border: 0 ;
+    overflow: hidden;
+}
+
+.wizard .progress-bar .progress-bar__selector:focus {
+    outline: 2px solid #000;
+    outline-offset: 2px;
+    box-shadow: none;
+}
+@-moz-document url-prefix() {
+    .wizard .progress-bar .progress-bar__selector:focus {
+        outline: 2px solid Highlight;
+    }
+}
+
+/* PROGRESS BAR: INPUT RANGE STYLES - CHROME, EDGE, SAFARI
+--------------------------------------------------------------------------
+To access the track use ::-webkit-slider-runnable-track and
+the dot -webkit-slider-thumb.
+-------------------------------------------------------------------------- */
+
+/*
+ * As we dont have a progress element we need to use overflow hidden to hide
+ * the excess of shadow define in progress-bar__selector::-webkit-slider-thumb
+ */
+.body--Chrome .wizard .progress-bar .progress-bar__selector,
+.body--Safari .wizard .progress-bar .progress-bar__selector,
+.body--MS .wizard .progress-bar .progress-bar__selector {
+    height: var(--progress-bar-track-height);
+    outline: none;
+    border-radius: var(--progress-bar-track-radius);
+    background: var(--progress-bar-track-color);
+    overflow: hidden;
+}
+
+/*
+ * As its not a default in these browsers, add the cursor to the entire line
+ * to show that it is clickable.
+ */
+.wizard .progress-bar .progress-bar__selector::-webkit-slider-runnable-track {
+    cursor: pointer;
+}
+
+/*
+ * As we dont have a progress element we use box-shadow to fill the progress.
+ */
+.wizard .progress-bar .progress-bar__selector::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: calc(var(--progress-bar-dot-width) / 2);
+    height: var(--progress-bar-dot-height);
+    background: var(--progress-bar-dot-color);
+    box-shadow: -100vw 0 0 calc(100vw - calc(var(--progress-bar-dot-width) / 2)) var(--progress-bar-progress-color);
+    cursor: pointer;
+    border-radius: var(--progress-bar-dot-radius);
+}
+
+.wizard .progress-bar .progress-bar__selector:focus::-webkit-slider-runnable-track {
+    background: var(--progress-bar-track-color);
+}
+
+/* PROGRESS BAR: INPUT RANGE STYLES - FIREFOX
+--------------------------------------------------------------------------
+To access the track use ::-moz-range-track,
+the progress::-moz-range-progress and the dot ::-moz-range-thumb.
+-------------------------------------------------------------------------- */
+
+.wizard .progress-bar .progress-bar__selector::-moz-range-track {
+    width: 100%;
+    height: var(--progress-bar-track-height);
+    cursor: pointer;
+    background: var(--progress-bar-track-color);
+    border-radius: var(--progress-bar-track-radius);
+}
+
+.wizard .progress-bar .progress-bar__selector::-moz-range-thumb {
+    width: var(--progress-bar-dot-width);
+    height: var(--progress-bar-dot-height);
+    border-radius: var(--progress-bar-dot-radius);
+    background: var(--progress-bar-dot-color);
+    cursor: pointer;
+    -webkit-appearance: none;
+    margin-top: -4px;
+    border: 1px solid var(--progress-bar-dot-color);
+}
+
+.wizard .progress-bar .progress-bar__selector::-moz-range-progress {
+    height: var(--progress-bar-track-height);
+    background: var(--progress-bar-progress-color);
+}
+
+/* PROGRESS BAR: INPUT RANGE STYLES - INTERNET EXPLORER 11
+--------------------------------------------------------------------------
+To access the track use ::-ms-track, the dot ::-moz-range-thumb, progress
+color ::-ms-fill-lower and track color
+--------------------------------------------------------------------------
+*/
+
+/*
+* 1. Remove background colour from the track to use the ones define in
+* ::ms-fill-lower and progress-bar__selector::-ms-fill-upper ::ms-fill-upper.
+* 2. Leave space for the dot with border-width to overflow with a transparent
+* border.
+*/
+.wizard .progress-bar .progress-bar__selector::-ms-track {
+    width: 100%;
+    height: var(--progress-bar-track-height);
+    cursor: pointer;
+
+    background: transparent;
+    border-color: transparent;
+    border-width: var(--progress-bar-dot-height) 0;
+    color: transparent;
+}
+
+/*
+* Progress color
+*/
+.wizard .progress-bar .progress-bar__selector::-ms-fill-lower {
+    background: var(--progress-bar-progress-color);
+    border: 0px solid var(--progress-bar-progress-color);
+    border-radius: var(--progress-bar-track-radius);
+}
+
+/*
+* Track color
+*/
+.wizard .progress-bar .progress-bar__selector::-ms-fill-upper {
+    background: var(--progress-bar-track-color);
+    border: 0px solid var(--progress-bar-track-color);
+    border-radius: var(--progress-bar-track-radius);
+}
+
+.wizard .progress-bar .progress-bar__selector::-ms-thumb {
+    border: 0px solid var(--progress-bar-dot-color);
+    width: calc(var(--progress-bar-dot-width) * 2);
+    height: calc(var(--progress-bar-dot-height) * 2);
+    border-radius: 50%;
+    background: var(--progress-bar-dot-color);
+    cursor: pointer;
+}
+
+/*
+ * Hide default input range tooltip
+ */
+.wizard .progress-bar .progress-bar__selector::-ms-tooltip {
+    display: none;
+}
+
+/* PROGRESS BAR: NUMERICAL INDICATOR
+   ========================================================================== */
+
+.progress-bar__indicator {
+    color: var(--progress-bar-indicator-color);
+    position: absolute;
+    left: 50%;
+    font-size: 14px;
+    white-space: nowrap;
+    display: -webkit-box;
+    display: -webkit-flex;
+    display: -ms-flexbox;
+    display: flex;
+}
+
+.progress-bar__indicator__total::before {
+    content: "/";
+}
+
+/* HELPER CLASS: VISIBILITY
+   ========================================================================== */
+/*
+ * Hide only visually, but have it available for screen readers:
+ */
+.visibility--hidden--visually{
+    border: 0;
+    clip: rect(0 0 0 0);
+    -webkit-clip-path: inset(50%);
+    clip-path: inset(50%);
+    height: 1px;
+    margin: -1px;
+    overflow: hidden;
+    padding: 0;
+    position: absolute;
+    width: 1px;
+    white-space: nowrap;
+}
+.visibility--hidden--visually:focus {
+    outline: none;
+}
+.visuallyHidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    margin: -1px;
+    padding: 0;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+}
+
+.star-focused {
+    outline: 2px solid #000;
+    outline-offset: 2px;
+}
+@-moz-document url-prefix() {
+    .star-focused {
+        outline: 2px solid Highlight;
+    }
+}

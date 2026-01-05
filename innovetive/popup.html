@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Job Scraper</title>
+  <link rel="stylesheet" type="text/css" href="style.css">
+</head>
+<body>
+  <div class="action-buttons">
+    <button id="scrape-jobs">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19.63,3.42C18.2,2.3,16.29,2.13,14.6,2.79L12,3.83L9.4,2.79C7.71,2.13,5.8,2.3,4.37,3.42C2.93,4.53,2.5,6.4,3.13,8.08L12,22L20.87,8.08C21.5,6.4,21.07,4.53,19.63,3.42M12,18.9L5.3,8.14C4.89,6.96,5.18,5.63,6.13,4.86C7.08,4.09,8.46,4,9.63,4.63L12,5.66L14.37,4.63C15.54,4,16.92,4.09,17.87,4.86C18.82,5.63,19.11,6.96,18.7,8.14L12,18.9Z"></path></svg>
+        <span>Scrape Jobs</span>
+    </button>
+    <button id="view-saved-jobs">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M19,19H5V5H12V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V12H19M21.71,3.12L14.22,10.61L12.81,9.2L20.29,1.71M23,1.71L22.29,1L17.29,6L18,6.71M13,6V8H5V6H13M13,10V12H5V10H13M10,14V16H5V14H10Z"></path></svg>
+        <span>View Saved Jobs</span>
+    </button>
+  </div>
+  <div id="loading-spinner" class="hidden"></div>
+  <div id="message" class="hidden"></div>
+  <script src="popup.js"></script>
+</body>
+</html>

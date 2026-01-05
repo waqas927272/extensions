@@ -1,0 +1,28 @@
+.SettingsModalVideoOptions,
+.SettingsModalVideoOptionsCamera {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.SettingsModalVideoOptionsTitle{
+    font-family: var(--video--font--family);
+    font-size: 22px;
+    font-weight: var(--video--font--weight--bold);
+    color: var(--video--color--white);
+    margin-left: 8px;
+}
+
+.SettingsModalVideoOptionsCamera {
+    margin-top: 16px;
+    font-family: var(--video--font--family);
+    font-size: 14px;
+    font-weight: var(--video--font--weight--bold);
+    color: var(--video--color--white);
+}
+
+@media (width <= 425px) {
+    .SettingsModalVideoOptionsTitle {
+        margin-left: 0;
+    }
+}

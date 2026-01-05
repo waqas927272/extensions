@@ -1,0 +1,95 @@
+.VideoContainer {
+    inline-size: 100%;
+
+    /* sizes */
+    --video--spacer--1: 1px;
+    --video--spacer--2: 2px;
+    --video--spacer--4: 4px;
+    --video--spacer--8: 8px;
+    --video--spacer--10: 10px;
+    --video--spacer--12: 12px;
+    --video--spacer--16: 16px;
+    --video--spacer--25: 25px;
+    --video--spacer--28: 28px;
+    --video--spacer--40: 40px;
+    --video--spacer--50: 50px;
+    --video--spacer--60: 60px;
+    --video--spacer--250: 250px;
+
+
+    /* colors */
+    --video--color--black: #000;
+    --video--color--white: #FFF;
+    --video--color--red: #D92626;
+    --video--color--green: #00B277;
+    --video--color--bg--icons: #E0E0E0;
+    --video--color--background: hsl(0 0% 0% / .7);
+    --video--color--button--hover: #F7F7F7;
+    --video--color--button--pressed: #F2F2F2;
+    --video--color--button--border: #CCC;
+
+    /* fonts */
+    --video--body--text: var(--video--spacer--16);
+    --video--font--weight--bold: bold;
+    --video--font--family: inherit;
+
+    /* borders */
+    --video--border--basic: var(--video--spacer--1) solid var(--video--color--button--border);
+    --video--border--transparent: var(--video--spacer--2) transparent;
+    --video--border--black: var(--video--spacer--2) solid var(--video--color--black);
+    --video--border--white: var(--video--spacer--2) solid var(--video--color--white);
+
+    /* mixed */
+    --video--justify--content: center;
+    --video--button--shadow: 0 0 var(--video--spacer--10) 0 rgba(0, 0, 0, 0.10);
+    --video--aspect--ratio: 16/9;
+}
+
+.VideoInput {
+    position: relative;
+}
+
+.VideoInput,
+.VideoInputVideo,
+.RecordAgain {
+    display: flex;
+    flex-direction: column;
+    inline-size: 100%;
+    block-size: auto;
+    box-sizing: border-box;
+    border-radius: var(--video--spacer--4);
+}
+
+.VideoInputVideo,
+.isBusy .AllowPermissions {
+    aspect-ratio: var(--video--aspect--ratio);
+}
+
+.isBusy .AllowPermissions {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: var(--video--color--background);
+    backdrop-filter: blur(var(--video--spacer--50));
+    border-radius: var(--video--spacer--4);
+
+}
+
+.AllowPermissionsText {
+    color: var(--video--color--white);
+    font-family: var(--video--font--family);
+    font-size: var(--video--body--text);
+    width: var(--video--spacer--250);
+    text-align: center;
+}
+
+.VideoInput:not(.isBusy) .AllowPermissions,
+.isBusy .VideoInputVideo {
+    display: none;
+}
+
+@media (width <= 425px) {
+    .AllowPermissionsText {
+        width: 170px;
+    }
+}

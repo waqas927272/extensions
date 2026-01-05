@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "VetPractice Job Scraper",
+  "version": "1.0",
+  "description": "Scrape job listings from Veterinary Practice Partners careers page",
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.vetpracticepartners.com/current-openings/*"],
+      "js": ["vpp-content.js"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "vpp-content.js",
+        "greenhouse-description-scraper.js"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

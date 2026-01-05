@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Records - Mission Pet Health Scraper</title>
+    <link rel="stylesheet" href="results.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-content">
+                <div class="header-title">
+                    <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                    </svg>
+                    <div>
+                        <h1>Job Records</h1>
+                        <p class="header-subtitle">Mission Pet Health - Scraped Positions</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="stats-dashboard" id="statsDashboard" style="display: none;">
+                <div class="stat-card">
+                    <div class="stat-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="totalJobsStat">0</div>
+                        <div class="stat-label">Total Jobs</div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-success">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="withDescStat">0</div>
+                        <div class="stat-label">With Descriptions</div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-warning">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="withoutDescStat">0</div>
+                        <div class="stat-label">Missing Descriptions</div>
+                    </div>
+                </div>
+
+                <div class="stat-card">
+                    <div class="stat-icon stat-icon-info">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        </svg>
+                    </div>
+                    <div class="stat-content">
+                        <div class="stat-value" id="uniqueLocationsStat">0</div>
+                        <div class="stat-label">Unique Locations</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="actions-bar">
+                <div class="action-group">
+                    <button id="getDescriptionsBtn" class="btn btn-primary">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                        </svg>
+                        Get Descriptions
+                    </button>
+                    <button id="exportCSV" class="btn btn-secondary">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                        </svg>
+                        Export CSV
+                    </button>
+                    <button id="exportJSON" class="btn btn-secondary">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+                        </svg>
+                        Export JSON
+                    </button>
+                    <button id="clearData" class="btn btn-danger">
+                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                        </svg>
+                        Clear Data
+                    </button>
+                </div>
+            </div>
+
+            <div class="webhook-section">
+                <div class="webhook-input-group">
+                    <svg class="webhook-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                    </svg>
+                    <input type="url" id="webhookUrl" placeholder="Enter webhook URL to send data...">
+                    <button id="sendWebhookBtn" class="btn btn-webhook">Send to Webhook</button>
+                </div>
+                <div id="webhookStatus" class="webhook-status"></div>
+            </div>
+        </header>
+
+        <div class="controls-section">
+            <div class="search-filter-bar">
+                <div class="search-box">
+                    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+                    </svg>
+                    <input type="text" id="searchInput" placeholder="Search jobs, locations, cities, states...">
+                    <button id="clearSearch" class="clear-btn" style="display: none;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <div class="filter-group">
+                    <select id="stateFilter" class="filter-select">
+                        <option value="">All States</option>
+                    </select>
+                    <select id="descriptionFilter" class="filter-select">
+                        <option value="">All Jobs</option>
+                        <option value="with">With Description</option>
+                        <option value="without">Without Description</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table id="jobsTable">
+                <thead>
+                    <tr>
+                        <th class="th-number">#</th>
+                        <th class="sortable" data-sort="jobTitle">
+                            Job Title
+                            <span class="sort-indicator"></span>
+                        </th>
+                        <th class="sortable" data-sort="location">
+                            Location
+                            <span class="sort-indicator"></span>
+                        </th>
+                        <th class="sortable" data-sort="city">
+                            City
+                            <span class="sort-indicator"></span>
+                        </th>
+                        <th class="sortable" data-sort="state">
+                            State
+                            <span class="sort-indicator"></span>
+                        </th>
+                        <th class="th-link">Link</th>
+                        <th class="th-description">Job Description</th>
+                    </tr>
+                </thead>
+                <tbody id="jobsTableBody">
+                    <!-- Jobs will be inserted here -->
+                </tbody>
+            </table>
+        </div>
+
+        <div id="noData" class="no-data" style="display: none;">
+            <svg class="no-data-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+            </svg>
+            <h2>No Jobs Found</h2>
+            <p>Please scrape jobs first using the extension popup.</p>
+        </div>
+
+        <div id="noResults" class="no-data" style="display: none;">
+            <svg class="no-data-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            <h2>No Results Found</h2>
+            <p>Try adjusting your search or filters.</p>
+        </div>
+    </div>
+
+    <script src="results.js"></script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+.Toolbar {
+    position: relative;
+    top: -10px;
+    inset-block-end: 0;
+    display: flex;
+    flex-direction: column;
+    inline-size: 100%;
+    background-color: var(--video--color--background);
+    backdrop-filter: blur(var(--video--spacer--25));
+    border-radius: var(--video--spacer--4);
+    height: 77px;
+    justify-content: center
+}
+
+.ControlsContainer {
+    display: flex;
+    flex-direction: row;
+    padding: 24px;
+    gap: 20px;
+    align-items: center;
+    justify-content: var(--video--justify--content);
+}
+
+
+/* Recording button */
+.ControlsItem.RecVideo .Button:before {
+    content: "⬤";
+    color: var(--video--color--red);
+    font-size: 13px;
+    padding-bottom: var(--video--spacer--1);
+}
+
+.IsRecording .RecVideo {
+    visibility: hidden;
+    width: var(--video--spacer--60);
+}
+
+/* Stop button */
+.ControlsItem.StopVideo .Button:before {
+    content: "◼";
+    color: var(--video--color--red);
+    font-size: 17px;
+    padding-bottom: var(--video--spacer--1);
+}
+
+/* Play button */
+.ControlsItem.PlayVideo .Button:before {
+    content: "▶";
+    color: var(--video--color--green);
+    font-size: 14px;
+    padding-bottom: var(--video--spacer--2);
+}
+
+.IsIdle .StopVideo,
+.IsIdle:not(.HasRecording) .PlayVideo,
+.IsIdle .Timer,
+.IsRecording .PlayVideo,
+.RecordNotAllowed .RecVideo .Button,
+.isBusy .RecVideo,
+.IsPlaying .Timer,
+.IsPlaying .StopVideo,
+.VerifyRecord .RecVideo,
+.VerifyRecord .PlayVideo,
+.Toolbar .VerifyRecAgainBtns {
+    display: none;
+}
+
+@media (width <= 425px) {
+    .Toolbar {
+        background-color: transparent;
+        backdrop-filter: none;
+        top: auto;
+        height: auto;
+    }
+
+    .ControlsContainer {
+        flex-direction: column;
+        padding: var(--video--spacer--12) 0 var(--video--spacer--12) 0;
+        gap: var(--video--spacer--12);
+    }
+
+    .IsRecording .ControlsContainer {
+        flex-direction: column-reverse;
+        position: relative;
+        bottom: var(--video--spacer--12);
+        padding: 0 0 0 0;
+    }
+
+    .IsRecording .RecVideo,
+    .IsIdle .Timer {
+        display: none;
+    }
+
+    .VerifyRecord .Toolbar .VerifyRecAgainBtns {
+        display: flex;
+        flex-direction: column;
+        gap: var(--video--spacer--12);
+        margin-top: 0;
+
+    }
+}

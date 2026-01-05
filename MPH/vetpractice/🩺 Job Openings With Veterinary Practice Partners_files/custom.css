@@ -1,0 +1,37 @@
+.select-custom-wrp{
+    position: relative;
+    max-width: 585px;    
+}
+.select-custom-wrp:before{
+    content: '';
+    width: 16px;
+    height: 11px;
+    background: url(../img/chevron-broun.svg) no-repeat;
+    position: absolute;
+    right: 30px;
+    top: 25px;    
+    z-index: 2;
+    pointer-events: none;
+}
+.select-custom-wrp-blue:before{
+    filter: brightness(0) saturate(100%) invert(30%) sepia(97%) saturate(1274%) hue-rotate(170deg) brightness(93%) contrast(97%);
+}
+.select-custom-wrp-blue .select-custom{
+    border: 2px solid #E4F8FF;    
+    color: #047FAD;
+}
+.select-custom{
+    box-sizing: border-box;
+    width: 100%;   
+    padding: 20px 30px;
+    border-radius: 100px;    
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    text-indent: 1px;
+    text-overflow: '';
+    outline: none;
+    cursor: pointer;
+}
+.blog-category-select-to-header{
+    margin-top: -100px;
+}

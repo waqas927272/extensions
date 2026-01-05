@@ -1,0 +1,82 @@
+.ControlsItem .SettingsButton {
+    display: flex;
+}
+
+.ControlsItem .BtnSettings {
+    background-color: var(--video--color--bg--icons);
+    border-radius: var(--video--spacer--50);
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+    align-items: center;
+    border: var(--video--border--basic);
+    box-shadow: var(--video--button--shadow);
+    height: var(--video--spacer--40);
+    min-width: 62px;
+    text-decoration: none;
+}
+
+.ControlsItem .BtnSettings:before {
+    content: url(/portalpacks/web/assets/body/images/arrow_up.79f00a9a.svg);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding-top: 5px;
+    min-width: 22px;
+}
+
+.ControlsItem .BtnSettings:after {
+    content: '';
+    height: 100%;
+    width: var(--video--spacer--40);
+    background-color: var(--video--color--white);
+    border-radius: 100%;
+    background-image: url(/portalpacks/web/assets/body/images/settings.506aeb70.svg);
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.ControlsItem .BtnSettings:hover {
+    background-color: #ECECEC;
+}
+
+.ControlsItem .BtnSettings:hover:after {
+    background-color: var(--video--color--button--hover);
+}
+
+.ControlsItem .BtnSettings:focus {
+    background-color: var(--video--color--bg--icons);
+    border: var(--video--border--black);
+    outline: var(--video--border--white);
+}
+
+.ControlsItem .BtnSettings:hover:focus {
+    background-color: var(--video--color--button--hover);
+    border: var(--video--border--black);
+    outline: var(--video--border--white);
+}
+
+.ControlsItem .BtnSettings:active {
+    background-color: #BEBEBE;
+    border: var(--video--border--transparent);
+    outline: var(--video--border--transparent);
+}
+
+.ControlsItem .BtnSettings:hover:active {
+    background-color: var(--video--color--button--pressed);
+    border: var(--video--border--transparent);
+    outline: var(--video--border--transparent);
+}
+
+.IsRecording .SettingsButton,
+.isBusy .SettingsButton,
+.HasRecording .SettingsButton,
+.IsPlaying .SettingsButton {
+    display: none;
+}
+
+@media (width <= 425px) {
+    .ControlsItem.SettingsButton {
+        inline-size: unset;
+    }
+}

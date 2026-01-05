@@ -1,0 +1,20 @@
+.CloseButton {
+    display: flex;
+    justify-content: flex-end;
+    width: 30px;
+}
+
+.CloseButton .closeModalBtn {
+    content: url(/portalpacks/web/assets/body/images/close.cabd726b.svg);
+    border-radius: var(--video--spacer--4);
+}
+
+.CloseButton .closeModalBtn:hover {
+    background-color: var(--video--color--black);
+}
+
+.CloseButton .closeModalBtn:focus {
+    background-color: var(--video--color--black);
+    border: var(--video--border--black);
+    outline: var(--video--border--white);
+}

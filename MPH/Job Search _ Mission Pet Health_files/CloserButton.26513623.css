@@ -1,0 +1,35 @@
+.pkg {
+    display: inline-block;
+    width: 18px;
+    height: 18px;
+    overflow: hidden;
+    background-image: url("ICO_controls_closeSpriteStyleguide.svg");
+    background-position: 0 0;
+    text-indent: 100%;
+    white-space: nowrap;
+}
+
+.pkg:hover,
+.pkg:focus-visible {
+    background-position: 0 36px;
+}
+
+.pkg:active {
+    background-position: 0 18px;
+}
+
+.pkg_Offline {
+    background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABIAAAA2CAMAAAD9LTlFAAAB7FBMVEUAAAAAAAD///+AgICqqqqfn5+ioqKVlZWdnZ1NTU2ZmZlJSUmenp5GRkaXl5dOTk6bm5tKSkqfn59HR0eZmZmhoaFNTU2bm5tLS0uenp6ZmZlOTk6cnJyfn59KSkqampqZmZlLS0ubm5tJSUmenp6ampqcnJycnJyampqdnZ1LS0ubm5tKSkqcnJxNTU2enp5JSUmbm5uenp5KSkqbm5tNTU2dnZ1LS0uampqcnJycnJycnJycnJybm5ubm5ubm5ucnJydnZ2bm5ucnJydnZ2cnJycnJycnJybm5ucnJxLS0udnZ2cnJxLS0ubm5tLS0ucnJydnZ2cnJxLS0ucnJxLS0udnZ1KSkqcnJxLS0ucnJxLS0ubm5tLS0ucnJxLS0ucnJxLS0ucnJxKSkqbm5ucnJxLS0ucnJxLS0ucnJxLS0udnZ1LS0ucnJxMTEycnJxLS0ucnJxLS0ucnJydnZ2cnJybm5ucnJycnJycnJycnJxLS0udnZ1LS0ucnJxLS0ucnJxLS0ucnJxLS0ucnJxLS0ucnJycnJycnJybm5tLS0ucnJxLS0ucnJycnJybm5ucnJxLS0ucnJxLS0ucnJxLS0ucnJxLS0ucnJxLS0ucnJxLS0ucnJycnJxLS0ucnJxLS0ucnJxLS0ucnJwjjVazAAAAonRSTlMAAQECAwgLDA0UFBUVFhYXFxgYGRkbISEiIiMkJCUmJigpKSoqKywxOjw9PT4+Pz9CQkRFRUZGR0dIWF1kZmlrbG1ub3BxdHl9lpmZmpycnZ2en7e3uLi5ubq6u7u8vL6+v7/AwMHCwsPDxcXGxsfHyMjJycrM0tPU1dbX19nZ2trd3d7e39/i4+Tm5ufn6Onq7Ozt7e7u7+/x8fLy8/T0+PhzQbNWAAAAAWJLR0QCZgt8ZAAAAgRJREFUOMttkOlDElEUxY+KlSi4llqWZZAtmilktG/QqoLtLiUFlkv7ZhQpmmWLo4C4pLjN/KO99+7wGMzz4c5vzrx359wLcLnaI/F4xNeMlGyvhtx2s/mAJzRYQ05D9LyJyHQpWs+f1VNOeR6uqSpWe8/CoHN+wPkxh1E59GIKNeLWBQY74weBax+yGV5uw/BefqApcejqZysnexjLW0WPk8u/tgvYlsTqFkFnpqdrUlZE0Kmfu09PiH/YwmjxsGelUssav+ftr1yH8xOPXgS98BDodW+MiuqoK+00K1VibEWOfVE5QlT5aMhty821e0Kd5enz7ePr62M+w0rg8v23VU2X3OqCJrVAW53TDEqwENnvtAz1s60KGJdFa0SbeCkIatq9gj+cb2JYfPJb+7uLXggMI0ktgiVlb4gWsUpwx2x+QpTUL3ZaB/3WZ/pF0f5HCRsgWKZQewqhyMJCoDsz6oNNBwLqE2knLreacgxbdfrGNm71hHckFhvxHpfG/peqroF95BydV6Xm67izZ1Y1aGYXkPVWzVAf4BDwTRb1GFrFS35AVe/m/+Z8A1/Fpx5LX1fhc4FfsEQtAsWlr4n+YoXgdl7eY6Il/WKHZaDH8lS/KNp/L2YDBEonqT2FmJSFhUBXZtT7mw4E1M2kndhhWkXFw5TTsUNuzOEdXVsb9TrEyz8QJlFH1Q0aCwAAAABJRU5ErkJggg==');
+}
+
+.pkg_NotificationAndDialog {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    background-image: url("ICO_controls__closeSimpleneutral500outline.svg");
+    background-position: 0 0;
+    text-indent: 100%;
+    white-space: nowrap;
+}
