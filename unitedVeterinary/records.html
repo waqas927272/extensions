@@ -1,68 +1,735 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Scraped Job Records</title>
+  <meta charset="UTF-8">
+  <title>Scraped Job Records - United Veterinary</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 20px;
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
     }
+
+    body {
+      font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(135deg, #fffbf5 0%, #fef3e2 50%, #fff7ed 100%);
+      min-height: 100vh;
+      color: #1e293b;
+    }
+
+    /* Animated background */
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background:
+        radial-gradient(circle at 20% 80%, rgba(249, 161, 27, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(251, 191, 36, 0.06) 0%, transparent 50%),
+        radial-gradient(circle at 40% 40%, rgba(245, 158, 11, 0.05) 0%, transparent 40%);
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #F9A11B 0%, #e8920f 40%, #d4850d 100%);
+      padding: 40px 48px;
+      color: white;
+      position: relative;
+      overflow: hidden;
+      box-shadow:
+        0 4px 30px rgba(249, 161, 27, 0.3),
+        0 10px 60px rgba(232, 146, 15, 0.2);
+    }
+
+    /* Decorative header elements */
+    .header::before {
+      content: '';
+      position: absolute;
+      top: -100px;
+      right: -100px;
+      width: 400px;
+      height: 400px;
+      background: radial-gradient(circle, rgba(255,255,255,0.15) 0%, transparent 70%);
+      animation: float 8s ease-in-out infinite;
+    }
+
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: -80px;
+      left: -80px;
+      width: 300px;
+      height: 300px;
+      background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+      animation: float 6s ease-in-out infinite reverse;
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      50% { transform: translate(20px, -20px) scale(1.05); }
+    }
+
+    .version-tag {
+      position: absolute;
+      top: 20px;
+      right: 28px;
+      background: rgba(255, 255, 255, 0.25);
+      padding: 8px 16px;
+      border-radius: 24px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      z-index: 10;
+    }
+
+    .header-content {
+      max-width: 1500px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+      z-index: 5;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+    }
+
+    .logo-icon {
+      width: 72px;
+      height: 72px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease;
+    }
+
+    .logo-icon:hover {
+      transform: scale(1.05) rotate(-5deg);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
+    }
+
+    .logo-icon svg {
+      width: 38px;
+      height: 38px;
+      fill: white;
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
+    }
+
+    .header h1 {
+      font-size: 32px;
+      font-weight: 800;
+      margin-bottom: 6px;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+      letter-spacing: -0.5px;
+    }
+
+    .header p {
+      font-size: 15px;
+      opacity: 0.95;
+      font-weight: 500;
+      letter-spacing: 0.3px;
+    }
+
+    .stats-badge {
+      background: rgba(255, 255, 255, 0.2);
+      padding: 24px 48px;
+      border-radius: 24px;
+      backdrop-filter: blur(12px);
+      text-align: center;
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease;
+    }
+
+    .stats-badge:hover {
+      transform: scale(1.02);
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+    }
+
+    .stats-badge strong {
+      display: block;
+      font-size: 48px;
+      font-weight: 800;
+      margin-bottom: 4px;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .stats-badge span {
+      font-size: 14px;
+      opacity: 0.95;
+      font-weight: 600;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .container {
+      max-width: 1500px;
+      margin: 0 auto;
+      padding: 40px 48px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .webhook-bar {
+      background: white;
+      border-radius: 24px;
+      padding: 28px 32px;
+      margin-bottom: 28px;
+      box-shadow:
+        0 4px 24px rgba(0, 0, 0, 0.06),
+        0 1px 2px rgba(0, 0, 0, 0.04);
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      border: 1px solid rgba(249, 161, 27, 0.1);
+      transition: all 0.3s ease;
+    }
+
+    .webhook-bar:hover {
+      box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.08),
+        0 2px 4px rgba(0, 0, 0, 0.04);
+    }
+
+    .webhook-row {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+
+    .webhook-bar label {
+      font-size: 14px;
+      font-weight: 700;
+      color: #475569;
+      min-width: 120px;
+      letter-spacing: 0.3px;
+    }
+
+    .webhook-input-group {
+      display: flex;
+      flex: 1;
+      gap: 14px;
+      min-width: 300px;
+    }
+
+    .webhook-input-group input {
+      flex: 1;
+      padding: 16px 20px;
+      border: 2px solid #e2e8f0;
+      border-radius: 14px;
+      font-size: 14px;
+      font-weight: 500;
+      outline: none;
+      transition: all 0.25s ease;
+      background: #fafaf9;
+    }
+
+    .webhook-input-group input:focus {
+      border-color: #F9A11B;
+      box-shadow: 0 0 0 4px rgba(249, 161, 27, 0.12);
+      background: white;
+    }
+
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 28px;
+      flex-wrap: wrap;
+      gap: 20px;
+    }
+
+    .search-box {
+      display: flex;
+      align-items: center;
+      background: white;
+      border: 2px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 16px 24px;
+      flex: 1;
+      max-width: 450px;
+      transition: all 0.25s ease;
+      box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+    }
+
+    .search-box:focus-within {
+      border-color: #F9A11B;
+      box-shadow: 0 0 0 4px rgba(249, 161, 27, 0.12), 0 4px 20px rgba(249, 161, 27, 0.1);
+    }
+
+    .search-box svg {
+      width: 22px;
+      height: 22px;
+      fill: #94a3b8;
+      margin-right: 14px;
+      transition: fill 0.2s ease;
+    }
+
+    .search-box:focus-within svg {
+      fill: #F9A11B;
+    }
+
+    .search-box input {
+      border: none;
+      outline: none;
+      font-size: 15px;
+      font-weight: 500;
+      width: 100%;
+      color: #1e293b;
+      background: transparent;
+    }
+
+    .search-box input::placeholder {
+      color: #94a3b8;
+      font-weight: 400;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 28px;
+      border-radius: 14px;
+      border: none;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+      transition: left 0.5s ease;
+    }
+
+    .btn:hover::before {
+      left: 100%;
+    }
+
+    .btn:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 28px rgba(0, 0, 0, 0.15);
+    }
+
+    .btn:active {
+      transform: translateY(-1px);
+    }
+
+    .btn svg {
+      width: 18px;
+      height: 18px;
+      transition: transform 0.3s ease;
+    }
+
+    .btn:hover svg {
+      transform: scale(1.1);
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #F9A11B 0%, #e8920f 50%, #d4850d 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      box-shadow: 0 8px 32px rgba(249, 161, 27, 0.45);
+    }
+
+    .btn-webhook {
+      background: linear-gradient(135deg, #F9A11B 0%, #e8920f 50%, #d4850d 100%);
+      color: white;
+    }
+
+    .btn-webhook:hover {
+      box-shadow: 0 8px 32px rgba(249, 161, 27, 0.45);
+    }
+
+    .btn-danger {
+      background: white;
+      color: #64748b;
+      border: 2px solid #e2e8f0;
+    }
+
+    .btn-danger:hover {
+      background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+      border-color: #fca5a5;
+      color: #dc2626;
+      box-shadow: 0 8px 28px rgba(220, 38, 38, 0.2);
+    }
+
+    .button-group {
+      display: flex;
+      gap: 14px;
+      flex-wrap: wrap;
+    }
+
+    .table-container {
+      background: white;
+      border-radius: 24px;
+      overflow: hidden;
+      box-shadow:
+        0 4px 24px rgba(0, 0, 0, 0.06),
+        0 1px 2px rgba(0, 0, 0, 0.04);
+      border: 1px solid rgba(249, 161, 27, 0.1);
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 20px;
     }
-    th, td {
-      border: 1px solid #ddd;
-      padding: 8px;
-      text-align: left;
+
+    thead {
+      background: linear-gradient(135deg, #F9A11B 0%, #e8920f 100%);
     }
+
     th {
-      background-color: #f2f2f2;
+      color: white;
+      font-weight: 700;
+      text-align: left;
+      padding: 20px 28px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
       cursor: pointer;
+      transition: background 0.2s ease;
+      user-select: none;
     }
-    .sort-asc::after {
-        content: " ▲";
+
+    th:hover {
+      background: rgba(255, 255, 255, 0.1);
     }
-    .sort-desc::after {
-        content: " ▼";
+
+    th.sort-asc::after {
+      content: " ▲";
+      font-size: 10px;
     }
-    .clear-button {
-        margin-top: 20px;
-        padding: 10px 15px;
-        background-color: #f44336;
-        color: white;
-        border: none;
-        cursor: pointer;
+
+    th.sort-desc::after {
+      content: " ▼";
+      font-size: 10px;
     }
-    .clear-button:hover {
-        background-color: #d32f2f;
+
+    td {
+      padding: 20px 28px;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 14px;
+      color: #475569;
+      font-weight: 500;
+      transition: background-color 0.2s ease;
+    }
+
+    tbody tr {
+      transition: all 0.2s ease;
+    }
+
+    tbody tr:nth-child(even) {
+      background-color: #fafaf9;
+    }
+
+    tbody tr:hover {
+      background-color: #fef3e2;
+      transform: scale(1.002);
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    td a {
+      color: #F9A11B;
+      text-decoration: none;
+      font-weight: 600;
+      transition: color 0.2s ease;
+    }
+
+    td a:hover {
+      color: #d4850d;
+      text-decoration: underline;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 100px 48px;
+      animation: fadeIn 0.5s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .empty-state-icon {
+      width: 120px;
+      height: 120px;
+      background: linear-gradient(135deg, #fef3e2 0%, #fffbf5 100%);
+      border-radius: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 32px;
+      border: 2px solid #fcd34d;
+      box-shadow: 0 8px 32px rgba(249, 161, 27, 0.15);
+    }
+
+    .empty-state svg {
+      width: 56px;
+      height: 56px;
+      fill: #F9A11B;
+    }
+
+    .empty-state h2 {
+      color: #0f172a;
+      font-size: 26px;
+      font-weight: 800;
+      margin-bottom: 16px;
+      letter-spacing: -0.5px;
+    }
+
+    .empty-state p {
+      color: #64748b;
+      font-size: 16px;
+      max-width: 450px;
+      margin: 0 auto;
+      line-height: 1.7;
+      font-weight: 500;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 32px;
+      right: 32px;
+      padding: 18px 28px;
+      border-radius: 16px;
+      font-size: 15px;
+      font-weight: 600;
+      z-index: 9999;
+      animation: slideInUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(8px);
+    }
+
+    .toast svg {
+      width: 22px;
+      height: 22px;
+      fill: currentColor;
+    }
+
+    .toast.success {
+      background: linear-gradient(135deg, #F9A11B 0%, #e8920f 100%);
+      color: white;
+    }
+
+    .toast.error {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: white;
+    }
+
+    @keyframes slideInUp {
+      from {
+        transform: translateY(100px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #fef3e2;
+      border-radius: 8px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: linear-gradient(135deg, #fcd34d 0%, #F9A11B 100%);
+      border-radius: 8px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: linear-gradient(135deg, #F9A11B 0%, #e8920f 100%);
+    }
+
+    @media (max-width: 1024px) {
+      .header {
+        padding: 32px 24px;
+      }
+
+      .container {
+        padding: 28px 24px;
+      }
+
+      .header-content {
+        flex-direction: column;
+        gap: 24px;
+        text-align: center;
+      }
+
+      .header-left {
+        flex-direction: column;
+      }
+
+      .toolbar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .search-box {
+        max-width: 100%;
+      }
+
+      .button-group {
+        justify-content: center;
+      }
+
+      .webhook-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .webhook-bar label {
+        min-width: auto;
+      }
+
+      .webhook-input-group {
+        min-width: auto;
+      }
+
+      .table-container {
+        overflow-x: auto;
+      }
+
+      table {
+        min-width: 800px;
+      }
     }
   </style>
 </head>
 <body>
-  <h1>Scraped Job Records</h1>
-  <p id="jobCount">Total Scraped Jobs: 0</p>
-  <button id="clearRecords" class="clear-button">Clear All Records</button>
-
-  <div style="margin-top: 20px;">
-    <input type="text" id="webhookUrl" placeholder="Enter Webhook URL (e.g., http://localhost/webhook)" style="width: 100%; padding: 8px; box-sizing: border-box;">
-    <button id="sendToWebhook" class="clear-button" style="background-color: #4CAF50;">Send to Webhook</button>
+  <div class="header">
+    <span class="version-tag">v1.1</span>
+    <div class="header-content">
+      <div class="header-left">
+        <div class="logo-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M4.5,9.5C4.5,8.12,5.62,7,7,7C8.38,7,9.5,8.12,9.5,9.5C9.5,10.88,8.38,12,7,12C5.62,12,4.5,10.88,4.5,9.5M7,14C9.21,14,11,12.21,11,10C11,7.79,9.21,6,7,6C4.79,6,3,7.79,3,10C3,12.21,4.79,14,7,14M14.5,9.5C14.5,8.12,15.62,7,17,7C18.38,7,19.5,8.12,19.5,9.5C19.5,10.88,18.38,12,17,12C15.62,12,14.5,10.88,14.5,9.5M17,14C19.21,14,21,12.21,21,10C21,7.79,19.21,6,17,6C14.79,6,13,7.79,13,10C13,12.21,14.79,14,17,14M12,18C10.9,18,10,17.1,10,16C10,14.9,10.9,14,12,14C13.1,14,14,14.9,14,16C14,17.1,13.1,18,12,18M12,12C9.79,12,8,13.79,8,16C8,18.21,9.79,20,12,20C14.21,20,16,18.21,16,16C16,13.79,14.21,12,12,12Z"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Scraped Job Records</h1>
+          <p>United Veterinary Care Job Listings</p>
+        </div>
+      </div>
+      <div class="stats-badge">
+        <strong id="totalCount">0</strong>
+        <span>Jobs Found</span>
+      </div>
+    </div>
   </div>
-  <table id="jobRecordsTable">
-    <thead>
-      <tr>
-        <th data-sort="title">Job Title</th>
-        <th data-sort="hospital">Hospital</th>
-        <th data-sort="city">City</th>
-        <th data-sort="location">Location</th>
-        <th data-sort="link">Link</th>
-      </tr>
-    </thead>
-    <tbody>
-      <!-- Scraped data will be inserted here by records.js -->
-    </tbody>
-  </table>
+
+  <div class="container">
+    <div class="webhook-bar">
+      <div class="webhook-row">
+        <label>Webhook URL:</label>
+        <div class="webhook-input-group">
+          <input type="url" id="webhookUrl" placeholder="https://example.com/webhook">
+          <button class="btn btn-webhook" id="sendToWebhook">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M4.93,3.93C3.12,5.74 2,8.24 2,11C2,13.76 3.12,16.26 4.93,18.07L6.34,16.66C4.89,15.22 4,13.22 4,11C4,8.79 4.89,6.78 6.34,5.34L4.93,3.93M19.07,3.93L17.66,5.34C19.11,6.78 20,8.79 20,11C20,13.22 19.11,15.22 17.66,16.66L19.07,18.07C20.88,16.26 22,13.76 22,11C22,8.24 20.88,5.74 19.07,3.93M7.76,6.76C6.67,7.85 6,9.35 6,11C6,12.65 6.67,14.15 7.76,15.24L9.17,13.83C8.45,13.11 8,12.11 8,11C8,9.89 8.45,8.89 9.17,8.17L7.76,6.76M16.24,6.76L14.83,8.17C15.55,8.89 16,9.89 16,11C16,12.11 15.55,13.11 14.83,13.83L16.24,15.24C17.33,14.15 18,12.65 18,11C18,9.35 17.33,7.85 16.24,6.76M12,9A2,2 0 0,0 10,11A2,2 0 0,0 12,13A2,2 0 0,0 14,11A2,2 0 0,0 12,9M11,15V19H10A1,1 0 0,0 9,20H2V22H9A1,1 0 0,0 10,23H14A1,1 0 0,0 15,22H22V20H15A1,1 0 0,0 14,19H13V15H11Z"/>
+            </svg>
+            Send to Webhook
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="search-box">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z"/>
+        </svg>
+        <input type="text" id="searchInput" placeholder="Search jobs by title, hospital, location...">
+      </div>
+      <div class="button-group">
+        <button class="btn btn-primary" id="exportCsv">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M12,19L8,15H10.5V12H13.5V15H16L12,19Z"/>
+          </svg>
+          Export CSV
+        </button>
+        <button class="btn btn-danger" id="clearRecords">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/>
+          </svg>
+          Clear All
+        </button>
+      </div>
+    </div>
+
+    <div class="table-container">
+      <table id="jobRecordsTable">
+        <thead>
+          <tr>
+            <th data-sort="title">Job Title</th>
+            <th data-sort="hospital">Hospital</th>
+            <th data-sort="city">City</th>
+            <th data-sort="location">Location</th>
+            <th data-sort="link">Link</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Scraped data will be inserted here by records.js -->
+        </tbody>
+      </table>
+      <div id="emptyState" class="empty-state hidden">
+        <div class="empty-state-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M20,6H12L10,4H4A2,2 0 0,0 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8A2,2 0 0,0 20,6M20,18H4V6H9.17L11.17,8H20V18M15,13H17V15H15V17H13V15H11V13H13V11H15V13Z"/>
+          </svg>
+        </div>
+        <h2>No Jobs Scraped Yet</h2>
+        <p>Visit the United Veterinary Care careers page and use the extension to scrape available job listings.</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="toastContainer"></div>
   <script src="records.js"></script>
 </body>
 </html>

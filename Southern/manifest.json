@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Shore Capital Job Scraper",
+  "version": "1.0",
+  "description": "Scrapes job data from Shore Capital Companies careers page.",
+  "permissions": ["activeTab", "storage", "scripting", "tabs"],
+  "host_permissions": [
+    "https://jobs.shorecp.com/*",
+    "https://www.shorecp.com/*",
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://jobs.shorecp.com/*",
+        "https://www.shorecp.com/*"
+      ],
+      "js": ["content.js"],
+      "all_frames": true
+    }
+  ]
+}

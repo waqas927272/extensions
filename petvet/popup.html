@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PetVet Job Scraper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>PetVet Care Centers</h1>
+      <p>Job Scraper</p>
+    </div>
+
+    <div class="status-section">
+      <div class="status-card">
+        <span class="status-label">Status</span>
+        <span class="status-value" id="status">Ready</span>
+      </div>
+      <div class="status-card">
+        <span class="status-label">Jobs Found</span>
+        <span class="status-value" id="job-count">0</span>
+      </div>
+    </div>
+
+    <div class="progress-section hidden" id="progress-section">
+      <div class="progress-bar">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+      <p class="progress-text" id="progress-text">Scraping jobs...</p>
+    </div>
+
+    <div class="actions">
+      <button id="scrape-btn" class="btn btn-primary">Start Scraping</button>
+      <button id="stop-btn" class="btn btn-danger hidden">Stop</button>
+      <button id="view-btn" class="btn btn-secondary">View Scraped Jobs</button>
+    </div>
+
+    <div class="info">
+      <p>Navigate to <a href="https://www.petvetcarecenters.com/site/careers-search-results" target="_blank">PetVet Careers</a> page first.</p>
+    </div>
+
+    <div class="footer">
+      <p>PetVet Scraper v1.0</p>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

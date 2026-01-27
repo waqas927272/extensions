@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "PetVet Care Centers Job Scraper",
+  "version": "1.0",
+  "description": "Scrapes job data from PetVet Care Centers careers page.",
+  "permissions": ["activeTab", "storage", "scripting", "tabs"],
+  "host_permissions": [
+    "https://www.petvetcarecenters.com/*",
+    "https://petvetcarecenters.com/*",
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://www.petvetcarecenters.com/*",
+        "https://petvetcarecenters.com/*"
+      ],
+      "js": ["content.js"],
+      "all_frames": true
+    }
+  ]
+}

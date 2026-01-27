@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir \"C:\\\\wamp64\\\\www\\\\extensions\")"
+    ]
+  }
+}

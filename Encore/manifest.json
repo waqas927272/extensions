@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Encore Vet Job Scraper",
+  "version": "1.0",
+  "description": "Scrapes job data from Encore Vet Group careers page.",
+  "permissions": ["activeTab", "storage", "scripting", "tabs"],
+  "host_permissions": [
+    "https://careers.encorevet.com/*",
+    "https://careers-encorevet.icims.com/*",
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "images/icon.png",
+      "48": "images/icon.png",
+      "128": "images/icon.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://careers.encorevet.com/*"],
+      "js": ["content.js"],
+      "css": []
+    }
+  ]
+}

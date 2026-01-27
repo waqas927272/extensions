@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VIPVet Job Scraper</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>VIPVet Job Scraper</h1>
+      <p class="subtitle">Veterinary Innovative Partners</p>
+    </header>
+
+    <div id="status-section" class="section">
+      <div class="status-card">
+        <div class="status-item">
+          <span class="label">Jobs on Page:</span>
+          <span id="jobs-count" class="value">-</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Current Page:</span>
+          <span id="current-page" class="value">-</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Total Pages:</span>
+          <span id="total-pages" class="value">-</span>
+        </div>
+        <div class="status-item">
+          <span class="label">Total Jobs:</span>
+          <span id="total-jobs" class="value">-</span>
+        </div>
+      </div>
+    </div>
+
+    <div id="progress-section" class="section hidden">
+      <div class="progress-card">
+        <div class="progress-text">
+          <span id="progress-label">Scraping...</span>
+          <span id="progress-detail"></span>
+        </div>
+        <div class="progress-bar">
+          <div id="progress-fill" class="progress-fill"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="error-section" class="section hidden">
+      <div class="error-card">
+        <span id="error-message"></span>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="scrape-btn" class="btn btn-primary">
+        <span class="btn-icon">&#9658;</span>
+        Start Scraping
+      </button>
+      <button id="stop-btn" class="btn btn-danger hidden">
+        <span class="btn-icon">&#9632;</span>
+        Stop
+      </button>
+      <button id="view-btn" class="btn btn-secondary">
+        <span class="btn-icon">&#128196;</span>
+        View Scraped Records
+      </button>
+      <button id="clear-btn" class="btn btn-outline">
+        <span class="btn-icon">&#128465;</span>
+        Clear Data
+      </button>
+    </div>
+
+    <div id="results-summary" class="section hidden">
+      <div class="summary-card">
+        <span class="summary-icon">&#10003;</span>
+        <span id="summary-text">0 jobs scraped</span>
+      </div>
+    </div>
+
+    <footer>
+      <p>VIPVet Job Scraper v1.0</p>
+    </footer>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

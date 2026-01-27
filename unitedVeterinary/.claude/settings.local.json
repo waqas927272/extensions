@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(dir /b *.css)"
+      "Bash(dir /b *.css)",
+      "Bash(dir:*)",
+      "Bash(del \"\\\\?\\\\C:\\\\wamp64\\\\www\\\\extensions\\\\innovetive\\\\nul\")",
+      "Bash(git checkout:*)"
     ]
   }
 }
