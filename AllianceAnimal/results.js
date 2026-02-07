@@ -195,7 +195,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (storedJobs.length === 0) {
         jobRecordsTableBody.innerHTML = `
           <tr>
-            <td colspan="12" class="no-records">
+            <td colspan="13" class="no-records">
               <svg class="no-records-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14 2 14 8 20 8"></polyline>
@@ -255,7 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (filteredUniqueJobs.length === 0) {
         jobRecordsTableBody.innerHTML = `
           <tr>
-            <td colspan="12" class="no-records">
+            <td colspan="13" class="no-records">
               <svg class="no-records-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <circle cx="11" cy="11" r="8"></circle>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -283,6 +283,7 @@ document.addEventListener('DOMContentLoaded', () => {
               <input type="checkbox" class="row-checkbox" data-index="${index}" data-type="unique">
             </td>
             <td>${index + 1}</td>
+            <td class="job-id-cell">${escapeHtml(job.jobId || 'N/A')}</td>
             <td class="parent-client-cell">${escapeHtml(PARENT_CLIENT_NAME)}</td>
             <td class="job-title">${escapeHtml(job.title)}</td>
             <td class="job-type-cell">${escapeHtml(job.jobType || 'N/A')}</td>
@@ -321,6 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
               <input type="checkbox" class="row-checkbox" data-index="${index}" data-type="duplicate">
             </td>
             <td>${index + 1}</td>
+            <td class="job-id-cell">${escapeHtml(job.jobId || 'N/A')}</td>
             <td class="parent-client-cell">${escapeHtml(PARENT_CLIENT_NAME)}</td>
             <td class="job-title">${escapeHtml(job.title)}</td>
             <td class="job-type-cell">${escapeHtml(job.jobType || 'N/A')}</td>
@@ -341,7 +343,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else if (duplicateJobs.length > 0) {
         duplicateRecordsTableBody.innerHTML = `
           <tr>
-            <td colspan="12" class="no-records">
+            <td colspan="13" class="no-records">
               <p class="no-records-text">No duplicates match your search.</p>
             </td>
           </tr>
@@ -466,6 +468,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Map job records to include all required fields
     const jobsWithParentClient = selectedJobs.map(job => ({
       parent_client: PARENT_CLIENT_NAME,
+      job_id: job.jobId || '',
       job_title: job.title || '',
       job_type: job.jobType || '',
       hospital: job.hospitalName || '',
@@ -958,6 +961,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Map job records to include all required fields
     const jobsWithParentClient = storedJobs.map(job => ({
       parent_client: PARENT_CLIENT_NAME,
+      job_id: job.jobId || '',
       job_title: job.title || '',
       job_type: job.jobType || '',
       hospital: job.hospitalName || '',

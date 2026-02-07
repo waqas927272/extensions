@@ -6,7 +6,12 @@
   "permissions": [
     "activeTab",
     "storage",
-    "scripting"
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://innovetivepetcare.pinpointhq.com/*",
+    "<all_urls>"
   ],
   "action": {
     "default_popup": "popup.html"

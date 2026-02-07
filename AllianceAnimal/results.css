@@ -466,6 +466,12 @@ td:first-child {
   text-align: center;
 }
 
+.job-id-cell {
+  color: #718096;
+  font-size: 12px;
+  font-family: 'Consolas', 'Monaco', monospace;
+}
+
 .job-title {
   font-weight: 600;
   color: #1a365d;

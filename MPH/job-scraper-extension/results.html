@@ -111,6 +111,16 @@
                 </div>
                 <div id="webhookStatus" class="webhook-status"></div>
             </div>
+
+            <div class="progress-section hidden" id="progressSection">
+                <div class="progress-info">
+                    <span class="progress-label" id="progressLabel">Progress</span>
+                    <span class="progress-text" id="progressText">0 / 0</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div class="progress-bar" id="progressBar"></div>
+                </div>
+            </div>
         </header>
 
         <div class="controls-section">
@@ -149,6 +159,7 @@
                             Job Title
                             <span class="sort-indicator"></span>
                         </th>
+                        <th class="th-jobid">Job ID</th>
                         <th class="sortable" data-sort="location">
                             Location
                             <span class="sort-indicator"></span>

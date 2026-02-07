@@ -518,6 +518,68 @@
       font-weight: 500;
     }
 
+    /* Progress Bar */
+    .progress-section {
+      background: white;
+      border-radius: 24px;
+      padding: 24px 32px;
+      margin-bottom: 28px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+      border: 1px solid rgba(249, 161, 27, 0.1);
+    }
+
+    .progress-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .progress-label {
+      font-size: 14px;
+      font-weight: 700;
+      color: #475569;
+    }
+
+    .progress-text {
+      font-size: 14px;
+      font-weight: 700;
+      color: #F9A11B;
+    }
+
+    .progress-bar-container {
+      width: 100%;
+      height: 10px;
+      background: #f1f5f9;
+      border-radius: 5px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #F9A11B, #e8920f);
+      border-radius: 5px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+
+    /* Description Column */
+    .description-cell {
+      max-height: 100px;
+      overflow-y: auto;
+      font-size: 12px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: #475569;
+      padding: 8px 10px;
+      background: #fafaf9;
+      border-radius: 8px;
+      border: 1px solid #f1f5f9;
+      min-width: 250px;
+      max-width: 400px;
+    }
+
     .hidden {
       display: none !important;
     }
@@ -687,6 +749,12 @@
         <input type="text" id="searchInput" placeholder="Search jobs by title, hospital, location...">
       </div>
       <div class="button-group">
+        <button class="btn btn-primary" id="getDescriptionsBtn">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M13,13H11V18H13V13M13,9.5H11V11.5H13V9.5Z"/>
+          </svg>
+          Get Descriptions
+        </button>
         <button class="btn btn-primary" id="exportCsv">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
             <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M12,19L8,15H10.5V12H13.5V15H16L12,19Z"/>
@@ -702,15 +770,27 @@
       </div>
     </div>
 
+    <div class="progress-section hidden" id="progressSection">
+      <div class="progress-info">
+        <span class="progress-label" id="progressLabel">Progress</span>
+        <span class="progress-text" id="progressText">0 / 0</span>
+      </div>
+      <div class="progress-bar-container">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+    </div>
+
     <div class="table-container">
       <table id="jobRecordsTable">
         <thead>
           <tr>
             <th data-sort="title">Job Title</th>
+            <th data-sort="jobId">Job ID</th>
             <th data-sort="hospital">Hospital</th>
             <th data-sort="city">City</th>
             <th data-sort="location">Location</th>
             <th data-sort="link">Link</th>
+            <th>Description</th>
           </tr>
         </thead>
         <tbody>

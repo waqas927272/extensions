@@ -1,5 +1,6 @@
-// Global variable to prevent multiple description scraping processes
-let isScrapingDescriptions = false;
+// Global variables
+let isGettingDescriptions = false;
+let currentJobIndex = 0;
 let allJobs = [];
 let filteredJobs = [];
 let currentSort = { field: null, direction: 'asc' };
@@ -208,6 +209,7 @@ function displayJobs(jobs) {
         row.innerHTML = `
             <td>${index + 1}</td>
             <td><strong>${escapeHtml(job.jobTitle)}</strong></td>
+            <td class="job-id-cell">${escapeHtml(job.jobId || 'N/A')}</td>
             <td>${escapeHtml(job.location)}</td>
             <td>${escapeHtml(job.city)}</td>
             <td>${escapeHtml(job.state)}</td>
@@ -219,12 +221,23 @@ function displayJobs(jobs) {
 }
 
 async function getJobDescriptions() {
-    if (isScrapingDescriptions) {
-        alert('A description scraping process is already running.');
+    if (isGettingDescriptions) {
+        alert('Already getting descriptions. Please wait...');
         return;
     }
 
-    isScrapingDescriptions = true;
+    const data = await chrome.storage.local.get(['scrapedJobs']);
+    const jobs = data.scrapedJobs || [];
+
+    const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
+    if (jobsWithoutDesc.length === 0) {
+        alert('All jobs already have descriptions!');
+        return;
+    }
+
+    isGettingDescriptions = true;
+    currentJobIndex = 0;
+
     const getBtn = document.getElementById('getDescriptionsBtn');
     getBtn.disabled = true;
     getBtn.innerHTML = `
@@ -234,14 +247,40 @@ async function getJobDescriptions() {
         Getting Descriptions...
     `;
 
-    let { scrapedJobs } = await chrome.storage.local.get('scrapedJobs');
-    const jobsToScrape = scrapedJobs.filter(job => !job.description && job.link);
-    const totalToScrape = jobsToScrape.length;
-    let processedCount = 0;
+    // Show progress
+    const progressSection = document.getElementById('progressSection');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const progressLabel = document.getElementById('progressLabel');
+    progressSection.classList.remove('hidden');
+    progressLabel.textContent = 'Getting Descriptions';
+    progressText.textContent = `0 / ${jobsWithoutDesc.length}`;
+    progressBar.style.width = '0%';
 
-    if (totalToScrape === 0) {
-        alert('All job descriptions have already been fetched.');
-        isScrapingDescriptions = false;
+    processNextJob();
+}
+
+async function processNextJob() {
+    const data = await chrome.storage.local.get(['scrapedJobs']);
+    const jobs = data.scrapedJobs || [];
+
+    // Find jobs without descriptions
+    const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
+    const totalWithoutDesc = jobs.filter(job => !job.description && job.link).length;
+    const totalOriginal = jobs.filter(job => job.link).length;
+    const processed = totalOriginal - totalWithoutDesc;
+
+    // Update progress
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const totalToProcess = allJobs.filter(job => !job.description && job.link).length;
+    progressText.textContent = `${processed} / ${totalToProcess + processed}`;
+    progressBar.style.width = `${(processed / (totalToProcess + processed)) * 100}%`;
+
+    if (jobsWithoutDesc.length === 0) {
+        // All done
+        isGettingDescriptions = false;
+        const getBtn = document.getElementById('getDescriptionsBtn');
         getBtn.disabled = false;
         getBtn.innerHTML = `
             <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
@@ -249,99 +288,45 @@ async function getJobDescriptions() {
             </svg>
             Get Descriptions
         `;
+        document.getElementById('progressSection').classList.add('hidden');
+        alert('All descriptions have been fetched!');
         return;
     }
 
-    for (const job of jobsToScrape) {
-        processedCount++;
-        getBtn.textContent = `Processing ${processedCount}/${totalToScrape}...`;
+    const job = jobsWithoutDesc[0];
+    const jobIndex = jobs.findIndex(j => j.link === job.link);
 
-        try {
-            const description = await scrapeDescriptionFromPage(job.link);
+    try {
+        const tab = await chrome.tabs.create({ url: job.link, active: false });
+        chrome.runtime.sendMessage({
+            action: 'scrapeJobDescription',
+            tabId: tab.id,
+            jobIndex: jobIndex,
+            jobLink: job.link
+        });
+    } catch (error) {
+        console.error('Error opening tab for job:', error);
+        setTimeout(() => processNextJob(), 1500);
+    }
+}
 
-            const jobIndex = scrapedJobs.findIndex(j => j.link === job.link);
-            if (jobIndex !== -1) {
-                scrapedJobs[jobIndex].description = description;
-            }
-
-            await chrome.storage.local.set({ scrapedJobs: scrapedJobs });
-
-            // Update in-memory data and re-render
-            allJobs = scrapedJobs;
-            const row = document.querySelector(`tr[data-job-link="${job.link}"]`);
-            if (row) {
-                const descCell = row.querySelector('.description-col');
-                if (descCell) {
-                    descCell.innerHTML = `<div class="description-cell">${escapeHtml(description)}</div>`;
-                }
-            }
-
-            // Update stats
+// Listen for description saved messages from background.js
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'descriptionSaved') {
+        // Reload jobs from storage and refresh display
+        chrome.storage.local.get(['scrapedJobs'], (data) => {
+            const jobs = data.scrapedJobs || [];
+            allJobs = jobs;
+            filteredJobs = [...jobs];
+            applyFilters();
             updateStatsDashboard();
 
-        } catch (error) {
-            console.error(`Failed to scrape description for ${job.link}:`, error);
-            const row = document.querySelector(`tr[data-job-link="${job.link}"]`);
-            if (row) {
-                const descCell = row.querySelector('.description-col');
-                if(descCell) descCell.innerHTML = `<span style="color: #ef4444;">Error: ${escapeHtml(error.message)}</span>`;
+            if (isGettingDescriptions) {
+                setTimeout(() => processNextJob(), 1500);
             }
-        }
+        });
     }
-
-    isScrapingDescriptions = false;
-    getBtn.disabled = false;
-    getBtn.innerHTML = `
-        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-        </svg>
-        Get Descriptions
-    `;
-
-    alert(`Finished scraping descriptions. Processed ${processedCount} jobs.`);
-}
-
-function scrapeDescriptionFromPage(url) {
-    return new Promise(async (resolve, reject) => {
-        let tab;
-        try {
-            // Create a new, inactive tab
-            tab = await chrome.tabs.create({ url: url, active: false });
-
-            // Listener for when the tab is completely loaded
-            const listener = async (tabId, changeInfo, updatedTab) => {
-                if (tabId === tab.id && changeInfo.status === 'complete') {
-                    // Remove listener to avoid memory leaks
-                    chrome.tabs.onUpdated.removeListener(listener);
-
-                    // Inject the script
-                    const results = await chrome.scripting.executeScript({
-                        target: { tabId: tabId },
-                        files: ['description-scraper.js'],
-                    });
-
-                    // Close the tab
-                    await chrome.tabs.remove(tabId);
-
-                    // Process results
-                    if (results && results[0] && results[0].result) {
-                        resolve(results[0].result);
-                    } else {
-                        reject(new Error('Script did not return a result.'));
-                    }
-                }
-            };
-            chrome.tabs.onUpdated.addListener(listener);
-
-        } catch (error) {
-            // If tab creation fails, or any other error
-            if (tab && tab.id) {
-                await chrome.tabs.remove(tab.id);
-            }
-            reject(error);
-        }
-    });
-}
+})
 
 
 function exportToCSV() {
@@ -353,10 +338,10 @@ function exportToCSV() {
             return;
         }
 
-        let csv = 'Job Title,Location,City,State,Link,Description\n';
+        let csv = 'Job Title,Job ID,Location,City,State,Link,Description\n';
         jobs.forEach(job => {
             const description = job.description ? `"${job.description.replace(/"/g, '""')}"` : '';
-            csv += `"${job.jobTitle}","${job.location}","${job.city}","${job.state}","${job.link}",${description}\n`;
+            csv += `"${job.jobTitle}","${job.jobId || 'N/A'}","${job.location}","${job.city}","${job.state}","${job.link}",${description}\n`;
         });
 
         downloadFile(csv, 'mission-pet-health-jobs.csv', 'text/csv;charset=utf-8;');
@@ -414,58 +399,111 @@ async function sendToWebhook() {
         return;
     }
 
+    const data = await chrome.storage.local.get(['scrapedJobs']);
+    const jobs = data.scrapedJobs;
+
+    if (!jobs || jobs.length === 0) {
+        statusEl.textContent = 'No job data to send.';
+        statusEl.className = 'webhook-status error';
+        return;
+    }
+
+    const jobsToSend = jobs.map(job => ({
+        job_title: job.jobTitle || '',
+        job_id: job.jobId || '',
+        city: job.city || '',
+        state: job.state || '',
+        link: job.link || '',
+        hospital: job.location || '',
+        parent_client: "Mission Pet Health",
+        description: job.description || ''
+    }));
+
+    const BATCH_SIZE = 50;
+    const totalBatches = Math.ceil(jobsToSend.length / BATCH_SIZE);
+
+    if (!confirm(`This will send ${jobsToSend.length} jobs in ${totalBatches} batch(es) of up to ${BATCH_SIZE}. Continue?`)) {
+        return;
+    }
+
     sendBtn.disabled = true;
     sendBtn.textContent = 'Sending...';
     statusEl.className = 'webhook-status';
 
-    try {
-        const data = await chrome.storage.local.get(['scrapedJobs']);
-        const jobs = data.scrapedJobs;
+    // Show progress bar
+    const progressSection = document.getElementById('progressSection');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const progressLabel = document.getElementById('progressLabel');
+    progressSection.classList.remove('hidden');
+    progressLabel.textContent = 'Sending Batches';
+    progressText.textContent = `0 / ${totalBatches}`;
+    progressBar.style.width = '0%';
 
-        if (!jobs || jobs.length === 0) {
-            statusEl.textContent = 'No job data to send.';
-            statusEl.className = 'webhook-status error';
-            sendBtn.disabled = false;
-            sendBtn.textContent = 'Send to Webhook';
-            return;
+    const syncId = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < totalBatches; i++) {
+        const batch = jobsToSend.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
+        const batchNumber = i + 1;
+
+        const payload = {
+            source: 'Mission Pet Health Job Scraper',
+            parentClientName: 'Mission Pet Health',
+            syncId: syncId,
+            timestamp: new Date().toISOString(),
+            batchNumber: batchNumber,
+            totalBatches: totalBatches,
+            batchSize: batch.length,
+            totalRecords: jobsToSend.length,
+            data: batch
+        };
+
+        statusEl.textContent = `Sending batch ${batchNumber} of ${totalBatches}...`;
+
+        try {
+            const response = await fetch(webhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Batch ${batchNumber}: Status ${response.status}. ${errorText}`);
+            }
+
+            successCount++;
+        } catch (error) {
+            console.error(`Batch ${batchNumber} error:`, error);
+            failCount++;
         }
 
-        const jobsArray = jobs.map(job => ({
-            job_title: job.jobTitle || '',
-            city: job.city || '',
-            state: job.state || '',
-            link: job.link || '',
-            hospital: job.location || '',
-            parent_client: "Mission Pet Health",
-            job_description: job.description || ''
-        }));
+        // Update progress
+        progressText.textContent = `${batchNumber} / ${totalBatches}`;
+        progressBar.style.width = `${(batchNumber / totalBatches) * 100}%`;
 
-        const finalPayload = { data: jobsArray };
-        statusEl.textContent = `Sending ${jobsArray.length} jobs in a single batch...`;
-
-        const response = await fetch(webhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(finalPayload),
-        });
-
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Webhook returned status ${response.status}. Response: ${errorText}`);
+        // Delay between batches
+        if (i < totalBatches - 1) {
+            await new Promise(resolve => setTimeout(resolve, 500));
         }
-
-        const responseData = await response.json();
-        statusEl.textContent = `Success! ${responseData.message || 'Data accepted.'}`;
-        statusEl.className = 'webhook-status success';
-
-    } catch (error) {
-        console.error('Webhook error:', error);
-        statusEl.textContent = `Error: ${error.message}`;
-        statusEl.className = 'webhook-status error';
-    } finally {
-        sendBtn.disabled = false;
-        sendBtn.textContent = 'Send to Webhook';
     }
+
+    // Hide progress bar
+    progressSection.classList.add('hidden');
+    sendBtn.disabled = false;
+    sendBtn.textContent = 'Send to Webhook';
+
+    if (failCount === 0) {
+        statusEl.textContent = `Success! All ${totalBatches} batch(es) sent successfully.`;
+        statusEl.className = 'webhook-status success';
+    } else {
+        statusEl.textContent = `Completed with errors: ${successCount} succeeded, ${failCount} failed.`;
+        statusEl.className = 'webhook-status error';
+    }
+
+    alert(`Webhook send complete!\n\nTotal jobs: ${jobsToSend.length}\nBatches sent: ${successCount}/${totalBatches}\nFailed: ${failCount}`);
 }
 
 function isValidHttpUrl(string) {

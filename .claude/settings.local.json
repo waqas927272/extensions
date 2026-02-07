@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:jobs.shorecp.com)",
+      "Bash(dir:*)"
+    ]
+  }
+}

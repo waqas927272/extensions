@@ -1,80 +1,186 @@
+/* Innovetive Petcare - Popup Styles */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background-color: #f4f7f6;
-  width: 250px;
-  padding: 15px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  border-radius: 8px;
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  width: 320px;
+  background-color: #f7fafc;
 }
 
-.action-buttons {
+/* Header */
+.popup-header {
+  background: linear-gradient(135deg, #1a365d 0%, #2c5282 100%);
+  color: white;
+  padding: 20px;
+  text-align: center;
+}
+
+.popup-header h1 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.popup-subtitle {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* Body */
+.popup-body {
+  padding: 16px;
+}
+
+/* Stat Card */
+.stat-card {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  gap: 14px;
+  background: white;
+  padding: 14px 16px;
+  border-radius: 10px;
+  margin-bottom: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  border: 1px solid #e2e8f0;
 }
 
-button {
+.stat-icon {
+  width: 42px;
+  height: 42px;
+  background: linear-gradient(135deg, #1a365d 0%, #2c5282 100%);
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding: 12px;
-  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+.stat-icon svg {
+  width: 22px;
+  height: 22px;
+  color: white;
+  stroke: white;
+}
+
+.stat-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-value {
+  font-size: 26px;
+  font-weight: 700;
+  color: #1a365d;
+  line-height: 1;
+}
+
+.stat-label {
+  font-size: 12px;
+  color: #718096;
+  font-weight: 500;
+  margin-top: 2px;
+}
+
+/* Action Buttons */
+.action-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 11px 16px;
+  border-radius: 8px;
   border: none;
-  font-size: 14px;
+  font-size: 13px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.3s ease, transform 0.1s ease;
-  background-color: #fff;
-  color: #333;
-  border: 1px solid #ddd;
+  transition: all 0.2s ease;
 }
 
-button:hover {
-  background-color: #e9e9e9;
+.btn svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
-button:active {
-    transform: scale(0.98);
+.btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
-button svg {
-    width: 18px;
-    height: 18px;
+.btn:active {
+  transform: scale(0.98);
 }
 
-#scrape-jobs {
-  background-color: #3498db;
+.btn-primary {
+  background: linear-gradient(135deg, #1a365d 0%, #2c5282 100%);
   color: white;
-  border: none;
 }
 
-#scrape-jobs:hover {
-    background-color: #2980b9;
+.btn-primary:hover {
+  background: linear-gradient(135deg, #2c5282 0%, #3b6db5 100%);
 }
 
-#view-saved-jobs {
-  background-color: #2ecc71;
+.btn-accent {
+  background: linear-gradient(135deg, #38a169 0%, #2f855a 100%);
   color: white;
-  border: none;
 }
 
-#view-saved-jobs:hover {
-    background-color: #27ae60;
+.btn-accent:hover {
+  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
 }
 
+.btn-danger {
+  background: white;
+  color: #e53e3e;
+  border: 1px solid #fed7d7;
+}
 
+.btn-danger:hover {
+  background: #fff5f5;
+  border-color: #e53e3e;
+}
+
+/* Loading Spinner */
 .hidden {
   display: none;
 }
 
 #loading-spinner {
-  border: 3px solid #f3f3f3;
-  border-top: 3px solid #3498db;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 14px;
+  background: #ebf8ff;
+  border-radius: 8px;
+  border: 1px solid #bee3f8;
+}
+
+#loading-spinner .spinner {
+  border: 3px solid #bee3f8;
+  border-top: 3px solid #2c5282;
   border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  animation: spin 1.5s linear infinite;
-  margin: 15px auto 0;
+  width: 20px;
+  height: 20px;
+  animation: spin 1s linear infinite;
+  flex-shrink: 0;
+}
+
+#loading-spinner span {
+  font-size: 12px;
+  color: #2c5282;
+  font-weight: 500;
 }
 
 @keyframes spin {
@@ -82,9 +188,35 @@ button svg {
   100% { transform: rotate(360deg); }
 }
 
+/* Message */
 #message {
-  color: #27ae60;
-  margin-top: 15px;
-  font-size: 14px;
+  margin-top: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
   font-weight: 500;
+}
+
+#message.success {
+  background: #f0fff4;
+  color: #276749;
+  border: 1px solid #c6f6d5;
+}
+
+#message.error {
+  background: #fff5f5;
+  color: #c53030;
+  border: 1px solid #fed7d7;
+}
+
+/* Footer */
+.popup-footer {
+  padding: 10px;
+  text-align: center;
+  border-top: 1px solid #e2e8f0;
+}
+
+.popup-footer span {
+  font-size: 11px;
+  color: #a0aec0;
 }

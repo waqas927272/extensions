@@ -96,6 +96,120 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
     })();
     return true; // Indicates that the response is sent asynchronously
+  } else if (request.action === 'scrapeJobDescription') {
+    const { tabId, jobIndex, jobLink } = request;
+
+    // Wait for the tab to finish loading, then inject script
+    chrome.tabs.onUpdated.addListener(function listener(updatedTabId, info) {
+      if (updatedTabId === tabId && info.status === 'complete') {
+        chrome.tabs.onUpdated.removeListener(listener);
+
+        // Inject script to extract description and hospital name
+        chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          func: () => {
+            let description = '';
+            let hospitalName = '';
+
+            // 1. Try JSON-LD (JobPosting schema)
+            const scriptLdJson = document.querySelectorAll('script[type="application/ld+json"]');
+            for (const script of scriptLdJson) {
+              try {
+                const json = JSON.parse(script.textContent);
+                if (json['@type'] === 'JobPosting') {
+                  if (json.description) {
+                    // Strip HTML tags from description
+                    const div = document.createElement('div');
+                    div.innerHTML = json.description;
+                    description = div.textContent.trim();
+                  }
+                  if (json.hiringOrganization && json.hiringOrganization.name) {
+                    hospitalName = json.hiringOrganization.name;
+                  }
+                }
+              } catch (e) {}
+            }
+
+            // 2. Fallback to DOM selectors for description
+            if (!description) {
+              const descSelectors = [
+                'div.job-description',
+                'div.description',
+                'div#job-details',
+                'div.details',
+                '[itemprop="description"]',
+                '.job-content',
+                'article',
+                'main'
+              ];
+
+              for (const selector of descSelectors) {
+                const el = document.querySelector(selector);
+                if (el && el.innerText.trim().length > 100) {
+                  description = el.innerText.trim();
+                  break;
+                }
+              }
+            }
+
+            // 3. Fallback for hospital name
+            if (!hospitalName) {
+              const hospitalSelectors = [
+                '.company-name',
+                '.hospital-name',
+                '.job-company-name',
+                '[itemprop="hiringOrganization"]',
+                'meta[property="og:site_name"]'
+              ];
+              for (const selector of hospitalSelectors) {
+                const el = document.querySelector(selector);
+                if (el) {
+                  hospitalName = el.content || el.textContent.trim();
+                  if (hospitalName) break;
+                }
+              }
+            }
+
+            return { description, hospitalName };
+          }
+        }).then((results) => {
+          const extractedData = results[0]?.result || {};
+
+          // Save extracted data to the job record
+          chrome.storage.local.get({ records: [] }, (result) => {
+            const records = result.records || [];
+            if (records[jobIndex]) {
+              if (extractedData.description) {
+                records[jobIndex].description = extractedData.description;
+              }
+              if (extractedData.hospitalName) {
+                records[jobIndex].hospitalName = extractedData.hospitalName;
+              }
+
+              chrome.storage.local.set({ records: records }, () => {
+                console.log(`Details saved for job ${jobIndex + 1}`);
+                chrome.tabs.remove(tabId);
+                chrome.runtime.sendMessage({
+                  action: 'descriptionSaved',
+                  jobIndex: jobIndex,
+                  success: true
+                });
+              });
+            }
+          });
+        }).catch(err => {
+          console.error('Error extracting description:', err);
+          chrome.tabs.remove(tabId).catch(() => {});
+          chrome.runtime.sendMessage({
+            action: 'descriptionSaved',
+            jobIndex: jobIndex,
+            success: false
+          });
+        });
+      }
+    });
+
+    return true;
   } else if (request.command === 'send-to-webhook') {
     (async () => {
       try {

@@ -3,6 +3,8 @@
 let allJobs = [];
 let filteredJobs = [];
 let selectedIndexes = new Set();
+let isGettingDescriptions = false;
+let currentJobIndex = 0;
 
 document.addEventListener('DOMContentLoaded', () => {
   loadJobs();
@@ -73,6 +75,7 @@ function setupEventListeners() {
     updateStats();
   });
 
+  document.getElementById('get-descriptions-btn').addEventListener('click', getJobDescriptions);
   document.getElementById('export-csv-btn').addEventListener('click', exportCSV);
   document.getElementById('delete-selected-btn').addEventListener('click', deleteSelected);
   document.getElementById('clear-all-btn').addEventListener('click', clearAllJobs);
@@ -139,6 +142,7 @@ function renderJobs() {
       <td class="col-title">
         <a href="${escapeHtml(job.link)}" target="_blank">${escapeHtml(job.title)}</a>
       </td>
+      <td class="col-jobid">${escapeHtml(job.jobId || 'N/A')}</td>
       <td class="col-hospital">
         <span class="hospital-badge">${escapeHtml(job.hospitalName)}</span>
       </td>
@@ -186,7 +190,7 @@ function exportCSV() {
     ? Array.from(selectedIndexes).map(i => filteredJobs[i])
     : allJobs;
 
-  const headers = ['Job ID', 'Job Title', 'Hospital', 'Street Address', 'City', 'State', 'Country', 'Full Location', 'Link'];
+  const headers = ['Job ID', 'Job Title', 'Hospital', 'Street Address', 'City', 'State', 'Country', 'Full Location', 'Link', 'Description'];
 
   const csvContent = [
     headers.join(','),
@@ -199,7 +203,8 @@ function exportCSV() {
       `"${escapeCSV(job.state)}"`,
       `"${escapeCSV(job.country)}"`,
       `"${escapeCSV(job.fullLocation)}"`,
-      `"${escapeCSV(job.link)}"`
+      `"${escapeCSV(job.link)}"`,
+      `"${escapeCSV(job.description)}"`
     ].join(','))
   ].join('\n');
 
@@ -266,57 +271,211 @@ async function saveWebhookConfig() {
 }
 
 async function sendToWebhook() {
-  const url = document.getElementById('webhook-url').value;
+  const webhookUrl = document.getElementById('webhook-url').value;
   const parentClient = document.getElementById('parent-client').value;
 
-  if (!url) {
+  if (!webhookUrl) {
     alert('Please enter a webhook URL.');
     return;
   }
 
-  const jobsToSend = selectedIndexes.size > 0
+  const jobsToSendRaw = selectedIndexes.size > 0
     ? Array.from(selectedIndexes).map(i => filteredJobs[i])
     : allJobs;
 
-  if (jobsToSend.length === 0) {
+  if (jobsToSendRaw.length === 0) {
     alert('No jobs to send.');
     return;
   }
 
-  const payload = {
-    data: jobsToSend.map(job => ({
-      parent_client: parentClient,
-      job_id: job.jobId,
-      job_title: job.title,
-      hospital: job.hospitalName,
-      street_address: job.streetAddress,
-      city: job.city,
-      state: job.state,
-      country: job.country,
-      full_location: job.fullLocation,
-      link: job.link,
-      category: job.category,
-      job_type: job.jobType,
-      job_description: job.description
-    }))
-  };
+  const jobsToSend = jobsToSendRaw.map(job => ({
+    parent_client: parentClient,
+    job_id: job.jobId,
+    job_title: job.title,
+    hospital: job.hospitalName,
+    street_address: job.streetAddress,
+    city: job.city,
+    state: job.state,
+    country: job.country,
+    full_location: job.fullLocation,
+    link: job.link,
+    category: job.category,
+    job_type: job.jobType,
+    description: job.description || ''
+  }));
+
+  const BATCH_SIZE = 50;
+  const totalBatches = Math.ceil(jobsToSend.length / BATCH_SIZE);
+
+  if (!confirm(`This will send ${jobsToSend.length} jobs in ${totalBatches} batch(es) of up to ${BATCH_SIZE}. Continue?`)) {
+    return;
+  }
+
+  const sendBtn = document.getElementById('send-webhook-btn');
+  sendBtn.disabled = true;
+  sendBtn.textContent = 'Sending...';
+
+  // Show progress bar
+  const progressSection = document.getElementById('progressSection');
+  const progressBar = document.getElementById('progressBar');
+  const progressText = document.getElementById('progressText');
+  const progressLabel = document.getElementById('progressLabel');
+  progressSection.classList.remove('hidden');
+  progressLabel.textContent = 'Sending Batches';
+  progressText.textContent = `0 / ${totalBatches}`;
+  progressBar.style.width = '0%';
+
+  const syncId = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+  let successCount = 0;
+  let failCount = 0;
+
+  for (let i = 0; i < totalBatches; i++) {
+    const batch = jobsToSend.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
+    const batchNumber = i + 1;
+
+    const payload = {
+      source: 'PetVet Care Centers Job Scraper',
+      parentClientName: parentClient,
+      syncId: syncId,
+      timestamp: new Date().toISOString(),
+      batchNumber: batchNumber,
+      totalBatches: totalBatches,
+      batchSize: batch.length,
+      totalRecords: jobsToSend.length,
+      data: batch
+    };
+
+    try {
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Status ${response.status}`);
+      }
+
+      successCount++;
+    } catch (error) {
+      console.error(`Batch ${batchNumber} error:`, error);
+      failCount++;
+    }
+
+    // Update progress
+    progressText.textContent = `${batchNumber} / ${totalBatches}`;
+    progressBar.style.width = `${(batchNumber / totalBatches) * 100}%`;
+
+    // Delay between batches
+    if (i < totalBatches - 1) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+
+  // Hide progress bar
+  progressSection.classList.add('hidden');
+  sendBtn.disabled = false;
+  sendBtn.textContent = 'Send';
+
+  alert(`Webhook send complete!\n\nTotal jobs: ${jobsToSend.length}\nBatches sent: ${successCount}/${totalBatches}\nFailed: ${failCount}`);
+}
+
+// ============ GET DESCRIPTIONS ============
+
+async function getJobDescriptions() {
+  if (isGettingDescriptions) {
+    alert('Already getting descriptions. Please wait...');
+    return;
+  }
+
+  const stored = await chrome.storage.local.get('petvetJobs');
+  const jobs = stored.petvetJobs || [];
+
+  const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
+  if (jobsWithoutDesc.length === 0) {
+    alert('All jobs already have descriptions!');
+    return;
+  }
+
+  isGettingDescriptions = true;
+  currentJobIndex = 0;
+
+  const getBtn = document.getElementById('get-descriptions-btn');
+  getBtn.disabled = true;
+  getBtn.textContent = 'Getting Descriptions...';
+
+  // Show progress
+  const progressSection = document.getElementById('progressSection');
+  const progressBar = document.getElementById('progressBar');
+  const progressText = document.getElementById('progressText');
+  const progressLabel = document.getElementById('progressLabel');
+  progressSection.classList.remove('hidden');
+  progressLabel.textContent = 'Getting Descriptions';
+  progressText.textContent = `0 / ${jobsWithoutDesc.length}`;
+  progressBar.style.width = '0%';
+
+  processNextJob();
+}
+
+async function processNextJob() {
+  const stored = await chrome.storage.local.get('petvetJobs');
+  const jobs = stored.petvetJobs || [];
+
+  const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
+  const totalOriginal = jobs.filter(job => job.link).length;
+  const totalWithoutDesc = jobsWithoutDesc.length;
+  const processed = totalOriginal - totalWithoutDesc;
+
+  // Update progress
+  const progressBar = document.getElementById('progressBar');
+  const progressText = document.getElementById('progressText');
+  const totalToProcess = allJobs.filter(job => !job.description && job.link).length;
+  progressText.textContent = `${processed} / ${totalToProcess + processed}`;
+  progressBar.style.width = `${(processed / (totalToProcess + processed)) * 100}%`;
+
+  if (jobsWithoutDesc.length === 0) {
+    isGettingDescriptions = false;
+    const getBtn = document.getElementById('get-descriptions-btn');
+    getBtn.disabled = false;
+    getBtn.textContent = 'Get Descriptions';
+    document.getElementById('progressSection').classList.add('hidden');
+    alert('All descriptions have been fetched!');
+    return;
+  }
+
+  const job = jobsWithoutDesc[0];
+  const jobIndex = jobs.findIndex(j => j.link === job.link);
 
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const tab = await chrome.tabs.create({ url: job.link, active: false });
+    chrome.runtime.sendMessage({
+      action: 'scrapeJobDescription',
+      tabId: tab.id,
+      jobIndex: jobIndex,
+      jobLink: job.link
     });
-
-    if (response.ok) {
-      alert(`Successfully sent ${jobsToSend.length} jobs to webhook!`);
-    } else {
-      alert(`Webhook error: ${response.status} ${response.statusText}`);
-    }
-  } catch (e) {
-    alert(`Error sending to webhook: ${e.message}`);
+  } catch (error) {
+    console.error('Error opening tab for job:', error);
+    setTimeout(() => processNextJob(), 1500);
   }
 }
+
+// Listen for description saved messages from background.js
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'descriptionSaved') {
+    chrome.storage.local.get(['petvetJobs'], (data) => {
+      const jobs = data.petvetJobs || [];
+      allJobs = jobs;
+      filteredJobs = [...jobs];
+      filterJobs();
+      updateStats();
+
+      if (isGettingDescriptions) {
+        setTimeout(() => processNextJob(), 1500);
+      }
+    });
+  }
+})
 
 function showJobDetails(job) {
   const location = [job.streetAddress, job.city, job.state, job.country].filter(Boolean).join(', ') || job.fullLocation || 'N/A';

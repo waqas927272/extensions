@@ -84,6 +84,7 @@ function scrapeCurrentPage(scrapedJobIds) {
 
             jobs.push({
                 jobTitle,
+                jobId,
                 location,
                 city,
                 state,

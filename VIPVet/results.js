@@ -3,6 +3,8 @@
 let allJobs = [];
 let filteredJobs = [];
 let selectedIndexes = new Set();
+let isGettingDescriptions = false;
+let currentJobIndex = 0;
 
 document.addEventListener('DOMContentLoaded', () => {
   loadJobs();
@@ -224,56 +226,99 @@ function selectDuplicates() {
 }
 
 async function getDescriptions() {
+  if (isGettingDescriptions) {
+    alert('Already getting descriptions. Please wait...');
+    return;
+  }
+
+  const data = await chrome.storage.local.get(['vipvetJobs']);
+  const jobs = data.vipvetJobs || [];
+
+  const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
+  if (jobsWithoutDesc.length === 0) {
+    alert('All jobs already have descriptions!');
+    return;
+  }
+
+  isGettingDescriptions = true;
+  currentJobIndex = 0;
+
   const btn = document.getElementById('get-descriptions-btn');
+  btn.disabled = true;
+  btn.textContent = 'Getting Descriptions...';
+
+  // Show progress
   const progressSection = document.getElementById('progress-bar');
   const progressLabel = document.getElementById('progress-label');
   const progressDetail = document.getElementById('progress-detail');
   const progressFill = document.getElementById('progress-fill');
+  progressSection.classList.remove('hidden');
+  progressLabel.textContent = 'Getting Descriptions';
+  progressDetail.textContent = `0 / ${jobsWithoutDesc.length}`;
+  progressFill.style.width = '0%';
 
-  const jobsToFetch = allJobs.filter(j => !j.description);
+  processNextJob();
+}
 
-  if (jobsToFetch.length === 0) {
-    alert('All jobs already have descriptions.');
+async function processNextJob() {
+  const data = await chrome.storage.local.get(['vipvetJobs']);
+  const jobs = data.vipvetJobs || [];
+
+  const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
+  const totalOriginal = jobs.filter(job => job.link).length;
+  const totalWithoutDesc = jobsWithoutDesc.length;
+  const processed = totalOriginal - totalWithoutDesc;
+
+  // Update progress
+  const progressFill = document.getElementById('progress-fill');
+  const progressDetail = document.getElementById('progress-detail');
+  const totalToProcess = allJobs.filter(job => !job.description && job.link).length;
+  progressDetail.textContent = `${processed} / ${totalToProcess + processed}`;
+  progressFill.style.width = `${(processed / (totalToProcess + processed)) * 100}%`;
+
+  if (jobsWithoutDesc.length === 0) {
+    isGettingDescriptions = false;
+    const btn = document.getElementById('get-descriptions-btn');
+    btn.disabled = false;
+    btn.textContent = 'Get Descriptions';
+    document.getElementById('progress-bar').classList.add('hidden');
+    alert('All descriptions have been fetched!');
     return;
   }
 
-  btn.disabled = true;
-  progressSection.classList.remove('hidden');
+  const job = jobsWithoutDesc[0];
+  const jobIndex = jobs.findIndex(j => j.link === job.link);
 
-  for (let i = 0; i < jobsToFetch.length; i++) {
-    const job = jobsToFetch[i];
-    const percent = Math.round(((i + 1) / jobsToFetch.length) * 100);
-
-    progressLabel.textContent = 'Fetching descriptions...';
-    progressDetail.textContent = `${i + 1}/${jobsToFetch.length}`;
-    progressFill.style.width = `${percent}%`;
-
-    try {
-      const response = await chrome.runtime.sendMessage({
-        action: 'fetchDescription',
-        url: job.link
-      });
-
-      if (response && response.description) {
-        const idx = allJobs.indexOf(job);
-        allJobs[idx].description = response.description;
-        if (response.jobType) allJobs[idx].jobType = response.jobType;
-      }
-    } catch (e) {
-      console.error('Error fetching description:', e);
-    }
-
-    await new Promise(r => setTimeout(r, 300));
+  try {
+    const tab = await chrome.tabs.create({ url: job.link, active: false });
+    chrome.runtime.sendMessage({
+      action: 'scrapeJobDescription',
+      tabId: tab.id,
+      jobIndex: jobIndex,
+      jobLink: job.link
+    });
+  } catch (error) {
+    console.error('Error opening tab for job:', error);
+    setTimeout(() => processNextJob(), 1500);
   }
-
-  await chrome.storage.local.set({ vipvetJobs: allJobs });
-
-  btn.disabled = false;
-  progressSection.classList.add('hidden');
-
-  filterJobs();
-  alert('Descriptions fetched successfully!');
 }
+
+// Listen for description saved messages from background.js
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === 'descriptionSaved') {
+    chrome.storage.local.get(['vipvetJobs'], (data) => {
+      const jobs = data.vipvetJobs || [];
+      allJobs = jobs;
+      filteredJobs = [...jobs];
+      filterJobs();
+      updateStats();
+
+      if (isGettingDescriptions) {
+        setTimeout(() => processNextJob(), 1500);
+      }
+    });
+  }
+});
 
 function exportCSV() {
   const jobsToExport = selectedIndexes.size > 0
@@ -340,54 +385,111 @@ async function saveWebhookConfig() {
 }
 
 async function sendToWebhook() {
-  const url = document.getElementById('webhook-url').value;
+  const webhookUrl = document.getElementById('webhook-url').value;
   const parentClient = document.getElementById('parent-client').value;
 
-  if (!url) {
+  if (!webhookUrl) {
     alert('Please enter a webhook URL.');
     return;
   }
 
-  const jobsToSend = selectedIndexes.size > 0
-    ? Array.from(selectedIndexes).map(i => filteredJobs[i])
-    : allJobs;
+  const data = await chrome.storage.local.get(['vipvetJobs']);
+  const jobs = data.vipvetJobs || [];
 
-  if (jobsToSend.length === 0) {
+  if (!jobs || jobs.length === 0) {
     alert('No jobs to send.');
     return;
   }
 
-  const payload = {
-    data: jobsToSend.map(job => ({
-      parent_client: parentClient,
-      job_title: job.title,
-      req_id: job.reqId,
-      hospital: job.hospitalName,
-      city: job.city,
-      state: job.state,
-      country: job.country,
-      category: job.category,
-      job_type: job.jobType,
-      link: job.link,
-      job_description: job.description
-    }))
-  };
+  const jobsToSend = jobs.map(job => ({
+    parent_client: parentClient || 'Veterinary Innovative Partners',
+    job_title: job.title || '',
+    job_id: job.reqId || '',
+    hospital: job.hospitalName || '',
+    city: job.city || '',
+    state: job.state || '',
+    country: job.country || '',
+    category: job.category || '',
+    job_type: job.jobType || '',
+    link: job.link || '',
+    description: job.description || ''
+  }));
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+  const BATCH_SIZE = 50;
+  const totalBatches = Math.ceil(jobsToSend.length / BATCH_SIZE);
 
-    if (response.ok) {
-      alert(`Successfully sent ${jobsToSend.length} jobs to webhook!`);
-    } else {
-      alert(`Webhook error: ${response.status} ${response.statusText}`);
-    }
-  } catch (e) {
-    alert(`Error sending to webhook: ${e.message}`);
+  if (!confirm(`This will send ${jobsToSend.length} jobs in ${totalBatches} batch(es) of up to ${BATCH_SIZE}. Continue?`)) {
+    return;
   }
+
+  const sendBtn = document.getElementById('send-webhook-btn');
+  sendBtn.disabled = true;
+  sendBtn.textContent = 'Sending...';
+
+  // Show progress bar
+  const progressSection = document.getElementById('progress-bar');
+  const progressLabel = document.getElementById('progress-label');
+  const progressDetail = document.getElementById('progress-detail');
+  const progressFill = document.getElementById('progress-fill');
+  progressSection.classList.remove('hidden');
+  progressLabel.textContent = 'Sending Batches';
+  progressDetail.textContent = `0 / ${totalBatches}`;
+  progressFill.style.width = '0%';
+
+  const syncId = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+  let successCount = 0;
+  let failCount = 0;
+
+  for (let i = 0; i < totalBatches; i++) {
+    const batch = jobsToSend.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
+    const batchNumber = i + 1;
+
+    const payload = {
+      source: 'VIPVet Job Scraper',
+      parentClientName: parentClient || 'Veterinary Innovative Partners',
+      syncId: syncId,
+      timestamp: new Date().toISOString(),
+      batchNumber: batchNumber,
+      totalBatches: totalBatches,
+      batchSize: batch.length,
+      totalRecords: jobsToSend.length,
+      data: batch
+    };
+
+    try {
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Batch ${batchNumber}: Status ${response.status}. ${errorText}`);
+      }
+
+      successCount++;
+    } catch (error) {
+      console.error(`Batch ${batchNumber} error:`, error);
+      failCount++;
+    }
+
+    // Update progress
+    progressDetail.textContent = `${batchNumber} / ${totalBatches}`;
+    progressFill.style.width = `${(batchNumber / totalBatches) * 100}%`;
+
+    // Delay between batches
+    if (i < totalBatches - 1) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+  }
+
+  // Hide progress bar
+  progressSection.classList.add('hidden');
+  sendBtn.disabled = false;
+  sendBtn.textContent = 'Send';
+
+  alert(`Webhook send complete!\n\nTotal jobs: ${jobsToSend.length}\nBatches sent: ${successCount}/${totalBatches}\nFailed: ${failCount}`);
 }
 
 function showJobDetails(job) {

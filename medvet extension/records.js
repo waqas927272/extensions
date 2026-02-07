@@ -14,6 +14,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let filteredRecords = [];
   let sortColumn = null;
   let sortDirection = 'asc';
+  let isGettingDescriptions = false;
+  let currentJobIndex = 0;
 
   const descriptionModal = document.getElementById('descriptionModal');
   const modalDescriptionContent = document.getElementById('modalDescriptionContent');
@@ -146,6 +148,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const row = document.createElement('tr');
         row.innerHTML = `
           <td>${record.title}</td>
+          <td class="job-id-cell">${escapeHtml(record.jobId || 'N/A')}</td>
           <td>${record.city}</td>
           <td>${record.state}</td>
           <td><a href="${record.link}" target="_blank">View Job</a></td>
@@ -236,7 +239,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const headers = ['Title', 'City', 'State', 'Link', 'Position', 'Hospital Name'];
+    const headers = ['Title', 'Job ID', 'City', 'State', 'Link', 'Position', 'Hospital Name', 'Description'];
     let csvContent = headers.join(',') + '\n';
 
     allRecords.forEach(record => {
@@ -250,11 +253,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
       const row = [
         escapeCsvCell(record.title),
+        escapeCsvCell(record.jobId || 'N/A'),
         escapeCsvCell(record.city),
         escapeCsvCell(record.state),
         escapeCsvCell(record.link),
         escapeCsvCell(record.position),
-        escapeCsvCell(record.hospitalName || 'N/A')
+        escapeCsvCell(record.hospitalName || 'N/A'),
+        escapeCsvCell((record.description || '').replace(/[\r\n]+/g, ' '))
       ].join(',');
       csvContent += row + '\n';
     });
@@ -272,77 +277,115 @@ document.addEventListener('DOMContentLoaded', () => {
     showToast('CSV downloaded successfully', 'success');
   });
 
-  getJobDescriptionsButton.addEventListener('click', async () => {
-    const recordsToFetch = allRecords.filter(record => !record.description);
+  // Listen for description saved messages from background script
+  chrome.runtime.onMessage.addListener((request) => {
+    if (request.action === 'descriptionSaved') {
+      console.log(`Description saved for job ${request.jobIndex + 1}, success: ${request.success}`);
 
-    if (recordsToFetch.length === 0) {
+      // Refresh records from storage
+      chrome.storage.local.get({ records: [] }, (result) => {
+        allRecords = result.records;
+        filteredRecords = [...allRecords];
+        filterRecords();
+
+        // Update progress
+        const total = allRecords.length;
+        const withDesc = allRecords.filter(r => r.description && r.description.trim() !== '').length;
+        const percent = Math.round((withDesc / total) * 100);
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        progressBar.style.width = `${percent}%`;
+        progressText.textContent = `${withDesc} / ${total}`;
+
+        if (isGettingDescriptions) {
+          setTimeout(() => {
+            processNextJob();
+          }, 1500);
+        }
+      });
+    }
+  });
+
+  function processNextJob() {
+    // Refresh from storage first
+    chrome.storage.local.get({ records: [] }, (result) => {
+      allRecords = result.records;
+
+      // Find next job without description
+      let foundJob = false;
+      for (let i = 0; i < allRecords.length; i++) {
+        if (!allRecords[i].description || allRecords[i].description.trim() === '') {
+          currentJobIndex = i;
+          foundJob = true;
+          break;
+        }
+      }
+
+      if (!foundJob) {
+        isGettingDescriptions = false;
+        getJobDescriptionsButton.disabled = false;
+        getJobDescriptionsButton.innerHTML = `
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" fill="currentColor"/>
+          </svg>
+          Get Job Descriptions`;
+        document.getElementById('progressSection').classList.add('hidden');
+        showToast('All jobs have descriptions now!', 'success');
+        return;
+      }
+
+      const record = allRecords[currentJobIndex];
+      console.log(`Processing job ${currentJobIndex + 1} of ${allRecords.length}: ${record.title}`);
+
+      // Update progress
+      const withDesc = allRecords.filter(r => r.description && r.description.trim() !== '').length;
+      const percent = Math.round((withDesc / allRecords.length) * 100);
+      const progressBar = document.getElementById('progressBar');
+      const progressText = document.getElementById('progressText');
+      progressBar.style.width = `${percent}%`;
+      progressText.textContent = `${withDesc} / ${allRecords.length}`;
+
+      // Open tab and send message to background to scrape
+      chrome.tabs.create({ url: record.link, active: false }, (tab) => {
+        chrome.runtime.sendMessage({
+          action: 'scrapeJobDescription',
+          tabId: tab.id,
+          jobIndex: currentJobIndex,
+          jobLink: record.link
+        });
+      });
+    });
+  }
+
+  getJobDescriptionsButton.addEventListener('click', () => {
+    if (allRecords.length === 0) {
+      showToast('No records to get descriptions for', 'error');
+      return;
+    }
+
+    const recordsWithoutDesc = allRecords.filter(r => !r.description || r.description.trim() === '');
+    if (recordsWithoutDesc.length === 0) {
       showToast('All records already have descriptions', 'info');
       return;
     }
 
-    getJobDescriptionsButton.disabled = true;
-    getJobDescriptionsButton.textContent = 'Fetching Descriptions...';
+    if (confirm(`This will fetch descriptions for ${recordsWithoutDesc.length} jobs. Continue?`)) {
+      isGettingDescriptions = true;
+      getJobDescriptionsButton.disabled = true;
+      getJobDescriptionsButton.textContent = 'Processing...';
 
-    const concurrencyLimit = 5;
-    let fetchedCount = 0;
+      // Show progress
+      const progressSection = document.getElementById('progressSection');
+      const progressBar = document.getElementById('progressBar');
+      const progressText = document.getElementById('progressText');
+      progressSection.classList.remove('hidden');
+      const withDesc = allRecords.filter(r => r.description && r.description.trim() !== '').length;
+      const percent = Math.round((withDesc / allRecords.length) * 100);
+      progressBar.style.width = `${percent}%`;
+      progressText.textContent = `${withDesc} / ${allRecords.length}`;
 
-    const updateProgress = () => {
-      getJobDescriptionsButton.textContent = `Fetching... (${fetchedCount}/${recordsToFetch.length})`;
-    };
-    updateProgress();
-
-    const fetchDescription = async (record) => {
-      try {
-        const response = await chrome.runtime.sendMessage({
-          command: 'fetch-job-description',
-          url: record.link
-        });
-        if (response && response.description) {
-          record.description = response.description;
-          record.hospitalName = response.hospitalName || 'N/A';
-        } else {
-          record.description = 'Could not fetch description.';
-          record.hospitalName = 'N/A';
-        }
-      } catch (error) {
-        console.error('Error fetching description for record:', record, error);
-        record.description = 'Error fetching description.';
-        record.hospitalName = 'N/A';
-      } finally {
-        fetchedCount++;
-        updateProgress();
-      }
-    };
-
-    const queue = [];
-    for (const record of recordsToFetch) {
-      queue.push(record);
+      processNextJob();
     }
-
-    let activeFetches = 0;
-
-    const worker = async () => {
-      while (queue.length > 0) {
-        if (activeFetches >= concurrencyLimit) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-          continue;
-        }
-        activeFetches++;
-        const record = queue.shift();
-        await fetchDescription(record);
-        activeFetches--;
-      }
-    };
-
-    const workers = Array(concurrencyLimit).fill(null).map(worker);
-    await Promise.all(workers);
-
-    chrome.storage.local.set({ records: allRecords }, () => {
-      renderTable(filteredRecords);
-      getJobDescriptionsButton.disabled = false;
-      getJobDescriptionsButton.textContent = 'Get Job Descriptions';
-      showToast('Job descriptions fetched successfully!', 'success');
-    });
   });
 
   const webhookUrlInput = document.getElementById('webhookUrlInput');
@@ -363,30 +406,115 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    const webhookUrl = webhookUrlInput.value;
+    if (!webhookUrl) {
+      showToast('Please enter a webhook URL', 'error');
+      return;
+    }
+
+    const BATCH_SIZE = 50;
+    const totalBatches = Math.ceil(allRecords.length / BATCH_SIZE);
+
+    if (!confirm(`Send ${allRecords.length} record(s) in ${totalBatches} batch(es) to webhook?`)) {
+      return;
+    }
+
     sendToWebhookButton.disabled = true;
     sendToWebhookButton.textContent = 'Sending...';
 
-    const webhookUrl = webhookUrlInput.value;
+    // Show progress
+    const progressSection = document.getElementById('progressSection');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    progressSection.classList.remove('hidden');
+    progressBar.style.width = '0%';
+    progressText.textContent = `0 / ${totalBatches} batches`;
 
-    try {
-      const response = await chrome.runtime.sendMessage({
-        command: 'send-to-webhook',
-        url: webhookUrl,
-        records: allRecords
-      });
+    // Map records to webhook format
+    const mappedRecords = allRecords.map(record => ({
+      parent_client: 'MedVet',
+      job_title: record.title || '',
+      job_id: record.jobId || '',
+      city: record.city || '',
+      state: record.state || '',
+      position: record.position || '',
+      hospital: record.hospitalName || '',
+      link: record.link || '',
+      description: record.description || ''
+    }));
 
-      if (response && response.success) {
-        showToast('Records sent to webhook successfully!', 'success');
-      } else {
-        showToast('Failed to send records: ' + (response.error || 'Unknown error'), 'error');
-      }
-    } catch (error) {
-      console.error('Error sending records to webhook:', error);
-      showToast('An error occurred while sending records', 'error');
-    } finally {
-      sendToWebhookButton.disabled = false;
-      sendToWebhookButton.textContent = 'Send to Webhook';
+    // Split into batches
+    const batches = [];
+    for (let i = 0; i < mappedRecords.length; i += BATCH_SIZE) {
+      batches.push(mappedRecords.slice(i, i + BATCH_SIZE));
     }
+
+    // Generate a unique sync ID
+    const syncId = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      const batchNumber = batchIndex + 1;
+
+      const percent = Math.round((batchNumber / totalBatches) * 100);
+      progressBar.style.width = `${percent}%`;
+      progressText.textContent = `Batch ${batchNumber} / ${totalBatches}`;
+
+      const payload = {
+        source: 'MedVet Job Scraper',
+        parentClientName: 'MedVet',
+        syncId: syncId,
+        timestamp: new Date().toISOString(),
+        batchNumber: batchNumber,
+        totalBatches: totalBatches,
+        batchSize: batch.length,
+        totalRecords: allRecords.length,
+        data: batch
+      };
+
+      try {
+        const response = await fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+
+        if (response.ok) {
+          successCount++;
+        } else {
+          errorCount++;
+          console.error(`Failed to send batch ${batchNumber}:`, await response.text());
+        }
+      } catch (err) {
+        errorCount++;
+        console.error(`Error sending batch ${batchNumber}:`, err);
+      }
+
+      // Small delay between batches
+      if (batchIndex < batches.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
+
+    progressSection.classList.add('hidden');
+    sendToWebhookButton.disabled = false;
+    sendToWebhookButton.innerHTML = `
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="currentColor"/>
+      </svg>
+      Send to Webhook`;
+
+    if (errorCount === 0) {
+      showToast(`Success! ${allRecords.length} records sent in ${totalBatches} batch(es).`, 'success');
+    } else {
+      showToast(`Partial: ${successCount} succeeded, ${errorCount} failed.`, 'error');
+    }
+
+    let resultMsg = `Webhook Complete!\nSync ID: ${syncId}\nTotal Records: ${allRecords.length}\nBatches Sent: ${totalBatches} (${BATCH_SIZE} per batch)\nSuccessful: ${successCount} | Failed: ${errorCount}`;
+    alert(resultMsg);
   });
 
   loadRecords();

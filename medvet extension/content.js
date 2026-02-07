@@ -22,6 +22,14 @@
 
         const title = titleElement ? titleElement.innerText.trim() : '';
         const link = linkElement ? linkElement.href : '';
+
+        // Extract job ID from the URL (last path segment)
+        let jobId = '';
+        if (link) {
+          const urlPath = link.replace(/[?#].*$/, '').replace(/\/+$/, '');
+          jobId = urlPath.split('/').pop() || '';
+        }
+
         let city = '';
         let state = '';
 
@@ -35,11 +43,12 @@
                 city = locationString;
             }
         }
-        
+
         const position = categoryElement.innerText.trim();
 
         pageRecords.push({
           title,
+          jobId,
           city,
           state,
           link,

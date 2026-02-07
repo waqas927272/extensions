@@ -41,6 +41,7 @@
       <div class="sidebar-section">
         <h3>Actions</h3>
         <div class="sidebar-buttons">
+          <button id="get-descriptions-btn" class="btn btn-block btn-accent">Get Descriptions</button>
           <button id="export-csv-btn" class="btn btn-block btn-primary">Export CSV</button>
           <button id="delete-selected-btn" class="btn btn-block btn-danger">Delete Selected</button>
           <button id="clear-all-btn" class="btn btn-block btn-danger">Clear All Jobs</button>
@@ -88,12 +89,23 @@
         </div>
       </div>
 
+      <div class="progress-section hidden" id="progressSection">
+        <div class="progress-info">
+          <span class="progress-label" id="progressLabel">Progress</span>
+          <span class="progress-text" id="progressText">0 / 0</span>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+      </div>
+
       <div class="table-wrapper">
         <table id="jobs-table">
           <thead>
             <tr>
               <th class="col-checkbox"><input type="checkbox" id="select-all-checkbox"></th>
               <th class="col-title">Job Title</th>
+              <th class="col-jobid">Job ID</th>
               <th class="col-hospital">Hospital</th>
               <th class="col-location">Location</th>
               <th class="col-actions">Actions</th>

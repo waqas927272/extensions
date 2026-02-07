@@ -28,5 +28,11 @@
       "js": ["content.js"],
       "all_frames": true
     }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["greenhouse-description-scraper.js"],
+      "matches": ["<all_urls>"]
+    }
   ]
 }

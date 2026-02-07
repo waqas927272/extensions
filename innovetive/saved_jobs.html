@@ -1,24 +1,155 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Saved Jobs</title>
-  <link rel="stylesheet" type="text/css" href="style.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Innovetive Petcare - Saved Jobs</title>
+  <link rel="stylesheet" href="saved_jobs.css">
 </head>
 <body>
-  <h1>Saved Jobs</h1>
-  <table id="jobs-table">
-    <thead>
-      <tr>
-        <th>Job Title</th>
-        <th>Location</th>
-        <th>Area of Practice</th>
-        <th>Hospital Name</th>
-        <th>Job Type</th>
-      </tr>
-    </thead>
-    <tbody>
-    </tbody>
-  </table>
+  <div class="app-layout">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h1>Innovetive Petcare</h1>
+        <p>Scraped Jobs</p>
+      </div>
+
+      <div class="stats-cards">
+        <div class="stat-card">
+          <span class="stat-number" id="total-count">0</span>
+          <span class="stat-label">Total Jobs</span>
+        </div>
+        <div class="stat-card locations">
+          <span class="stat-number" id="locations-count">0</span>
+          <span class="stat-label">Unique Locations</span>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <h3>Actions</h3>
+        <div class="sidebar-buttons">
+          <button id="get-descriptions-btn" class="btn btn-block btn-success">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="16" height="16">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+            </svg>
+            Get Descriptions
+          </button>
+          <button id="export-csv-btn" class="btn btn-block btn-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="16" height="16">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            Export CSV
+          </button>
+          <button id="clear-all-btn" class="btn btn-block btn-danger">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" width="16" height="16">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+            Clear All Data
+          </button>
+        </div>
+      </div>
+
+      <div class="sidebar-section webhook-section">
+        <div class="section-header" id="toggle-webhook">
+          <h3>Webhook</h3>
+          <span class="toggle-icon">+</span>
+        </div>
+        <div id="webhook-config" class="webhook-config hidden">
+          <div class="form-group">
+            <label for="webhook-url">Webhook URL</label>
+            <input type="url" id="webhook-url" placeholder="https://..." class="input-field">
+          </div>
+          <div class="form-group">
+            <label for="parent-client">Parent Client</label>
+            <input type="text" id="parent-client" value="Innovetive Petcare" class="input-field">
+          </div>
+          <div class="webhook-actions">
+            <button id="save-webhook-btn" class="btn btn-sm">Save</button>
+            <button id="send-webhook-btn" class="btn btn-sm btn-success">Send</button>
+          </div>
+          <div id="webhook-status" class="webhook-status"></div>
+        </div>
+      </div>
+
+      <div class="sidebar-section progress-section hidden" id="progress-section">
+        <h3>Progress</h3>
+        <div class="progress-bar-container">
+          <div class="progress-bar" id="progress-bar"></div>
+        </div>
+        <span class="progress-text" id="progress-text">0 / 0</span>
+      </div>
+
+      <div class="sidebar-footer">
+        <p>Innovetive Scraper v1.0</p>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="main-header">
+        <div class="header-title">
+          <h2>All Scraped Jobs</h2>
+          <span class="subtitle">Innovetive Petcare Positions</span>
+        </div>
+        <div class="header-controls">
+          <div class="search-box">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+            <input type="text" id="search-input" placeholder="Search jobs..." class="search-input">
+          </div>
+          <select id="state-filter" class="filter-select">
+            <option value="all">All States</option>
+          </select>
+          <select id="type-filter" class="filter-select">
+            <option value="all">All Job Types</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-wrapper" id="table-wrapper">
+        <table id="jobs-table">
+          <thead>
+            <tr>
+              <th class="col-number">#</th>
+              <th class="sortable" data-sort="jobTitle">Job Title <span class="sort-indicator"></span></th>
+              <th class="col-jobid">Job ID</th>
+              <th class="sortable" data-sort="hospitalName">Hospital <span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort="location">Location <span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort="areaOfPractice">Area of Practice <span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort="jobType">Job Type <span class="sort-indicator"></span></th>
+              <th>Description</th>
+              <th class="col-link">Link</th>
+            </tr>
+          </thead>
+          <tbody id="jobs-tbody">
+          </tbody>
+        </table>
+      </div>
+
+      <div id="no-data" class="no-data hidden">
+        <div class="no-data-content">
+          <svg class="no-data-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+          </svg>
+          <h3>No Jobs Found</h3>
+          <p>Use the extension popup to scrape jobs from the Innovetive Petcare careers page first.</p>
+        </div>
+      </div>
+
+      <div id="no-results" class="no-data hidden">
+        <div class="no-data-content">
+          <svg class="no-data-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          <h3>No Results Found</h3>
+          <p>Try adjusting your search or filters.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
   <script src="saved_jobs.js"></script>
 </body>
 </html>

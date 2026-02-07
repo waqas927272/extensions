@@ -13,6 +13,13 @@ function scrapeCurrentPage() {
       const hospital = companyElement ? companyElement.innerText.trim() : 'N/A';
       const link = jobItem.href;
 
+      // Extract job ID from URL
+      let jobId = '';
+      if (link) {
+        const urlPath = link.replace(/[?#].*$/, '').replace(/\/+$/, '');
+        jobId = urlPath.split('/').pop() || '';
+      }
+
       let city = 'N/A';
       let state = 'N/A';
       let country = 'USA';
@@ -35,7 +42,7 @@ function scrapeCurrentPage() {
         }
       }
 
-      scrapedJobs.push({ title, hospital, city, state, country, link, location });
+      scrapedJobs.push({ title, jobId, hospital, city, state, country, link, location });
     });
     return scrapedJobs;
 }

@@ -1,31 +1,49 @@
 // PetVet Care Centers Job Scraper - Background Script
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'fetchJobDescription') {
-    fetchJobDescription(request.url)
-      .then(data => sendResponse(data))
-      .catch(error => sendResponse({ error: error.message }));
+  if (request.action === 'scrapeJobDescription') {
+    const { tabId, jobIndex, jobLink } = request;
+
+    chrome.tabs.onUpdated.addListener(function listener(updatedTabId, info) {
+      if (updatedTabId === tabId && info.status === 'complete') {
+        chrome.tabs.onUpdated.removeListener(listener);
+
+        chrome.scripting.executeScript({
+          target: { tabId: tabId },
+          files: ['description-scraper.js']
+        }).then((results) => {
+          const description = (results && results[0] && results[0].result) ? results[0].result : '';
+
+          chrome.storage.local.get(['petvetJobs'], (result) => {
+            const jobs = result.petvetJobs || [];
+            if (jobs[jobIndex]) {
+              jobs[jobIndex].description = description;
+
+              chrome.storage.local.set({ petvetJobs: jobs }, () => {
+                console.log(`Description saved for job ${jobIndex + 1}`);
+                chrome.tabs.remove(tabId);
+                chrome.runtime.sendMessage({
+                  action: 'descriptionSaved',
+                  jobIndex: jobIndex,
+                  success: true
+                });
+              });
+            }
+          });
+        }).catch(err => {
+          console.error('Error extracting description:', err);
+          chrome.tabs.remove(tabId).catch(() => {});
+          chrome.runtime.sendMessage({
+            action: 'descriptionSaved',
+            jobIndex: jobIndex,
+            success: false
+          });
+        });
+      }
+    });
+
     return true;
   }
+
+  return true;
 });
-
-async function fetchJobDescription(url) {
-  try {
-    const response = await fetch(url);
-    const html = await response.text();
-
-    // Extract description using regex since we can't use DOMParser in service worker
-    let description = '';
-
-    // Try to find job description content
-    const descMatch = html.match(/<div[^>]*class="[^"]*job-description[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
-    if (descMatch) {
-      description = descMatch[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-    }
-
-    return { description };
-  } catch (error) {
-    console.error('Error fetching description:', error);
-    return { error: error.message };
-  }
-}

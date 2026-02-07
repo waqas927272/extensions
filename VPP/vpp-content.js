@@ -38,6 +38,7 @@
 
         jobs.push({
             id: jobId, // For deduplication
+            jobId,
             jobTitle,
             location: hospital || 'N/A', // Map to 'location' to match the data model
             city,

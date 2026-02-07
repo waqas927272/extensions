@@ -47,6 +47,14 @@
         Send to Webhook
       </button>
     </div>
+
+    <div class="progress-section hidden" id="progressSection">
+      <h3>Progress</h3>
+      <div class="progress-bar-container">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+      <span class="progress-text" id="progressText">0 / 0</span>
+    </div>
   </div>
 
   <div class="main-content">
@@ -86,6 +94,7 @@
               Title
               <span class="sort-icon">⇅</span>
             </th>
+            <th>Job ID</th>
             <th class="sortable" data-column="city">
               City
               <span class="sort-icon">⇅</span>

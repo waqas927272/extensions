@@ -355,6 +355,12 @@ td {
   color: #4a5568;
 }
 
+.job-id-cell {
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+  color: #718096;
+}
+
 td a {
   color: #143c71;
   text-decoration: none;
@@ -512,6 +518,50 @@ th:last-child, td:last-child {
 .close-button:hover {
   color: #2d3748;
   background: #f7fafc;
+}
+
+/* Progress Bar */
+.progress-section {
+  padding: 16px 20px;
+  margin: 8px 16px;
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.progress-section.hidden {
+  display: none;
+}
+
+.progress-section h3 {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.9);
+  margin-bottom: 10px;
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.progress-bar {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progress-text {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.8);
 }
 
 /* Toast Notification */

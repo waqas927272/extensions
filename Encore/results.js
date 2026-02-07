@@ -44,6 +44,8 @@ document.addEventListener('DOMContentLoaded', () => {
   let filteredJobs = [];
   let selectedIds = new Set();
   let duplicateIds = new Set();
+  let isGettingDescriptions = false;
+  let currentJobIndex = 0;
 
   // Initialize
   init();
@@ -147,6 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
         <td class="col-status">
           ${isDuplicate ? '<span class="badge badge-duplicate">Duplicate</span>' : '<span class="badge badge-unique">Unique</span>'}
         </td>
+        <td class="col-jobid">${escapeHtml(job.jobId || 'N/A')}</td>
         <td class="col-title">
           <a href="${job.link}" target="_blank">${escapeHtml(job.title)}</a>
         </td>
@@ -204,6 +207,10 @@ document.addEventListener('DOMContentLoaded', () => {
   function showJobDetails(job) {
     modalTitle.textContent = job.title;
     modalBody.innerHTML = `
+      <div class="detail-row">
+        <span class="detail-label">Job ID:</span>
+        <span class="detail-value">${escapeHtml(job.jobId || 'N/A')}</span>
+      </div>
       <div class="detail-row">
         <span class="detail-label">Req ID:</span>
         <span class="detail-value">${escapeHtml(job.reqId)}</span>
@@ -324,55 +331,109 @@ document.addEventListener('DOMContentLoaded', () => {
     updateStats();
   });
 
-  // Get descriptions button
-  getDescriptionsBtn.addEventListener('click', async () => {
-    const jobsToFetch = selectedIds.size > 0
-      ? jobs.filter((_, index) => selectedIds.has(index))
-      : jobs.filter(job => !job.description || job.description.trim() === '');
+  // Listen for description saved messages from background script
+  chrome.runtime.onMessage.addListener((request) => {
+    if (request.action === 'descriptionSaved') {
+      console.log(`Description saved for job ${request.jobIndex + 1}, success: ${request.success}`);
 
-    if (jobsToFetch.length === 0) {
-      alert('No jobs need descriptions');
+      // Refresh jobs from storage
+      chrome.storage.local.get(['encoreJobs'], (result) => {
+        jobs = result.encoreJobs || [];
+        detectDuplicates();
+        filterJobs();
+        renderTable();
+        updateStats();
+
+        // Update progress
+        const total = jobs.length;
+        const withDesc = jobs.filter(job => job.description && job.description.trim() !== '').length;
+        const percent = Math.round((withDesc / total) * 100);
+        progressFill.style.width = `${percent}%`;
+        progressLabel.textContent = 'Fetching descriptions...';
+        progressDetail.textContent = `${withDesc} / ${total}`;
+
+        if (isGettingDescriptions) {
+          setTimeout(() => {
+            processNextJob();
+          }, 1500);
+        }
+      });
+    }
+  });
+
+  function processNextJob() {
+    // Refresh from storage first
+    chrome.storage.local.get(['encoreJobs'], (result) => {
+      jobs = result.encoreJobs || [];
+
+      // Find next job without description
+      let foundJob = false;
+      for (let i = 0; i < jobs.length; i++) {
+        if (!jobs[i].description || jobs[i].description.trim() === '') {
+          currentJobIndex = i;
+          foundJob = true;
+          break;
+        }
+      }
+
+      if (!foundJob) {
+        isGettingDescriptions = false;
+        getDescriptionsBtn.textContent = 'Get Descriptions';
+        getDescriptionsBtn.disabled = false;
+        progressBar.classList.add('hidden');
+        alert('All jobs have descriptions now!');
+        return;
+      }
+
+      const job = jobs[currentJobIndex];
+      console.log(`Processing job ${currentJobIndex + 1} of ${jobs.length}: ${job.title}`);
+
+      // Update progress
+      const withDesc = jobs.filter(j => j.description && j.description.trim() !== '').length;
+      const percent = Math.round((withDesc / jobs.length) * 100);
+      progressFill.style.width = `${percent}%`;
+      progressLabel.textContent = 'Fetching descriptions...';
+      progressDetail.textContent = `${withDesc} / ${jobs.length}`;
+
+      // Open tab and send message to background to scrape
+      chrome.tabs.create({ url: job.link, active: false }, (tab) => {
+        chrome.runtime.sendMessage({
+          action: 'scrapeJobDescription',
+          tabId: tab.id,
+          jobIndex: currentJobIndex,
+          jobLink: job.link
+        });
+      });
+    });
+  }
+
+  // Get descriptions button
+  getDescriptionsBtn.addEventListener('click', () => {
+    if (jobs.length === 0) {
+      alert('No jobs to get descriptions for.');
       return;
     }
 
-    progressBar.classList.remove('hidden');
-    getDescriptionsBtn.disabled = true;
-
-    try {
-      const response = await chrome.runtime.sendMessage({
-        action: 'fetchAllDescriptions',
-        jobs: jobsToFetch
-      });
-
-      if (response && response.jobs) {
-        // Update jobs with fetched descriptions
-        response.jobs.forEach(updatedJob => {
-          const index = jobs.findIndex(j => j.reqId === updatedJob.reqId || j.link === updatedJob.link);
-          if (index !== -1) {
-            jobs[index] = updatedJob;
-          }
-        });
-
-        await chrome.storage.local.set({ encoreJobs: jobs });
-        filterJobs();
-        renderTable();
-      }
-    } catch (error) {
-      console.error('Error fetching descriptions:', error);
-      alert('Error fetching descriptions: ' + error.message);
+    const jobsWithoutDesc = jobs.filter(job => !job.description || job.description.trim() === '');
+    if (jobsWithoutDesc.length === 0) {
+      alert('All jobs already have descriptions!');
+      return;
     }
 
-    progressBar.classList.add('hidden');
-    getDescriptionsBtn.disabled = false;
-  });
+    if (confirm(`This will fetch descriptions for ${jobsWithoutDesc.length} jobs. Continue?`)) {
+      isGettingDescriptions = true;
+      getDescriptionsBtn.disabled = true;
+      getDescriptionsBtn.textContent = 'Processing...';
 
-  // Listen for description progress
-  chrome.runtime.onMessage.addListener((request) => {
-    if (request.action === 'descriptionProgress') {
-      const percent = Math.round((request.current / request.total) * 100);
-      progressLabel.textContent = 'Fetching descriptions...';
-      progressDetail.textContent = `${request.current}/${request.total}`;
+      // Show progress
+      progressBar.classList.remove('hidden');
+      const withDesc = jobs.filter(j => j.description && j.description.trim() !== '').length;
+      const percent = Math.round((withDesc / jobs.length) * 100);
       progressFill.style.width = `${percent}%`;
+      progressLabel.textContent = 'Fetching descriptions...';
+      progressDetail.textContent = `${withDesc} / ${jobs.length}`;
+
+      processNextJob();
     }
   });
 
@@ -387,9 +448,10 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const headers = ['Title', 'Req ID', 'Hospital Name', 'Street Address', 'City', 'State', 'Postal Code', 'Country', 'Category', 'Job Type', 'Link', 'Description'];
+    const headers = ['Title', 'Job ID', 'Req ID', 'Hospital Name', 'Street Address', 'City', 'State', 'Postal Code', 'Country', 'Category', 'Job Type', 'Link', 'Description'];
     const rows = jobsToExport.map(job => [
       job.title,
+      job.jobId || '',
       job.reqId,
       job.hospitalName,
       job.streetAddress,
@@ -431,7 +493,7 @@ document.addEventListener('DOMContentLoaded', () => {
     alert('Webhook configuration saved');
   });
 
-  // Send to webhook
+  // Send to webhook in batches of 50
   sendWebhookBtn.addEventListener('click', async () => {
     const webhookUrl = webhookUrlInput.value;
     const parentClient = parentClientInput.value;
@@ -450,38 +512,70 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    const BATCH_SIZE = 50;
+    const totalBatches = Math.ceil(jobsToSend.length / BATCH_SIZE);
+
+    if (!confirm(`Send ${jobsToSend.length} job(s) in ${totalBatches} batch(es) to webhook?`)) {
+      return;
+    }
+
     progressBar.classList.remove('hidden');
     sendWebhookBtn.disabled = true;
+
+    // Map job records to webhook format
+    const mappedJobs = jobsToSend.map(job => ({
+      parent_client: parentClient,
+      job_id: job.jobId || '',
+      job_title: job.title || '',
+      job_type: job.jobType || '',
+      hospital: job.hospitalName || '',
+      address: job.streetAddress || '',
+      city: job.city || '',
+      state: job.state || '',
+      zip_code: job.postalCode || '',
+      country: job.country || 'USA',
+      category: job.category || '',
+      req_id: job.reqId || '',
+      link: job.link || '',
+      description: job.description || ''
+    }));
+
+    // Split into batches
+    const batches = [];
+    for (let i = 0; i < mappedJobs.length; i += BATCH_SIZE) {
+      batches.push(mappedJobs.slice(i, i + BATCH_SIZE));
+    }
+
+    // Generate a unique sync ID for this entire send operation
+    const syncId = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 
     let successCount = 0;
     let errorCount = 0;
 
-    for (let i = 0; i < jobsToSend.length; i++) {
-      const job = jobsToSend[i];
+    // Send each batch
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+      const batchNumber = batchIndex + 1;
 
       progressLabel.textContent = 'Sending to webhook...';
-      progressDetail.textContent = `${i + 1}/${jobsToSend.length}`;
-      progressFill.style.width = `${Math.round(((i + 1) / jobsToSend.length) * 100)}%`;
+      progressDetail.textContent = `Batch ${batchNumber} / ${totalBatches}`;
+      progressFill.style.width = `${Math.round((batchNumber / totalBatches) * 100)}%`;
+
+      const payload = {
+        source: 'Encore Vet Job Scraper',
+        parentClientName: parentClient,
+        syncId: syncId,
+        timestamp: new Date().toISOString(),
+        batchNumber: batchNumber,
+        totalBatches: totalBatches,
+        batchSize: batch.length,
+        totalRecords: jobsToSend.length,
+        data: batch
+      };
+
+      console.log(`Sending batch ${batchNumber}/${totalBatches}:`, payload);
 
       try {
-        const payload = {
-          parent_client: parentClient,
-          job_title: job.title || '',
-          job_type: job.jobType || '',
-          hospital: job.hospitalName || '',
-          address: job.streetAddress || '',
-          city: job.city || '',
-          state: job.state || '',
-          zip_code: job.postalCode || '',
-          country: job.country || 'USA',
-          category: job.category || '',
-          req_id: job.reqId || '',
-          link: job.link || '',
-          description: job.description || ''
-        };
-
-        console.log('Sending payload:', payload);
-
         const response = await fetch(webhookUrl, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -490,24 +584,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (response.ok) {
           successCount++;
-          console.log(`Successfully sent job: ${job.title}`);
+          console.log(`Successfully sent batch ${batchNumber}/${totalBatches}`);
         } else {
           errorCount++;
-          console.error(`Failed to send job ${job.reqId}:`, await response.text());
+          console.error(`Failed to send batch ${batchNumber}:`, await response.text());
         }
       } catch (error) {
         errorCount++;
-        console.error(`Error sending job ${job.reqId}:`, error);
+        console.error(`Error sending batch ${batchNumber}:`, error);
       }
 
-      // Small delay between requests
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Small delay between batches
+      if (batchIndex < batches.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
     }
 
     progressBar.classList.add('hidden');
     sendWebhookBtn.disabled = false;
 
-    alert(`Webhook complete!\nSuccess: ${successCount}\nFailed: ${errorCount}`);
+    let resultMsg = `Webhook Complete!\n`;
+    resultMsg += `Sync ID: ${syncId}\n`;
+    resultMsg += `Total Records: ${jobsToSend.length}\n`;
+    resultMsg += `Batches Sent: ${totalBatches} (${BATCH_SIZE} per batch)\n`;
+    resultMsg += `Successful: ${successCount} | Failed: ${errorCount}`;
+    alert(resultMsg);
   });
 
   // Escape HTML

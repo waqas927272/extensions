@@ -21,8 +21,13 @@
         const linkEl = row.querySelector('a[href*="/postings/"]');
         const jobLink = linkEl ? linkEl.href : '';
 
+        // Extract job ID from URL (handles /postings/1234 pattern)
+        const jobIdMatch = jobLink.match(/\/postings\/([^\/\?#]+)/);
+        const jobId = jobIdMatch ? jobIdMatch[1] : (jobLink ? jobLink.split('/').pop() : '');
+
         jobs.push({
           jobTitle: titleEl.innerText.trim(),
+          jobId: jobId,
           location: locationEl ? locationEl.innerText.trim() : '',
           areaOfPractice: departmentEl ? departmentEl.innerText.trim() : '',
           hospitalName: clinicEl ? clinicEl.innerText.trim() : '',
