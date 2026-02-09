@@ -194,7 +194,7 @@ function displayJobs(jobs) {
 
     const hasDescription = job.description && job.description.trim() !== '';
     const descHtml = hasDescription
-      ? '<span style="color:#48bb78; font-weight:600;">Done</span>'
+      ? `<div class="description-cell">${escapeHtml(job.description)}</div>`
       : '<span style="color:#ed8936; font-weight:600;">Pending</span>';
 
     row.innerHTML = `

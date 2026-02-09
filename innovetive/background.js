@@ -29,24 +29,44 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         chrome.scripting.executeScript({
           target: { tabId: tabId },
           func: () => {
-            // Try multiple selectors for description
             let description = '';
-            const descSelectors = [
-              '.job-description',
-              '.job-details',
-              '[itemprop="description"]',
-              '.posting-description',
-              '.job-content',
-              '.content-wrapper',
-              'main'
-            ];
 
-            for (const selector of descSelectors) {
-              const el = document.querySelector(selector);
-              if (el) {
-                description = el.innerText.trim();
-                break;
-              }
+            // Parse JSON-LD and extract only the "Description" section
+            const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
+            for (const script of jsonLdScripts) {
+              try {
+                const data = JSON.parse(script.textContent);
+                if (data.description && data.description.length > 50) {
+                  const temp = document.createElement('div');
+                  temp.innerHTML = data.description;
+
+                  // Find the "Description" h3 heading and extract content until the next h3
+                  const headings = temp.querySelectorAll('h3');
+                  let descHeading = null;
+                  for (const h of headings) {
+                    if (h.textContent.trim().toLowerCase() === 'description') {
+                      descHeading = h;
+                      break;
+                    }
+                  }
+
+                  if (descHeading) {
+                    let text = '';
+                    let sibling = descHeading.nextElementSibling;
+                    while (sibling && sibling.tagName !== 'H3') {
+                      text += sibling.innerText.trim() + '\n';
+                      sibling = sibling.nextElementSibling;
+                    }
+                    description = text.trim();
+                  }
+
+                  // If no "Description" heading found, use full JSON-LD as fallback
+                  if (!description) {
+                    description = temp.innerText.trim();
+                  }
+                  break;
+                }
+              } catch (e) {}
             }
 
             // Extract job type

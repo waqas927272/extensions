@@ -452,7 +452,29 @@ body {
 .col-company { min-width: 180px; }
 .col-location { min-width: 150px; }
 .col-type { min-width: 100px; }
+.col-description { min-width: 250px; max-width: 400px; }
 .col-actions { width: 80px; text-align: center; }
+
+/* Description Cell */
+.description-cell {
+  max-height: 100px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-light);
+  padding: 8px 10px;
+  background: #fafbfc;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.no-desc {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 12px;
+}
 
 /* Table Links */
 #jobs-table a {

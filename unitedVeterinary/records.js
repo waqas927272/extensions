@@ -399,7 +399,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const jobIndex = jobs.findIndex(j => j.link === job.link);
 
         try {
-            const tab = await chrome.tabs.create({ url: job.link, active: false });
+            // Add nl=1 param so Jobvite serves the standalone page instead of redirecting to the parent site iframe
+            const jobUrl = new URL(job.link);
+            jobUrl.searchParams.set('nl', '1');
+            const tab = await chrome.tabs.create({ url: jobUrl.toString(), active: false });
             chrome.runtime.sendMessage({
                 action: 'scrapeJobDescription',
                 tabId: tab.id,

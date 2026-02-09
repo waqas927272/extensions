@@ -2,7 +2,19 @@
   "permissions": {
     "allow": [
       "WebFetch(domain:jobs.shorecp.com)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "WebFetch(domain:jobs.jobvite.com)",
+      "WebFetch(domain:unitedveterinarycare.com)",
+      "WebFetch(domain:careers.jobvite.com)",
+      "WebFetch(domain:innovetivepetcare.pinpointhq.com)",
+      "WebFetch(domain:boards.greenhouse.io)",
+      "WebFetch(domain:job-boards.greenhouse.io)",
+      "WebFetch(domain:www.vip-vet.com)",
+      "WebFetch(domain:vip-vet.com)",
+      "WebFetch(domain:boards-api.greenhouse.io)",
+      "WebFetch(domain:missionpethealth.avature.net)",
+      "WebFetch(domain:www.petvetcarecenters.com)",
+      "Bash(ls:*)"
     ]
   }
 }

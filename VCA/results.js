@@ -44,6 +44,9 @@ document.addEventListener('DOMContentLoaded', () => {
   let filteredJobs = [];
   let selectedIds = new Set();
   let duplicateIds = new Set();
+  let isGettingDescriptions = false;
+  let currentDescIndex = 0;
+  let descJobIndices = [];
 
   // Initialize
   init();
@@ -316,55 +319,81 @@ document.addEventListener('DOMContentLoaded', () => {
     updateStats();
   });
 
-  // Get descriptions button
+  // Get descriptions button (tab-based approach)
   getDescriptionsBtn.addEventListener('click', async () => {
-    const jobsToFetch = selectedIds.size > 0
-      ? jobs.filter((_, index) => selectedIds.has(index))
-      : jobs.filter(job => !job.description || job.description.trim() === '');
+    if (isGettingDescriptions) return;
 
-    if (jobsToFetch.length === 0) {
+    descJobIndices = [];
+
+    if (selectedIds.size > 0) {
+      descJobIndices = Array.from(selectedIds);
+    } else {
+      jobs.forEach((job, index) => {
+        if (!job.description || job.description.trim() === '') {
+          descJobIndices.push(index);
+        }
+      });
+    }
+
+    if (descJobIndices.length === 0) {
       alert('No jobs need descriptions');
       return;
     }
 
-    progressBar.classList.remove('hidden');
+    isGettingDescriptions = true;
+    currentDescIndex = 0;
     getDescriptionsBtn.disabled = true;
+    progressBar.classList.remove('hidden');
 
-    try {
-      const response = await chrome.runtime.sendMessage({
-        action: 'fetchAllDescriptions',
-        jobs: jobsToFetch
-      });
-
-      if (response && response.jobs) {
-        // Update jobs with fetched descriptions
-        response.jobs.forEach(updatedJob => {
-          const index = jobs.findIndex(j => j.reqId === updatedJob.reqId || j.link === updatedJob.link);
-          if (index !== -1) {
-            jobs[index] = updatedJob;
-          }
-        });
-
-        await chrome.storage.local.set({ vcaJobs: jobs });
-        filterJobs();
-        renderTable();
-      }
-    } catch (error) {
-      console.error('Error fetching descriptions:', error);
-      alert('Error fetching descriptions: ' + error.message);
-    }
-
-    progressBar.classList.add('hidden');
-    getDescriptionsBtn.disabled = false;
+    processNextJob();
   });
 
-  // Listen for description progress
+  // Process next job for description fetching
+  function processNextJob() {
+    if (currentDescIndex >= descJobIndices.length) {
+      isGettingDescriptions = false;
+      getDescriptionsBtn.disabled = false;
+      progressBar.classList.add('hidden');
+      progressFill.style.width = '0%';
+      return;
+    }
+
+    const jobIdx = descJobIndices[currentDescIndex];
+    const job = jobs[jobIdx];
+
+    const percent = Math.round(((currentDescIndex + 1) / descJobIndices.length) * 100);
+    progressLabel.textContent = 'Fetching descriptions...';
+    progressDetail.textContent = `${currentDescIndex + 1}/${descJobIndices.length}`;
+    progressFill.style.width = `${percent}%`;
+
+    chrome.tabs.create({ url: job.link, active: false }).then(tab => {
+      chrome.runtime.sendMessage({
+        action: 'scrapeJobDescription',
+        tabId: tab.id,
+        jobIndex: jobIdx,
+        jobLink: job.link
+      });
+    }).catch(err => {
+      console.error('Error creating tab:', err);
+      currentDescIndex++;
+      setTimeout(processNextJob, 500);
+    });
+  }
+
+  // Listen for description saved messages
   chrome.runtime.onMessage.addListener((request) => {
-    if (request.action === 'descriptionProgress') {
-      const percent = Math.round((request.current / request.total) * 100);
-      progressLabel.textContent = 'Fetching descriptions...';
-      progressDetail.textContent = `${request.current}/${request.total}`;
-      progressFill.style.width = `${percent}%`;
+    if (request.action === 'descriptionSaved' && isGettingDescriptions) {
+      chrome.storage.local.get(['vcaJobs'], (result) => {
+        if (result.vcaJobs) {
+          jobs = result.vcaJobs;
+          filterJobs();
+          renderTable();
+          updateStats();
+        }
+      });
+
+      currentDescIndex++;
+      setTimeout(processNextJob, 1500);
     }
   });
 

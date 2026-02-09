@@ -9,7 +9,7 @@
                     const temp = document.createElement('div');
                     temp.innerHTML = data.description;
                     let text = temp.innerText.trim();
-                    // Handle double-encoded HTML (entity-encoded tags)
+                    // Handle double-encoded HTML (entity-encoded tags like &lt;p&gt;)
                     if (/<[a-z][\s\S]*>/i.test(text)) {
                         temp.innerHTML = text;
                         text = temp.innerText.trim();
@@ -19,15 +19,13 @@
             } catch (e) {}
         }
 
-        // Fallback: Job board DOM selectors (jobs.shorecp.com)
+        // Fallback: Phenom / Workday DOM selectors
         const selectors = [
+            '[data-automation-id="jobPostingDescription"]',
+            '[data-ph-at-id="job-description"]',
             '.job-description',
+            '.jd-info',
             '.job-details-description',
-            '.job-content',
-            '.job-detail-content',
-            '.posting-description',
-            '[class*="job-description"]',
-            '[class*="jobDescription"]',
             '[itemprop="description"]'
         ];
 
@@ -35,13 +33,13 @@
             const el = document.querySelector(selector);
             if (el && el.innerText.trim().length > 50) {
                 const cloned = el.cloneNode(true);
-                cloned.querySelectorAll('script, style, nav, header, footer, form, button, .apply-button').forEach(node => node.remove());
+                cloned.querySelectorAll('script, style, nav, header, footer, form, .apply-button, button').forEach(node => node.remove());
                 let text = cloned.innerText.trim();
                 // Handle any remaining HTML tags in text
                 if (/<[a-z][\s\S]*>/i.test(text)) {
-                    const temp = document.createElement('div');
-                    temp.innerHTML = text;
-                    text = temp.innerText.trim();
+                    const temp2 = document.createElement('div');
+                    temp2.innerHTML = text;
+                    text = temp2.innerText.trim();
                 }
                 if (text.length > 50) {
                     return text;

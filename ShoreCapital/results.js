@@ -149,6 +149,11 @@ function renderJobs() {
       </td>
       <td class="col-location">${escapeHtml(location)}</td>
       <td class="col-type">${typeHtml}</td>
+      <td class="col-description">
+        ${job.description
+          ? `<div class="description-cell">${escapeHtml(job.description)}</div>`
+          : '<span class="no-desc">Not scraped</span>'}
+      </td>
       <td class="col-actions">
         <button class="view-btn" data-index="${originalIndex}">View</button>
       </td>
@@ -415,6 +420,9 @@ function showJobDetails(job) {
     <p><strong>Posted:</strong> ${escapeHtml(job.postedDate || 'N/A')}</p>
     <p><strong>Skills:</strong> ${skillsHtml}</p>
     <p><strong>Link:</strong> <a href="${escapeHtml(job.link)}" target="_blank">${escapeHtml(job.link)}</a></p>
+    <hr>
+    <p><strong>Description:</strong></p>
+    <pre>${escapeHtml(job.description || 'No description available')}</pre>
   `;
   document.getElementById('modal').classList.remove('hidden');
 }

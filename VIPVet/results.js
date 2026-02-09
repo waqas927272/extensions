@@ -290,7 +290,28 @@ async function processNextJob() {
   const jobIndex = jobs.findIndex(j => j.link === job.link);
 
   try {
-    const tab = await chrome.tabs.create({ url: job.link, active: false });
+    // Convert to Greenhouse embed URL so page loads with JSON-LD directly
+    // instead of redirecting to vip-vet.com where content loads dynamically
+    let descUrl = job.link;
+    let ghJobId = '';
+    let boardName = '';
+
+    const ghJidMatch = job.link.match(/gh_jid=(\d+)/);
+    const jobsPathMatch = job.link.match(/greenhouse\.io\/([^\/]+)\/jobs\/(\d+)/);
+
+    if (jobsPathMatch) {
+      boardName = jobsPathMatch[1];
+      ghJobId = jobsPathMatch[2];
+    } else if (ghJidMatch) {
+      ghJobId = ghJidMatch[1];
+      boardName = 'veterinaryinnovativepartners';
+    }
+
+    if (ghJobId && boardName) {
+      descUrl = `https://boards.greenhouse.io/embed/job_app?for=${boardName}&token=${ghJobId}`;
+    }
+
+    const tab = await chrome.tabs.create({ url: descUrl, active: false });
     chrome.runtime.sendMessage({
       action: 'scrapeJobDescription',
       tabId: tab.id,

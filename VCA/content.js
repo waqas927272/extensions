@@ -117,7 +117,7 @@ function scrapeJobs() {
           category,
           jobType,
           link: jobUrl,
-          description: descriptionTeaser,
+          description: '',
           postalCode: ''
         });
       }
@@ -198,7 +198,7 @@ function scrapeJobs() {
             category,
             jobType: '',
             link,
-            description,
+            description: '',
             postalCode: ''
           });
         }

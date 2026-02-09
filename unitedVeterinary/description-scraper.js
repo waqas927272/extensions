@@ -1,16 +1,26 @@
 (() => {
     try {
-        // Jobvite job page selectors
+        // Try JSON-LD structured data first (most reliable)
+        const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
+        for (const script of jsonLdScripts) {
+            try {
+                const data = JSON.parse(script.textContent);
+                if (data.description && data.description.length > 50) {
+                    // Strip HTML tags from the description
+                    const temp = document.createElement('div');
+                    temp.innerHTML = data.description;
+                    return temp.innerText.trim();
+                }
+            } catch (e) {}
+        }
+
+        // Jobvite job page selectors (specific to general)
         const selectors = [
+            '.jv-page-body .jv-wrapper',
+            '.jv-page-body',
             '.jv-job-detail-description',
             '.jv-job-description',
-            '.job-description',
-            '.jv-job-detail',
-            '[class*="job-description"]',
-            '[class*="jobDescription"]',
-            '.job-details',
-            '.job-content',
-            'article'
+            '.jv-job-detail'
         ];
 
         for (const selector of selectors) {
@@ -20,24 +30,7 @@
             }
         }
 
-        // Fallback: find the largest text block on the page
-        const allElements = document.querySelectorAll('div, section, article, main');
-        let bestElement = null;
-        let bestLength = 0;
-
-        allElements.forEach(el => {
-            const text = el.innerText.trim();
-            if (text.length > bestLength && text.length > 100) {
-                bestLength = text.length;
-                bestElement = el;
-            }
-        });
-
-        if (bestElement) {
-            return bestElement.innerText.trim();
-        }
-
-        return document.body.innerText.trim().substring(0, 5000);
+        return '';
     } catch (e) {
         return `Error scraping description: ${e.message}`;
     }

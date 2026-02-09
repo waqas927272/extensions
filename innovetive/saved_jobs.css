@@ -507,6 +507,23 @@ body {
   box-shadow: 0 4px 8px rgba(26, 54, 93, 0.4);
 }
 
+/* Description Cell */
+.description-cell {
+  max-height: 100px;
+  overflow-y: auto;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-light);
+  padding: 8px 10px;
+  background: #fafbfc;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  min-width: 250px;
+  max-width: 400px;
+}
+
 /* No Data */
 .no-data {
   display: flex;

@@ -295,12 +295,24 @@ async function processNextJob() {
     const jobIndex = jobs.findIndex(j => j.link === job.link);
 
     try {
-        const tab = await chrome.tabs.create({ url: job.link, active: false });
+        // Convert Greenhouse URL to embed format for direct access (avoids redirects)
+        let descUrl = job.link;
+        const jobsPathMatch = job.link.match(/greenhouse\.io\/([^\/]+)\/jobs\/(\d+)/);
+        const ghJidMatch = job.link.match(/gh_jid=(\d+)/);
+        if (jobsPathMatch) {
+            descUrl = `https://boards.greenhouse.io/embed/job_app?for=${jobsPathMatch[1]}&token=${jobsPathMatch[2]}`;
+        } else if (ghJidMatch) {
+            const boardMatch = job.link.match(/greenhouse\.io\/([^\/\?]+)/);
+            const boardName = boardMatch ? boardMatch[1] : 'vetpracticepartners';
+            descUrl = `https://boards.greenhouse.io/embed/job_app?for=${boardName}&token=${ghJidMatch[1]}`;
+        }
+
+        const tab = await chrome.tabs.create({ url: descUrl, active: false });
         chrome.runtime.sendMessage({
             action: 'scrapeJobDescription',
             tabId: tab.id,
             jobIndex: jobIndex,
-            jobLink: job.link
+            jobLink: descUrl
         });
     } catch (error) {
         console.error('Error opening tab for job:', error);
