@@ -455,6 +455,8 @@ function downloadFile(content, filename, type) {
 
 // ============ GET DESCRIPTIONS ============
 
+let totalToFetch = 0;
+
 async function getJobDescriptions() {
   if (isGettingDescriptions) {
     alert('Already getting descriptions. Please wait...');
@@ -472,19 +474,19 @@ async function getJobDescriptions() {
 
   isGettingDescriptions = true;
   currentJobIndex = 0;
+  totalToFetch = jobsWithoutDesc.length;
 
   const getBtn = document.getElementById('get-descriptions-btn');
   getBtn.disabled = true;
   getBtn.textContent = 'Getting Descriptions...';
 
-  // Show progress
   const progressSection = document.getElementById('progressSection');
   const progressBar = document.getElementById('progressBar');
   const progressText = document.getElementById('progressText');
   const progressLabel = document.getElementById('progressLabel');
   progressSection.classList.remove('hidden');
   progressLabel.textContent = 'Getting Descriptions';
-  progressText.textContent = `0 / ${jobsWithoutDesc.length}`;
+  progressText.textContent = `0 / ${totalToFetch}`;
   progressBar.style.width = '0%';
 
   processNextJob();
@@ -495,22 +497,16 @@ async function processNextJob() {
   const jobs = stored.shoreCapitalJobs || [];
 
   const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
-  const totalOriginal = jobs.filter(job => job.link).length;
-  const totalWithoutDesc = jobsWithoutDesc.length;
-  const processed = totalOriginal - totalWithoutDesc;
+  const done = totalToFetch - jobsWithoutDesc.length;
 
   // Update progress
-  const progressBar = document.getElementById('progressBar');
-  const progressText = document.getElementById('progressText');
-  const totalToProcess = allJobs.filter(job => !job.description && job.link).length;
-  progressText.textContent = `${processed} / ${totalToProcess + processed}`;
-  progressBar.style.width = `${(processed / (totalToProcess + processed)) * 100}%`;
+  document.getElementById('progressText').textContent = `${done} / ${totalToFetch}`;
+  document.getElementById('progressBar').style.width = `${(done / totalToFetch) * 100}%`;
 
   if (jobsWithoutDesc.length === 0) {
     isGettingDescriptions = false;
-    const getBtn = document.getElementById('get-descriptions-btn');
-    getBtn.disabled = false;
-    getBtn.textContent = 'Get Descriptions';
+    document.getElementById('get-descriptions-btn').disabled = false;
+    document.getElementById('get-descriptions-btn').textContent = 'Get Descriptions';
     document.getElementById('progressSection').classList.add('hidden');
     alert('All descriptions have been fetched!');
     return;

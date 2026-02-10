@@ -14,7 +14,14 @@
       "WebFetch(domain:boards-api.greenhouse.io)",
       "WebFetch(domain:missionpethealth.avature.net)",
       "WebFetch(domain:www.petvetcarecenters.com)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "WebFetch(domain:consider.com)",
+      "WebSearch",
+      "WebFetch(domain:product.consider.com)",
+      "WebFetch(domain:api.consider.com)",
+      "WebFetch(domain:docs.considerapi.com)",
+      "WebFetch(domain:boards.considerapi.com)",
+      "WebFetch(domain:jobs.insightpartners.com)"
     ]
   }
 }
