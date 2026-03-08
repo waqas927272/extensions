@@ -1,0 +1,381 @@
+function hasClass(element, cls) {
+  return (" " + element.className + " ").indexOf(" " + cls + " ") > -1;
+}
+
+/*====== Header Mobile Menu functionality Start ======*/
+
+function toggle_menu() {
+  // debugger;
+  var navBar = document.getElementsByClassName("header-menu")[0];
+  var menuIcon = document.getElementsByClassName("icon-menu")[0];
+  // var menuCloseIcon = document.querySelector('.mobile-menu-block');
+  if (navBar && !hasClass(navBar, "show") && window.innerWidth <= 1024) {
+    menuIcon.classList.add("icon-cancel");
+    // menuCloseIcon.classList.add("show");
+    navBar.classList.add("show");
+    menuIcon.setAttribute("aria-expanded", "true");
+    // menuIcon.classList.add("icon-cancel");
+    document.body.style.overflow = "hidden";
+    navBar.focus();
+  } else {
+    menuIcon.classList.remove("icon-cancel");
+    // menuCloseIcon.classList.remove("show");
+    navBar.classList.remove("show");
+    menuIcon.setAttribute("aria-expanded", "false");
+    // menuIcon.classList.remove("icon-cancel");
+    document.body.style.overflow = "scroll";
+  }
+}
+
+function dropDown() {
+  var DropDownBtn = document.getElementsByClassName("subnav-dropdown")[0];
+  var dropDownListParent = document.getElementsByClassName("drop-down")[0];
+  var subMenuNav = document.getElementsByClassName("sub-navigation")[0];
+  if (DropDownBtn && subMenuNav.classList.contains("show") == true) {
+    dropDownListParent.classList.remove("active");
+    DropDownBtn.setAttribute("aria-expanded", "false");
+    subMenuNav.classList.remove("show");
+    subMenuNav.setAttribute("aria-hidden", "true");
+    dropDownListParent.children[0]
+      .getElementsByTagName("i")[0]
+      .classList.add("icon-down-arrow");
+    dropDownListParent.children[0]
+      .getElementsByTagName("i")[0]
+      .classList.remove("icon-up-arrow");
+  } else {
+    dropDownListParent.classList.add("active");
+    DropDownBtn.setAttribute("aria-expanded", "true");
+    subMenuNav.classList.add("show");
+    subMenuNav.setAttribute("aria-hidden", "false");
+    dropDownListParent.children[0]
+      .getElementsByTagName("i")[0]
+      .classList.add("icon-up-arrow");
+    dropDownListParent.children[0]
+      .getElementsByTagName("i")[0]
+      .classList.remove("icon-down-arrow");
+  }
+}
+//to hide dropdown click outside
+function persona_focuse_close_menu() {
+  dropDown();
+}
+
+/*====== Header Mobile Menu functionality End ======*/
+document.addEventListener("DOMContentLoaded", setFocus(500));
+
+function setFocus(setTime) {
+  setTimeout(function () {
+    var getJobcart = phApp.pageName;
+    if (getJobcart == "jobcart") {
+      document
+        .querySelector("[as-element='ph-job-cart-count-v3']")
+        .classList.add("active");
+    }
+    var getCI = phApp.pageName;
+    if (getCI == "candidate-account") {
+      document
+        .querySelector("[as-element='ph-social-connect-v1']")
+        .classList.add("active");
+    }
+    var getLogo = document.querySelector(".mobile-logo a");
+    if (getLogo) {
+      getLogo.addEventListener("focus", function () {
+        if (window.innerWidth <= 767) {
+          if (
+            document.querySelector(".nav").classList.contains("show") == true
+          ) {
+            toggle_menu();
+          }
+        }
+      });
+    } else {
+      setFocus(500);
+    }
+  }, setTime);
+}
+
+/*====== Header Mobile Menu functionality End ======*/
+function dropDown(event) {
+  // var DropDownBtn = document.getElementsByClassName('subnav-dropdown')[0];
+  var getArrowIcon = document.querySelector(".nav-list-items .icon");
+  var subItemsMenu = document.querySelectorAll(".sub-navigation");
+  var areaOfExpert;
+  var parentElement;
+  if (event && event.type == "blur") {
+    areaOfExpert = document.querySelector(
+      ".nav-main-bar .nav-list-items.active button"
+    );
+  } else {
+    areaOfExpert = event.currentTarget;
+  }
+  if (!areaOfExpert) {
+  }
+  var listItem = areaOfExpert.parentElement;
+  var subItems =
+    listItem && listItem.getElementsByClassName("sub-navigation")[0];
+  // var subItemsParent = subItems.parentElement;
+
+  if (areaOfExpert.length >= 0) {
+    for (var i = 0; i < areaOfExpert.length; i++) {
+      var element = areaOfExpert[i];
+      var buttonDatPhValue = element.getAttribute("data-ph-id");
+      var buttonAreaDataPhValue = areaOfExpert.getAttribute("data-ph-id");
+      if (buttonAreaDataPhValue != buttonDatPhValue) {
+        element.setAttribute("aria-expanded", "false");
+      }
+    }
+  }
+  if (subItemsMenu.length >= 0) {
+    for (var i = 0; i < subItemsMenu.length; i++) {
+      var element = subItemsMenu[i];
+      var subMenuDataPhValue = element.getAttribute("data-ph-id");
+      var subMenuItemsDataValue = subItems.getAttribute("data-ph-id");
+      if (subMenuDataPhValue != subMenuItemsDataValue) {
+        element.classList.remove("show");
+        element.setAttribute("aria-hidden", "true");
+        element.parentElement.classList.remove("active");
+      }
+    }
+  }
+
+  if (subItems.classList.contains("show")) {
+    subItems.classList.remove("show");
+    listItem.classList.remove("active");
+    subItems.setAttribute("aria-hidden", "true");
+    areaOfExpert.setAttribute("aria-expanded", "false");
+    getArrowIcon.classList.remove("icon-arrow-up-5");
+    getArrowIcon.classList.add("icon-arrow-down-5");
+  } else {
+    subItems.classList.add("show");
+    listItem.classList.add("active");
+    getArrowIcon.classList.remove("icon-arrow-down-5");
+    getArrowIcon.classList.add("icon-arrow-up-5");
+    subItems.setAttribute("aria-hidden", "false");
+    areaOfExpert.setAttribute("aria-expanded", "true");
+  }
+}
+
+//to hide dropdown click outside
+function persona_focuse_close_menu(event) {
+  // dropDown();
+  setTimeout(function () {
+    var activeEle = document.activeElement;
+    var areaOfExpert = document.querySelector(
+      ".nav-main-bar .nav-list-items.active button"
+    );
+    if (areaOfExpert) {
+      var listItem = areaOfExpert.parentElement;
+      var subItems =
+        listItem && listItem.getElementsByClassName("sub-navigation")[0];
+      if (!subItems.contains(activeEle)) {
+        dropDown(event);
+      }
+    }
+  }, 500);
+}
+
+// Header desktop menu  active color
+
+document.addEventListener("DOMContentLoaded", function () {
+  // var getTopNav = document.querySelector('.top-nav .list-items');
+  // var childListItem = getTopNav.children;
+  var getSkiptContent = document.getElementById("skip-content");
+  var getPhpageEle = document.querySelector(".ph-page");
+  var getUrlLocation = window.location.href;
+  var getCurrentPage = getUrlLocation.split(phApp.baseDomain)[1];
+  var getHeader = document.querySelector(".ph-header");
+  var getPageAnchor = getHeader.querySelector(
+    '[data-ph-href="' + getCurrentPage + '"]'
+  );
+  if (!getPageAnchor) {
+    getPageAnchor = getHeader.querySelector(
+      '[ph-href="' + getCurrentPage + '"]'
+    );
+  }
+  if (getPageAnchor) {
+    getPageAnchor.parentElement.classList.add("active");
+    var getBtnMenu =
+      getPageAnchor.parentElement.parentElement.previousElementSibling;
+    if (getBtnMenu) {
+      if (getBtnMenu.nodeName == "BUTTON") {
+        getBtnMenu.classList.add("active");
+      }
+    }
+  }
+  document.addEventListener("click", function (e) {
+    var getHeader = document.querySelector(".ph-header");
+    var getSubNavDropDown = getHeader.querySelector(".subnav-dropdown");
+    var personaNavBar = document.querySelector(
+      ".ph-navigation .main-nav .nav-list-items.active"
+    );
+    var getSubmenu = getHeader.querySelector(".drop-down .sub-navigation");
+    var currentTartget = e.target;
+    var getAttribute = currentTartget.getAttribute("data-ph-id");
+    var isButtonEle;
+
+    if (getSubNavDropDown) {
+      isButtonEle =
+        getSubNavDropDown.querySelector(
+          '[data-ph-id="' + getAttribute + '"]'
+        ) ||
+        getSubNavDropDown.getAttribute("data-ph-id") == getAttribute ||
+        getSubmenu.querySelector('[data-ph-id="' + getAttribute + '"]');
+    }
+    var subItemsMenu = document.querySelectorAll(".main-nav .sub-navigation");
+
+    if (
+      subItemsMenu.length >= 0 &&
+      personaNavBar &&
+      !personaNavBar.contains(e.target)
+    ) {
+      for (var i = 0; i < subItemsMenu.length; i++) {
+        var element = subItemsMenu[i];
+        element.classList.remove("show");
+        element.setAttribute("aria-hidden", "true");
+        element.parentElement.classList.remove("active");
+        var dropDownListParent =
+          document.getElementsByClassName("drop-down")[0];
+        dropDownListParent.children[0]
+          .getElementsByTagName("i")[0]
+          .classList.add("icon-arrow-down-5");
+        dropDownListParent.children[0]
+          .getElementsByTagName("i")[0]
+          .classList.remove("icon-arrow-up-5");
+      }
+    }
+
+    if (!isButtonEle) {
+      if (getSubmenu.classList.contains("show")) {
+        var dropDownListParent =
+          document.getElementsByClassName("drop-down")[0];
+        getSubmenu.classList.remove("show");
+        getSubmenu.parentElement.classList.remove("active");
+        dropDownListParent.children[0]
+          .getElementsByTagName("i")[0]
+          .classList.remove("icon-arrow-up-5");
+        dropDownListParent.children[0]
+          .getElementsByTagName("i")[0]
+          .classList.add("icon-arrow-down-5");
+      } else {
+      }
+    }
+    return true;
+  });
+  // skip to main
+  if (getSkiptContent) {
+    document
+      .getElementById("skip-content")
+      .addEventListener("focus", function () {
+        document.querySelector(".skip-main").style.height = "40px";
+      });
+    document
+      .getElementById("skip-content")
+      .addEventListener("focusout", function () {
+        document.querySelector(".skip-main").style.height = "auto";
+      });
+  }
+  setTimeout(function () {
+    var createNewEle = document.createElement("DIV");
+    var nodeText_El = "<a id='acc-skip-content'>-</a>";
+    var removeRole = document.querySelector(".ph-component-cntr.ph-widget-box");
+    var removeRoleInJd = document.querySelector(".banner-block");
+    createNewEle.innerHTML = nodeText_El;
+    createNewEle.setAttribute("class", "skipTobody");
+    getPhpageEle.appendChild(createNewEle);
+    getPhpageEle.insertBefore(createNewEle, getPhpageEle.firstChild);
+    if (getPhpageEle) {
+      getPhpageEle.setAttribute("role", "main");
+    }
+    if (removeRole) {
+      removeRole.removeAttribute("role");
+    }
+    if (removeRoleInJd) {
+      removeRoleInJd.removeAttribute("role");
+    }
+  }, 500);
+  // skip to main end
+});
+
+/*Apply Thank you Scripts*/
+
+function getReqParam(name) {
+  name = name.replace(/[\[]/, "\\[").replace(/[\]]/, "\\]");
+  var regexS = "[\\?&]" + name + "=([^&#]*)";
+  var regex = new RegExp(regexS);
+  var results = regex.exec(window.location.href);
+  return results == null ? null : results[1];
+}
+//var url = new URL(window.location.href);
+var attr_name = getReqParam("status");
+var candidate_name = getReqParam("candidateName");
+var job_title_name = getReqParam("jobTitle");
+var job_id = getReqParam("jobId");
+var suc = document.getElementById("thankyou");
+// Offline Apply Script code Started
+var off = document.getElementById("offlineApply");
+// Offline Apply cript  code Ended
+var alreadyAppy = document.getElementById("alreadyApplied");
+//var sucdis = document.getElementById("success-disqualified");
+
+if (attr_name == "alreadyApplied") {
+  alreadyAppy.style.display = "block";
+  suc.style.display = "none";
+  //sucdis.style.display = "none";
+
+  document.getElementById("job-title-applied").innerHTML =
+    job_title_name.replace(/%20/g, " ").replace(/%2C/, ",") +
+    "(" +
+    job_id +
+    ")";
+} else if (attr_name == "thankyou") {
+  alreadyAppy.style.display = "none";
+  suc.style.display = "block";
+  //sucdis.style.display = "none";
+  document.getElementById("job-title").innerHTML =
+    job_title_name.replace(/%20/g, " ") + "(" + job_id + ")";
+}
+
+// Offline Apply Script code Started
+else if (attr_name == "offline-success") {
+  alreadyAppy.style.display = "none";
+  suc.style.display = "none";
+  off.style.display = "block";
+}
+// Offline Apply Script code End
+else if (attr_name == "success-disqualified") {
+  alreadyAppy.style.display = "none";
+  suc.style.display = "none";
+  //sucdis.style.display = "block";
+  document.getElementById("candidate-name").innerHTML = candidate_name;
+}
+
+function getParameterByName(name, url) {
+  if (!url) url = window.location.href;
+  // GCCE-1127 --> Starts
+  // name = name.replace(/[\[\]]/g, "\\$&");
+  // var regex = new RegExp("[?&]" + name + "(=([^&#]*)|&|#|$)"),
+  //     results = regex.exec(url);
+  // if (!results) return null;
+  // if (!results[2]) return '';
+  // return decodeURIComponent(results[2].replace(/\+/g, " "));
+  const searchParams = new URLSearchParams(new URL(url).search);
+  const value = searchParams.get(name);
+  if (value !== null && value !== undefined) {
+      const isValidHttpsUrl = /^https:\/\//i.test(value);
+      if (isValidHttpsUrl) {
+        return value;
+      } else {
+        return "";
+      }
+  }
+  return "";
+  // GCCE-1127 --> Ends
+}
+
+function applyUrl() {
+  var url_string = window.location.href;
+  //var url = new URL(url_string);
+  var c = getParameterByName("candidateHomeUrl");
+  window.open(c, "_blank");
+  //window.location.href = c;
+}

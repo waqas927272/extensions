@@ -27,7 +27,8 @@
         let jobId = '';
         if (link) {
           const urlPath = link.replace(/[?#].*$/, '').replace(/\/+$/, '');
-          jobId = urlPath.split('/').pop() || '';
+          const rawJobId = urlPath.split('/').pop() || '';
+          jobId = rawJobId ? 'MV-' + rawJobId : '';
         }
 
         let city = '';

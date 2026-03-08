@@ -36,7 +36,8 @@ if (!window.geminiJobScraperInitialized) {
             const link = jobTitleEl.href;
             const locationText = locationEl.innerText.trim();
             const jobType = jobTypeEl ? jobTypeEl.innerText.trim() : '';
-            const jobId = link ? link.split('/').pop() : '';
+            const rawJobId = link ? link.split('/').pop() : '';
+            const jobId = rawJobId ? 'AAH-' + rawJobId : '';
 
             let city = '';
             let state = '';

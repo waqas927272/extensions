@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "LAASER Job Scraper",
+  "version": "1.0",
+  "description": "Scrapes job data from Los Angeles Animal Specialty Emergency and Rehabilitation (LAASER) careers page on Indeed.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.indeed.com/*",
+    "<all_urls>"
+  ],
+  "icons": {
+    "16": "images/logo.png",
+    "48": "images/logo.png",
+    "128": "images/logo.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "images/logo.png",
+      "48": "images/logo.png",
+      "128": "images/logo.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

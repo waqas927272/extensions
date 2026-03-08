@@ -12,7 +12,8 @@
   "host_permissions": [
     "https://www.vcacareers.com/*",
     "https://sheets.googleapis.com/*",
-    "https://www.googleapis.com/*"
+    "https://www.googleapis.com/*",
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "background.js"

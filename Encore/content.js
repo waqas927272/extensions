@@ -20,7 +20,8 @@ function scrapeJobs() {
 
       // Extract job ID from URL (handles /jobs/1234 and /job/1234 patterns)
       const jobIdMatch = link.match(/\/jobs?\/(\d+)/);
-      const jobId = jobIdMatch ? jobIdMatch[1] : (link ? link.split('/').filter(s => /^\d+$/.test(s))[0] || '' : '');
+      const rawJobId = jobIdMatch ? jobIdMatch[1] : (link ? link.split('/').filter(s => /^\d+$/.test(s))[0] || '' : '');
+      const jobId = rawJobId ? 'E-' + rawJobId : '';
 
       // Req ID from .req-id span
       const reqIdEl = card.querySelector('.req-id span');

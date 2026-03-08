@@ -23,7 +23,8 @@
 
         // Extract job ID from URL (handles /postings/1234 pattern)
         const jobIdMatch = jobLink.match(/\/postings\/([^\/\?#]+)/);
-        const jobId = jobIdMatch ? jobIdMatch[1] : (jobLink ? jobLink.split('/').pop() : '');
+        const rawJobId = jobIdMatch ? jobIdMatch[1] : (jobLink ? jobLink.split('/').pop() : '');
+        const jobId = rawJobId ? 'INV-' + rawJobId : '';
 
         jobs.push({
           jobTitle: titleEl.innerText.trim(),

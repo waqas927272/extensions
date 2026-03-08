@@ -557,11 +557,14 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
   } else if (request.action === 'stopScraping') {
     stopScraping();
   } else if (request.action === 'fetchDescription') {
-    // Extract description from current page
     const descriptionElement = document.querySelector('.jd-info[data-ph-at-id="jobdescription-text"]');
     const description = descriptionElement ? descriptionElement.innerText.trim() : 'Description not found';
     sendResponse({ description: description });
-    return true; // Keep message channel open for async response
+    return true;
+  } else if (request.action === 'fetchDetails') {
+    const details = extractJobDetails();
+    sendResponse({ details: details });
+    return true;
   }
 });
 
@@ -874,6 +877,142 @@ async function navigateToNextPage() {
   } catch (error) {
     console.error('Error navigating to next page:', error);
     return false;
+  }
+}
+
+function extractJobDetails() {
+  try {
+    let areaOfPractice = '';
+    let position = '';
+    let salary = '';
+    let hospitalName = '';
+    let city = '';
+    let state = '';
+
+    // Try JSON-LD structured data first
+    const ldScripts = document.querySelectorAll('script[type="application/ld+json"]');
+    for (const script of ldScripts) {
+      try {
+        const data = JSON.parse(script.textContent);
+        if (data['@type'] === 'JobPosting') {
+          position = data.title || '';
+          if (data.baseSalary) {
+            const bs = data.baseSalary;
+            if (bs.value) {
+              const val = bs.value;
+              if (val.minValue && val.maxValue) {
+                salary = `${val.minValue} - ${val.maxValue} ${bs.currency || ''}`.trim();
+              } else if (val.value) {
+                salary = `${val.value} ${bs.currency || ''}`.trim();
+              }
+            }
+          }
+          if (data.hiringOrganization) {
+            hospitalName = data.hiringOrganization.name || '';
+          }
+          if (data.jobLocation) {
+            const loc = data.jobLocation.address || data.jobLocation;
+            city = loc.addressLocality || '';
+            state = loc.addressRegion || '';
+          }
+          if (data.occupationalCategory) {
+            areaOfPractice = data.occupationalCategory;
+          }
+          break;
+        }
+      } catch (e) {}
+    }
+
+    // Extract from DOM elements (Phenom platform selectors)
+    // Hospital name / location info
+    if (!hospitalName) {
+      const companyEl = document.querySelector('[data-ph-at-id="job-company-text"], .job-company, .jd-info .company-name');
+      if (companyEl) hospitalName = companyEl.textContent.trim();
+    }
+
+    // Location parsing
+    if (!city || !state) {
+      const locationEl = document.querySelector('[data-ph-at-id="job-location"], .job-location, .jd-info .job-location');
+      if (locationEl) {
+        const locText = locationEl.textContent.replace('Location', '').trim();
+        const parts = locText.split(',').map(s => s.trim());
+        if (parts.length >= 2) {
+          if (!city) city = parts[0];
+          if (!state) state = parts[1].replace(/\d{5}.*/, '').trim();
+        }
+      }
+    }
+
+    // Area of Practice from category
+    if (!areaOfPractice) {
+      const categoryEl = document.querySelector('[data-ph-at-id="job-category"], .job-category, .jd-info .job-category');
+      if (categoryEl) areaOfPractice = categoryEl.textContent.replace('Category', '').trim();
+    }
+
+    // Position from title
+    if (!position) {
+      const titleEl = document.querySelector('[data-ph-at-id="job-title"], .job-title h1, .jd-header .job-title');
+      if (titleEl) position = titleEl.textContent.trim();
+    }
+
+    // Salary from detail fields
+    if (!salary) {
+      const salaryEl = document.querySelector('[data-ph-at-id="job-salary"], .job-salary, .salary-range, .compensation');
+      if (salaryEl) salary = salaryEl.textContent.trim();
+    }
+
+    // Fallback: scan all info fields on the page
+    const infoItems = document.querySelectorAll('.jd-info .au-target, .jd-info .info-item, .job-info .field, .job-details-info div');
+    infoItems.forEach(item => {
+      const text = item.textContent.trim();
+      const labelEl = item.querySelector('label, .label, strong, dt');
+      const valueEl = item.querySelector('span, .value, dd');
+      if (labelEl && valueEl) {
+        const label = labelEl.textContent.trim().toLowerCase();
+        const value = valueEl.textContent.trim();
+        if (label.includes('area of practice') || label.includes('specialty') || label.includes('practice area')) {
+          if (!areaOfPractice) areaOfPractice = value;
+        } else if (label.includes('salary') || label.includes('compensation') || label.includes('pay')) {
+          if (!salary) salary = value;
+        } else if (label.includes('hospital') || label.includes('facility') || label.includes('clinic')) {
+          if (!hospitalName) hospitalName = value;
+        } else if (label.includes('city')) {
+          if (!city) city = value;
+        } else if (label.includes('state')) {
+          if (!state) state = value;
+        } else if (label.includes('position') || label.includes('role')) {
+          if (!position) position = value;
+        }
+      }
+    });
+
+    // Additional fallback: parse from description text for area of practice and salary
+    const descEl = document.querySelector('.jd-info[data-ph-at-id="jobdescription-text"]');
+    if (descEl) {
+      const descText = descEl.innerText;
+
+      if (!salary) {
+        const salaryMatch = descText.match(/(?:salary|compensation|pay)[:\s]*\$?([\d,]+(?:\.\d{2})?(?:\s*[-–to]+\s*\$?[\d,]+(?:\.\d{2})?)?(?:\s*(?:per\s+)?(?:year|annually|hr|hour|month))?)/i);
+        if (salaryMatch) salary = salaryMatch[0].trim();
+      }
+
+      if (!areaOfPractice) {
+        const aopMatch = descText.match(/(?:area of practice|specialty|practice area)[:\s]*([^\n.]+)/i);
+        if (aopMatch) areaOfPractice = aopMatch[1].trim();
+      }
+
+      // Try to extract hospital name from description if not found
+      if (!hospitalName) {
+        const hospMatch = descText.match(/(?:hospital|location|facility)[:\s]*([^\n.]+)/i);
+        if (hospMatch) hospitalName = hospMatch[1].trim().substring(0, 100);
+      }
+    }
+
+    return { areaOfPractice, position, salary, hospitalName, city, state };
+
+  } catch (error) {
+    console.error('Error extracting job details:', error);
+    return { areaOfPractice: '', position: '', salary: '', hospitalName: '', city: '', state: '' };
   }
 }
 

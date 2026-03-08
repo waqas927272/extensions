@@ -21,7 +21,10 @@
       "WebFetch(domain:api.consider.com)",
       "WebFetch(domain:docs.considerapi.com)",
       "WebFetch(domain:boards.considerapi.com)",
-      "WebFetch(domain:jobs.insightpartners.com)"
+      "WebFetch(domain:jobs.insightpartners.com)",
+      "WebFetch(domain:www.vcacareers.com)",
+      "Bash(grep:*)",
+      "Bash(python:*)"
     ]
   }
 }

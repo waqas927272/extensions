@@ -34,7 +34,8 @@
         
         // Use the job link for a unique ID
         const jobIdMatch = link.match(/jobs\/(\d+)/);
-        const jobId = jobIdMatch ? jobIdMatch[1] : link;
+        const rawJobId = jobIdMatch ? jobIdMatch[1] : link;
+        const jobId = rawJobId ? 'VPP-' + rawJobId : '';
 
         jobs.push({
             id: jobId, // For deduplication

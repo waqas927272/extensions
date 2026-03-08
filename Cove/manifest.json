@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "Cove Job Scraper",
+  "version": "1.0",
+  "description": "Scrapes job data from Cove Animal Health (Pieper Veterinary) careers page on Paylocity.",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://recruiting.paylocity.com/*",
+    "<all_urls>"
+  ],
+  "icons": {
+    "16": "images/logo.png",
+    "48": "images/logo.png",
+    "128": "images/logo.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "images/logo.png",
+      "48": "images/logo.png",
+      "128": "images/logo.png"
+    }
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

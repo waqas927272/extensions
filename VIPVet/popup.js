@@ -311,13 +311,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!title || !link) return;
 
                 // Extract job ID
-                let reqId = '';
+                let rawReqId = '';
                 const ghMatch = link.match(/gh_jid=(\d+)/);
-                if (ghMatch) reqId = ghMatch[1];
+                if (ghMatch) rawReqId = ghMatch[1];
                 else {
                   const jobMatch = link.match(/jobs\/(\d+)/);
-                  if (jobMatch) reqId = jobMatch[1];
+                  if (jobMatch) rawReqId = jobMatch[1];
                 }
+                const reqId = rawReqId ? 'VIP-' + rawReqId : '';
 
                 // Parse location from title and hospital name
                 const { city, state } = parseLocation(title, hospitalName);

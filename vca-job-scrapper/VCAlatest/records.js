@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const selectAllBtn = document.getElementById('selectAllBtn');
   const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
   const fetchDescBtn = document.getElementById('fetchDescBtn');
+  const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
   const sendWebhookBtn = document.getElementById('sendWebhookBtn');
   const webhookSection = document.getElementById('webhookSection');
   const gsheetUrl = document.getElementById('gsheetUrl');
@@ -25,9 +26,12 @@ document.addEventListener('DOMContentLoaded', function() {
   let allJobs = [];
   let selectedJobs = new Set();
   let isFetchingDescriptions = false;
+  let isFetchingDetails = false;
   let currentTabId = null;
   let descriptionQueue = [];
   let currentFetchIndex = 0;
+  let detailsQueue = [];
+  let currentDetailsIndex = 0;
   let skippedJobsStats = { total: 0, byKeyword: { Relief: 0, Intern: 0 } };
 
   // Get current tab ID
@@ -47,7 +51,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const accessToken = await this.serviceAuth.getAccessToken();
         
         const response = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A:H`,
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A:N`,
           {
             headers: {
               'Authorization': `Bearer ${accessToken}`,
@@ -92,7 +96,7 @@ document.addEventListener('DOMContentLoaded', function() {
         let startRow = existingData.length + 1;
 
         if (existingData.length === 0) {
-          const headers = ['Department ID', 'Title', 'Location', 'Category', 'Job Type', 'URL', 'Description', 'Scraped At'];
+          const headers = ['Department ID', 'Title', 'Location', 'Category', 'Job Type', 'Area of Practice', 'Position', 'Salary', 'Hospital Name', 'City', 'State', 'URL', 'Description', 'Scraped At'];
           dataToAdd.push(headers);
           startRow = 1;
         }
@@ -103,6 +107,12 @@ document.addEventListener('DOMContentLoaded', function() {
           job.location || '',
           job.category || '',
           job.jobType || '',
+          job.areaOfPractice || '',
+          job.position || '',
+          job.salary || '',
+          job.hospitalName || '',
+          job.city || '',
+          job.state || '',
           job.url || '',
           job.description || '-',
           new Date(job.scrapedAt).toLocaleString()
@@ -111,7 +121,7 @@ document.addEventListener('DOMContentLoaded', function() {
         dataToAdd = [...dataToAdd, ...jobData];
 
         const response = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A${startRow}:H${startRow + dataToAdd.length - 1}?valueInputOption=RAW`,
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A${startRow}:N${startRow + dataToAdd.length - 1}?valueInputOption=RAW`,
           {
             method: 'PUT',
             headers: {
@@ -162,7 +172,7 @@ document.addEventListener('DOMContentLoaded', function() {
                       startRowIndex: 0,
                       endRowIndex: 1,
                       startColumnIndex: 0,
-                      endColumnIndex: 8
+                      endColumnIndex: 14
                     },
                     cell: {
                       userEnteredFormat: {
@@ -190,7 +200,7 @@ document.addEventListener('DOMContentLoaded', function() {
                       sheetId: 0,
                       dimension: 'COLUMNS',
                       startIndex: 0,
-                      endIndex: 8
+                      endIndex: 14
                     }
                   }
                 }
@@ -215,6 +225,7 @@ document.addEventListener('DOMContentLoaded', function() {
   selectAllBtn.addEventListener('click', toggleSelectAll);
   deleteSelectedBtn.addEventListener('click', deleteSelected);
   fetchDescBtn.addEventListener('click', fetchDescriptions);
+  fetchDetailsBtn.addEventListener('click', fetchDetails);
   sendWebhookBtn.addEventListener('click', showGSheetForm);
   sendDataBtn.addEventListener('click', exportToGSheet);
   cancelWebhookBtn.addEventListener('click', hideGSheetForm);
@@ -231,15 +242,15 @@ document.addEventListener('DOMContentLoaded', function() {
     if (request.action === 'descriptionFetched') {
       allJobs[request.jobIndex].description = request.description;
       chrome.storage.local.set({ jobs: allJobs });
-      
+
       // Update the current job in the queue
       const currentJob = descriptionQueue[currentFetchIndex];
       if (currentJob && currentJob.index === request.jobIndex) {
         currentFetchIndex++;
-        
+
         // Update progress
         fetchDescBtn.textContent = `Fetching... (${currentFetchIndex}/${descriptionQueue.length})`;
-        
+
         // Process next job in queue
         if (currentFetchIndex < descriptionQueue.length) {
           setTimeout(() => {
@@ -250,7 +261,35 @@ document.addEventListener('DOMContentLoaded', function() {
           finishDescriptionFetching();
         }
       }
-      
+
+      displayJobs();
+    } else if (request.action === 'detailsFetched') {
+      const details = request.details;
+      const job = allJobs[request.jobIndex];
+      if (details) {
+        job.areaOfPractice = details.areaOfPractice || job.areaOfPractice || '';
+        job.position = details.position || job.position || '';
+        job.salary = details.salary || job.salary || '';
+        job.hospitalName = details.hospitalName || job.hospitalName || '';
+        job.city = details.city || job.city || '';
+        job.state = details.state || job.state || '';
+      }
+      chrome.storage.local.set({ jobs: allJobs });
+
+      const currentDetail = detailsQueue[currentDetailsIndex];
+      if (currentDetail && currentDetail.index === request.jobIndex) {
+        currentDetailsIndex++;
+        fetchDetailsBtn.textContent = `Fetching... (${currentDetailsIndex}/${detailsQueue.length})`;
+
+        if (currentDetailsIndex < detailsQueue.length) {
+          setTimeout(() => {
+            processNextDetail();
+          }, 1500);
+        } else {
+          finishDetailsFetching();
+        }
+      }
+
       displayJobs();
     }
   });
@@ -306,6 +345,12 @@ document.addEventListener('DOMContentLoaded', function() {
         <td>
           <span class="job-type">${escapeHtml(job.jobType)}</span>
         </td>
+        <td>${escapeHtml(job.areaOfPractice || '-')}</td>
+        <td>${escapeHtml(job.position || '-')}</td>
+        <td>${escapeHtml(job.salary || '-')}</td>
+        <td>${escapeHtml(job.hospitalName || '-')}</td>
+        <td>${escapeHtml(job.city || '-')}</td>
+        <td>${escapeHtml(job.state || '-')}</td>
         <td class="job-url">
           <a href="${escapeHtml(job.url)}" target="_blank" title="${escapeHtml(job.url)}">
             ${job.url ? 'View Job' : 'N/A'}
@@ -414,6 +459,65 @@ document.addEventListener('DOMContentLoaded', function() {
     displayJobs();
   }
 
+  async function fetchDetails() {
+    if (isFetchingDetails) return;
+
+    let jobsToFetch;
+    if (selectedJobs.size > 0) {
+      jobsToFetch = Array.from(selectedJobs).map(index => ({ job: allJobs[index], index }));
+    } else {
+      // Fetch details for all jobs that don't have details yet
+      jobsToFetch = allJobs.map((job, index) => ({ job, index })).filter(item => {
+        return !item.job.hospitalName || !item.job.city || !item.job.state;
+      });
+    }
+
+    if (jobsToFetch.length === 0) {
+      // If still no jobs, offer to re-fetch all
+      if (confirm('All jobs already have details. Do you want to re-fetch details for all jobs?')) {
+        jobsToFetch = allJobs.map((job, index) => ({ job, index }));
+      } else {
+        return;
+      }
+    }
+
+    detailsQueue = jobsToFetch;
+    currentDetailsIndex = 0;
+    isFetchingDetails = true;
+    fetchDetailsBtn.disabled = true;
+    fetchDetailsBtn.textContent = `Fetching... (0/${detailsQueue.length})`;
+
+    processNextDetail();
+  }
+
+  function processNextDetail() {
+    if (currentDetailsIndex >= detailsQueue.length) {
+      finishDetailsFetching();
+      return;
+    }
+
+    const { job, index } = detailsQueue[currentDetailsIndex];
+
+    chrome.runtime.sendMessage({
+      action: 'fetchJobDetails',
+      url: job.url,
+      jobIndex: index,
+      responseTabId: currentTabId
+    });
+  }
+
+  function finishDetailsFetching() {
+    isFetchingDetails = false;
+    fetchDetailsBtn.disabled = false;
+    fetchDetailsBtn.textContent = 'Fetch Details';
+    const fetched = currentDetailsIndex;
+    detailsQueue = [];
+    currentDetailsIndex = 0;
+
+    showStatus(`Details fetching completed for ${fetched} jobs`, 'success');
+    displayJobs();
+  }
+
   function showDescription(index) {
     const job = allJobs[index];
     modalJobTitle.textContent = job.title;
@@ -423,6 +527,12 @@ document.addEventListener('DOMContentLoaded', function() {
       <p><strong>Location:</strong> ${escapeHtml(job.location)}</p>
       <p><strong>Category:</strong> ${escapeHtml(job.category)}</p>
       <p><strong>Job Type:</strong> ${escapeHtml(job.jobType)}</p>
+      <p><strong>Area of Practice:</strong> ${escapeHtml(job.areaOfPractice || '-')}</p>
+      <p><strong>Position:</strong> ${escapeHtml(job.position || '-')}</p>
+      <p><strong>Salary:</strong> ${escapeHtml(job.salary || '-')}</p>
+      <p><strong>Hospital Name:</strong> ${escapeHtml(job.hospitalName || '-')}</p>
+      <p><strong>City:</strong> ${escapeHtml(job.city || '-')}</p>
+      <p><strong>State:</strong> ${escapeHtml(job.state || '-')}</p>
       <p><strong>URL:</strong> <a href="${escapeHtml(job.url)}" target="_blank">View Original</a></p>
     `;
     

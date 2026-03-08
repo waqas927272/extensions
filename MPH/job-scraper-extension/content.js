@@ -57,12 +57,14 @@ function scrapeCurrentPage(scrapedJobIds) {
 
             // Use the numeric ID from the job link as the unique identifier
             const jobIdMatch = jobLink.match(/\/(\d+)/);
-            const jobId = jobIdMatch ? jobIdMatch[1] : jobLink;
+            const rawJobId = jobIdMatch ? jobIdMatch[1] : jobLink;
 
-            if (scrapedJobIds.has(jobId)) {
+            if (scrapedJobIds.has(rawJobId)) {
                 return; // Skip already scraped job
             }
-            scrapedJobIds.add(jobId);
+            scrapedJobIds.add(rawJobId);
+
+            const jobId = rawJobId ? 'MPH-' + rawJobId : '';
 
             const jobTitle = titleElement ? titleElement.textContent.trim() : 'N/A';
 
