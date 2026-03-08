@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "VCA Jobs Scraper",
+  "version": "1.0",
+  "description": "Scrape veterinarian jobs from VCA Careers",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://www.vcacareers.com/*",
+    "https://sheets.googleapis.com/*",
+    "https://www.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.vcacareers.com/*"],
+      "js": ["content.js"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "VCA Jobs Scraper"
+  }
+}

@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h2>VCA Jobs Scraper</h2>
+    
+    <div class="status-section">
+      <div class="status-item">
+        <span class="label">Status:</span>
+        <span id="status" class="status">Ready</span>
+      </div>
+      <div class="status-item">
+        <span class="label">Jobs Extracted:</span>
+        <span id="jobCount" class="count">0</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button id="startBtn" class="btn btn-primary">Start Scraping</button>
+      <button id="stopBtn" class="btn btn-secondary" style="display: none;">Stop</button>
+    </div>
+
+    <div class="progress-section">
+      <div class="progress-bar">
+        <div id="progressFill" class="progress-fill"></div>
+      </div>
+      <span id="progressText" class="progress-text">0%</span>
+    </div>
+
+    <div class="actions">
+      <button id="viewRecordsBtn" class="btn btn-outline">View Records</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

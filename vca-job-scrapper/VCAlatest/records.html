@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>VCA Jobs Records</title>
+  <link rel="stylesheet" href="records.css">
+</head>
+<body>
+  <div class="container">
+<header>
+  <h1>VCA Jobs Records</h1>
+  <div class="header-actions">
+    <span id="recordCount" class="record-count">0 records</span>
+    <button id="fetchDescBtn" class="btn btn-primary">Fetch Descriptions</button>
+    <button id="selectAllBtn" class="btn btn-outline">Select All</button>
+    <button id="deleteSelectedBtn" class="btn btn-danger" disabled>Delete Selected</button>
+    <button id="sendWebhookBtn" class="btn btn-success">Export to GSheet</button>
+  </div>
+</header>
+
+<!-- Job stats section -->
+<div id="jobStats" class="job-stats">
+  <div class="stats-row">
+    <div class="stats-col"><strong>Total Records Found</strong><br><span id="totalJobsFound">0</span></div>
+    <div class="stats-col"><strong>Total Records Skipped</strong><br><span id="totalJobsSkipped">0</span></div>
+    <div class="stats-col"><strong>Total Records Saved</strong><br><span id="totalJobsSaved">0</span></div>
+  </div>
+  <div class="keyword-table-container">
+    <table class="keyword-table">
+      <thead>
+        <tr><th>Keyword</th><th>Skipped Records</th></tr>
+      </thead>
+      <tbody id="skippedByKeywordTable">
+        <!-- Rows will be filled by JS -->
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div id="descriptionModal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3 id="modalJobTitle">Job Description</h3>
+      <button id="closeModal" class="close-btn">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="modalJobDetails" class="job-details"></div>
+      <div id="modalDescription" class="description-content"></div>
+    </div>
+  </div>
+</div>
+
+    <div class="webhook-section" id="webhookSection">
+      <div class="webhook-form">
+        <label for="gsheetUrl">Target Google Sheet:</label>
+        <input type="url" id="gsheetUrl" placeholder="Google Sheet URL" readonly />
+        <button id="sendDataBtn" class="btn btn-success">Export Data</button>
+        <button id="cancelWebhookBtn" class="btn btn-secondary">Cancel</button>
+        <div id="exportStatus" class="export-status"></div>
+      </div>
+    </div>
+
+    <div class="table-container">
+<table id="jobsTable">
+  <thead>
+    <tr>
+      <th><input type="checkbox" id="selectAllCheckbox"></th>
+      <th>Department ID</th>
+      <th>Title</th>
+      <th>Location</th>
+      <th>Category</th>
+      <th>Job Type</th>
+      <th>URL</th>
+      <th>Description</th>
+      <th>Scraped At</th>
+      <th>Actions</th>
+    </tr>
+  </thead>
+  <tbody id="jobsTableBody">
+  </tbody>
+</table>
+    </div>
+
+    <div id="emptyState" class="empty-state">
+      <h3>No records found</h3>
+      <p>Start scraping jobs to see them here.</p>
+    </div>
+  </div>
+
+  <script src="service-account.js"></script>
+  <script src="records.js"></script>
+</body>
+</html>

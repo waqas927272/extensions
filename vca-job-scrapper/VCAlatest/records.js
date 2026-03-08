@@ -1,0 +1,618 @@
+document.addEventListener('DOMContentLoaded', function() {
+  const jobsTableBody = document.getElementById('jobsTableBody');
+  const emptyState = document.getElementById('emptyState');
+  const recordCount = document.getElementById('recordCount');
+  const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+  const selectAllBtn = document.getElementById('selectAllBtn');
+  const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+  const fetchDescBtn = document.getElementById('fetchDescBtn');
+  const sendWebhookBtn = document.getElementById('sendWebhookBtn');
+  const webhookSection = document.getElementById('webhookSection');
+  const gsheetUrl = document.getElementById('gsheetUrl');
+  const sendDataBtn = document.getElementById('sendDataBtn');
+  const cancelWebhookBtn = document.getElementById('cancelWebhookBtn');
+  const exportStatus = document.getElementById('exportStatus');
+  const descriptionModal = document.getElementById('descriptionModal');
+  const closeModal = document.getElementById('closeModal');
+  const modalJobTitle = document.getElementById('modalJobTitle');
+  const modalJobDetails = document.getElementById('modalJobDetails');
+  const modalDescription = document.getElementById('modalDescription');
+  const totalJobsFound = document.getElementById('totalJobsFound');
+  const totalJobsSkipped = document.getElementById('totalJobsSkipped');
+  const totalJobsSaved = document.getElementById('totalJobsSaved');
+  const skippedByKeyword = document.getElementById('skippedByKeyword');
+
+  let allJobs = [];
+  let selectedJobs = new Set();
+  let isFetchingDescriptions = false;
+  let currentTabId = null;
+  let descriptionQueue = [];
+  let currentFetchIndex = 0;
+  let skippedJobsStats = { total: 0, byKeyword: { Relief: 0, Intern: 0 } };
+
+  // Get current tab ID
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    currentTabId = tabs[0].id;
+  });
+
+  const GOOGLE_SHEET_ID = '19EEAS2gqmZwyWYGZY7PPlsMrSMLCr6YScxc3sFgh6n0';
+  
+  class GoogleSheetsExporter {
+    constructor() {
+      this.serviceAuth = new ServiceAccountAuth();
+    }
+
+    async getExistingData(spreadsheetId) {
+      try {
+        const accessToken = await this.serviceAuth.getAccessToken();
+        
+        const response = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A:H`,
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+            }
+          }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Failed to read sheet: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return data.values || [];
+      } catch (error) {
+        console.error('Error reading existing data:', error);
+        return [];
+      }
+    }
+
+    async exportToSheet(spreadsheetId, jobs) {
+      try {
+        const accessToken = await this.serviceAuth.getAccessToken();
+
+        const existingData = await this.getExistingData(spreadsheetId);
+        const existingDepartmentIds = new Set();
+        
+        if (existingData.length > 1) {
+          for (let i = 1; i < existingData.length; i++) {
+            if (existingData[i][0]) {
+              existingDepartmentIds.add(existingData[i][0]);
+            }
+          }
+        }
+
+        const newJobs = jobs.filter(job => !existingDepartmentIds.has(job.departmentId));
+        
+        if (newJobs.length === 0) {
+          throw new Error('No new jobs to add - all jobs already exist in the sheet');
+        }
+
+        let dataToAdd = [];
+        let startRow = existingData.length + 1;
+
+        if (existingData.length === 0) {
+          const headers = ['Department ID', 'Title', 'Location', 'Category', 'Job Type', 'URL', 'Description', 'Scraped At'];
+          dataToAdd.push(headers);
+          startRow = 1;
+        }
+
+        const jobData = newJobs.map(job => [
+          job.departmentId || '',
+          job.title || '',
+          job.location || '',
+          job.category || '',
+          job.jobType || '',
+          job.url || '',
+          job.description || '-',
+          new Date(job.scrapedAt).toLocaleString()
+        ]);
+
+        dataToAdd = [...dataToAdd, ...jobData];
+
+        const response = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A${startRow}:H${startRow + dataToAdd.length - 1}?valueInputOption=RAW`,
+          {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              values: dataToAdd
+            })
+          }
+        );
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(`Google Sheets API error: ${error.error?.message || response.statusText}`);
+        }
+
+        if (existingData.length === 0) {
+          await this.formatHeaderRow(spreadsheetId);
+        }
+
+        return { addedCount: newJobs.length, skippedCount: jobs.length - newJobs.length };
+
+      } catch (error) {
+        console.error('Error exporting to Google Sheets:', error);
+        throw error;
+      }
+    }
+
+    async formatHeaderRow(spreadsheetId) {
+      try {
+        const accessToken = await this.serviceAuth.getAccessToken();
+        
+        const response = await fetch(
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              requests: [
+                {
+                  repeatCell: {
+                    range: {
+                      sheetId: 0,
+                      startRowIndex: 0,
+                      endRowIndex: 1,
+                      startColumnIndex: 0,
+                      endColumnIndex: 8
+                    },
+                    cell: {
+                      userEnteredFormat: {
+                        backgroundColor: {
+                          red: 0.18,
+                          green: 0.52,
+                          blue: 0.67
+                        },
+                        textFormat: {
+                          foregroundColor: {
+                            red: 1.0,
+                            green: 1.0,
+                            blue: 1.0
+                          },
+                          bold: true
+                        }
+                      }
+                    },
+                    fields: 'userEnteredFormat(backgroundColor,textFormat)'
+                  }
+                },
+                {
+                  autoResizeDimensions: {
+                    dimensions: {
+                      sheetId: 0,
+                      dimension: 'COLUMNS',
+                      startIndex: 0,
+                      endIndex: 8
+                    }
+                  }
+                }
+              ]
+            })
+          }
+        );
+
+        if (!response.ok) {
+          console.warn('Failed to format header row:', response.statusText);
+        }
+      } catch (error) {
+        console.warn('Error formatting header row:', error);
+      }
+    }
+  }
+
+  const gsheetExporter = new GoogleSheetsExporter();
+
+  // Event listeners
+  selectAllCheckbox.addEventListener('change', toggleSelectAll);
+  selectAllBtn.addEventListener('click', toggleSelectAll);
+  deleteSelectedBtn.addEventListener('click', deleteSelected);
+  fetchDescBtn.addEventListener('click', fetchDescriptions);
+  sendWebhookBtn.addEventListener('click', showGSheetForm);
+  sendDataBtn.addEventListener('click', exportToGSheet);
+  cancelWebhookBtn.addEventListener('click', hideGSheetForm);
+  closeModal.addEventListener('click', hideModal);
+
+  window.addEventListener('click', function(event) {
+    if (event.target === descriptionModal) {
+      hideModal();
+    }
+  });
+
+  // Listen for description fetch responses
+  chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+    if (request.action === 'descriptionFetched') {
+      allJobs[request.jobIndex].description = request.description;
+      chrome.storage.local.set({ jobs: allJobs });
+      
+      // Update the current job in the queue
+      const currentJob = descriptionQueue[currentFetchIndex];
+      if (currentJob && currentJob.index === request.jobIndex) {
+        currentFetchIndex++;
+        
+        // Update progress
+        fetchDescBtn.textContent = `Fetching... (${currentFetchIndex}/${descriptionQueue.length})`;
+        
+        // Process next job in queue
+        if (currentFetchIndex < descriptionQueue.length) {
+          setTimeout(() => {
+            processNextDescription();
+          }, 1000); // Wait 1 second between requests
+        } else {
+          // All descriptions fetched
+          finishDescriptionFetching();
+        }
+      }
+      
+      displayJobs();
+    }
+  });
+
+  // Load skipped stats from storage on page load
+  chrome.storage.local.get(['skippedJobsStats'], (result) => {
+    if (result.skippedJobsStats) {
+      skippedJobsStats = result.skippedJobsStats;
+      updateSkippedStatsUI();
+    }
+  });
+
+  // Listen for updates from content script
+  chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+    if (request.action === 'skippedStatsUpdate' && request.data) {
+      skippedJobsStats = request.data;
+      updateSkippedStatsUI();
+    }
+  });
+
+  loadJobs();
+
+  async function loadJobs() {
+    const result = await chrome.storage.local.get(['jobs']);
+    allJobs = result.jobs || [];
+    displayJobs();
+    updateRecordCount();
+    updateSkippedStatsUI();
+  }
+
+  function displayJobs() {
+    if (allJobs.length === 0) {
+      jobsTableBody.style.display = 'none';
+      emptyState.style.display = 'block';
+      return;
+    }
+
+    jobsTableBody.style.display = 'table-row-group';
+    emptyState.style.display = 'none';
+
+    jobsTableBody.innerHTML = allJobs.map((job, index) => `
+      <tr>
+        <td>
+          <input type="checkbox" class="job-checkbox" data-index="${index}" 
+                 ${selectedJobs.has(index) ? 'checked' : ''}>
+        </td>
+        <td>${escapeHtml(job.departmentId)}</td>
+        <td class="job-title">${escapeHtml(job.title)}</td>
+        <td>${escapeHtml(job.location)}</td>
+        <td>
+          <span class="job-category">${escapeHtml(job.category)}</span>
+        </td>
+        <td>
+          <span class="job-type">${escapeHtml(job.jobType)}</span>
+        </td>
+        <td class="job-url">
+          <a href="${escapeHtml(job.url)}" target="_blank" title="${escapeHtml(job.url)}">
+            ${job.url ? 'View Job' : 'N/A'}
+          </a>
+        </td>
+        <td>
+          ${job.description && job.description !== '-' 
+            ? `<button class="btn btn-outline description-btn" data-index="${index}">View</button>`
+            : '<span class="description-pending">-</span>'
+          }
+        </td>
+        <td class="scraped-date">
+          ${new Date(job.scrapedAt).toLocaleDateString()}
+        </td>
+        <td>
+          <button class="btn btn-danger action-btn delete-btn" data-index="${index}">
+            Delete
+          </button>
+        </td>
+      </tr>
+    `).join('');
+
+    document.querySelectorAll('.job-checkbox').forEach(checkbox => {
+      checkbox.addEventListener('change', handleCheckboxChange);
+    });
+
+    document.querySelectorAll('.description-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        showDescription(index);
+      });
+    });
+
+    document.querySelectorAll('.delete-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const index = parseInt(e.target.dataset.index);
+        deleteJob(index);
+      });
+    });
+
+    updateSelectAllState();
+  }
+
+  async function fetchDescriptions() {
+    if (isFetchingDescriptions) return;
+
+    const jobsToFetch = selectedJobs.size > 0 
+      ? Array.from(selectedJobs).map(index => ({ job: allJobs[index], index }))
+      : allJobs.map((job, index) => ({ job, index })).filter(item => !item.job.description || item.job.description === '-');
+
+    if (jobsToFetch.length === 0) {
+      showStatus('No jobs need description fetching', 'info');
+      return;
+    }
+
+    // Reset queue and counters
+    descriptionQueue = jobsToFetch;
+    currentFetchIndex = 0;
+    isFetchingDescriptions = true;
+    fetchDescBtn.disabled = true;
+    fetchDescBtn.textContent = `Fetching... (0/${descriptionQueue.length})`;
+
+    // Start processing the first job
+    processNextDescription();
+  }
+
+  function processNextDescription() {
+    if (currentFetchIndex >= descriptionQueue.length) {
+      finishDescriptionFetching();
+      return;
+    }
+
+    const { job, index } = descriptionQueue[currentFetchIndex];
+    
+    if (!job.description || job.description === '-') {
+      // Send message to background script to fetch description
+      chrome.runtime.sendMessage({
+        action: 'fetchJobDescription',
+        url: job.url,
+        jobIndex: index,
+        responseTabId: currentTabId
+      });
+    } else {
+      // Skip this job as it already has description
+      currentFetchIndex++;
+      fetchDescBtn.textContent = `Fetching... (${currentFetchIndex}/${descriptionQueue.length})`;
+      
+      if (currentFetchIndex < descriptionQueue.length) {
+        setTimeout(() => {
+          processNextDescription();
+        }, 500);
+      } else {
+        finishDescriptionFetching();
+      }
+    }
+  }
+
+  function finishDescriptionFetching() {
+    isFetchingDescriptions = false;
+    fetchDescBtn.disabled = false;
+    fetchDescBtn.textContent = 'Fetch Descriptions';
+    descriptionQueue = [];
+    currentFetchIndex = 0;
+    
+    showStatus(`Description fetching completed for ${descriptionQueue.length || currentFetchIndex} jobs`, 'success');
+    displayJobs();
+  }
+
+  function showDescription(index) {
+    const job = allJobs[index];
+    modalJobTitle.textContent = job.title;
+    
+    modalJobDetails.innerHTML = `
+      <p><strong>Department ID:</strong> ${escapeHtml(job.departmentId)}</p>
+      <p><strong>Location:</strong> ${escapeHtml(job.location)}</p>
+      <p><strong>Category:</strong> ${escapeHtml(job.category)}</p>
+      <p><strong>Job Type:</strong> ${escapeHtml(job.jobType)}</p>
+      <p><strong>URL:</strong> <a href="${escapeHtml(job.url)}" target="_blank">View Original</a></p>
+    `;
+    
+    modalDescription.innerHTML = job.description.replace(/\n/g, '<br>');
+    descriptionModal.style.display = 'block';
+  }
+
+  function hideModal() {
+    descriptionModal.style.display = 'none';
+  }
+
+  function handleCheckboxChange(event) {
+    const index = parseInt(event.target.dataset.index);
+    
+    if (event.target.checked) {
+      selectedJobs.add(index);
+    } else {
+      selectedJobs.delete(index);
+    }
+    
+    updateSelectAllState();
+    updateDeleteButtonState();
+  }
+
+  function toggleSelectAll() {
+    const shouldSelectAll = selectedJobs.size !== allJobs.length;
+    
+    selectedJobs.clear();
+    
+    if (shouldSelectAll) {
+      allJobs.forEach((_, index) => selectedJobs.add(index));
+    }
+    
+    updateSelectAllState();
+    updateDeleteButtonState();
+    
+    document.querySelectorAll('.job-checkbox').forEach((checkbox, index) => {
+      checkbox.checked = shouldSelectAll;
+    });
+  }
+
+  function updateSelectAllState() {
+    const allSelected = selectedJobs.size === allJobs.length && allJobs.length > 0;
+    const someSelected = selectedJobs.size > 0;
+    
+    selectAllCheckbox.checked = allSelected;
+    selectAllCheckbox.indeterminate = someSelected && !allSelected;
+    selectAllBtn.textContent = allSelected ? 'Deselect All' : 'Select All';
+  }
+
+  function updateDeleteButtonState() {
+    deleteSelectedBtn.disabled = selectedJobs.size === 0;
+  }
+
+  function updateRecordCount() {
+    recordCount.textContent = `${allJobs.length} record${allJobs.length !== 1 ? 's' : ''}`;
+  }
+
+  async function deleteSelected() {
+    if (selectedJobs.size === 0) return;
+    
+    if (!confirm(`Are you sure you want to delete ${selectedJobs.size} selected job(s)?`)) {
+      return;
+    }
+
+    const selectedIndices = Array.from(selectedJobs).sort((a, b) => b - a);
+    selectedIndices.forEach(index => {
+      allJobs.splice(index, 1);
+    });
+
+    await chrome.storage.local.set({ jobs: allJobs });
+    
+    selectedJobs.clear();
+    
+    displayJobs();
+    updateRecordCount();
+    updateDeleteButtonState();
+  }
+
+  function showGSheetForm() {
+    webhookSection.style.display = 'block';
+    gsheetUrl.value = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/edit`;
+    gsheetUrl.disabled = true;
+    exportStatus.textContent = '';
+  }
+
+  function hideGSheetForm() {
+    webhookSection.style.display = 'none';
+    exportStatus.textContent = '';
+  }
+
+  async function exportToGSheet() {
+    if (allJobs.length === 0) {
+      showStatus('No jobs data to export', 'error');
+      return;
+    }
+
+    try {
+      sendDataBtn.disabled = true;
+      sendDataBtn.textContent = 'Authenticating...';
+      showStatus('Authenticating with service account...', 'info');
+      
+      sendDataBtn.textContent = 'Exporting...';
+      showStatus('Checking for duplicates and exporting data...', 'info');
+
+      const result = await gsheetExporter.exportToSheet(GOOGLE_SHEET_ID, allJobs);
+
+      if (result.skippedCount > 0) {
+        showStatus(`Export completed! Added ${result.addedCount} new jobs, skipped ${result.skippedCount} duplicates.`, 'success');
+      } else {
+        showStatus(`Successfully exported ${result.addedCount} jobs to Google Sheets!`, 'success');
+      }
+      
+      setTimeout(() => {
+        hideGSheetForm();
+      }, 3000);
+
+    } catch (error) {
+      console.error('Export error:', error);
+      
+      if (error.message.includes('access') || error.message.includes('permission') || error.message.includes('403')) {
+        showStatus('Access denied. Please make sure the service account has edit access to the Google Sheet.', 'error');
+      } else if (error.message.includes('not found') || error.message.includes('404')) {
+        showStatus('Google Sheet not found. Please check if the sheet exists and is accessible.', 'error');
+      } else if (error.message.includes('No new jobs')) {
+        showStatus(error.message, 'error');
+      } else if (error.message.includes('Token exchange failed')) {
+        showStatus('Service account authentication failed. Please check the configuration.', 'error');
+      } else {
+        showStatus('Export failed: ' + error.message, 'error');
+      }
+    } finally {
+      sendDataBtn.disabled = false;
+      sendDataBtn.textContent = 'Export Data';
+    }
+  }
+
+  function showStatus(message, type) {
+    exportStatus.textContent = message;
+    exportStatus.className = `export-status ${type}`;
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  async function deleteJob(index) {
+    if (!confirm('Are you sure you want to delete this job?')) {
+      return;
+    }
+
+    allJobs.splice(index, 1);
+    await chrome.storage.local.set({ jobs: allJobs });
+    
+    selectedJobs.delete(index);
+    
+    const newSelectedJobs = new Set();
+    selectedJobs.forEach(selectedIndex => {
+      if (selectedIndex < index) {
+        newSelectedJobs.add(selectedIndex);
+      } else if (selectedIndex > index) {
+        newSelectedJobs.add(selectedIndex - 1);
+      }
+    });
+    selectedJobs = newSelectedJobs;
+    
+    displayJobs();
+    updateRecordCount();
+    updateDeleteButtonState();
+  }
+
+  function updateSkippedStatsUI() {
+    // Total found = saved + skipped
+    totalJobsFound.textContent = allJobs.length + skippedJobsStats.total;
+    totalJobsSkipped.textContent = skippedJobsStats.total;
+    totalJobsSaved.textContent = allJobs.length;
+    // Populate the keyword table
+    const tbody = document.getElementById('skippedByKeywordTable');
+    tbody.innerHTML = '';
+    for (const [keyword, count] of Object.entries(skippedJobsStats.byKeyword)) {
+      const row = document.createElement('tr');
+      const keywordCell = document.createElement('td');
+      keywordCell.textContent = keyword;
+      const countCell = document.createElement('td');
+      countCell.textContent = count;
+      row.appendChild(keywordCell);
+      row.appendChild(countCell);
+      tbody.appendChild(row);
+    }
+  }
+});
