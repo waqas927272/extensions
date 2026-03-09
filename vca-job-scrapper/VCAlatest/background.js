@@ -214,6 +214,94 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       return '';
                     }
 
+                    // Helper: extract both position and hospital from "Join us as..." pattern
+                    function extractPositionAndHospital(text) {
+                      if (!text) return { position: '', hospital: '' };
+
+                      // PATTERN GROUP 1: "[position] at [hospital]" format
+                      const positionAtHospitalPatterns = [
+                        // "Join us as a board-certified or residency-trained Neurologist at VCA Hospital Name"
+                        { regex: /join\s+us\s+as\s+(?:an?\s+)?(?:board[- ]certified\s+)?(?:or\s+)?(?:residency[- ]trained\s+)?(.+?)\s+at\s+((?:VCA\s+)?[^.!?\n]+?(?:Hospital|Center|Clinic|Care|Specialists?|Veterinary|Animal|Emergency|Medical)[^.!?\n]*?)(?:\.|!|\n|$)/i, posIndex: 1, hospIndex: 2 },
+                        // "Join us as [position] at [hospital]"
+                        { regex: /join\s+us\s+as\s+(?:an?\s+)?(.+?)\s+at\s+((?:VCA\s+)?[^.!?\n]+?(?:Hospital|Center|Clinic|Care|Specialists?|Veterinary|Animal|Emergency|Medical)[^.!?\n]*?)(?:\.|!|\n|$)/i, posIndex: 1, hospIndex: 2 },
+                        // "We are seeking a [position] at [hospital]"
+                        { regex: /seeking\s+(?:an?\s+)?(.+?)\s+at\s+((?:VCA\s+)?[^.!?\n]+?(?:Hospital|Center|Clinic|Care|Specialists?|Veterinary|Animal|Emergency|Medical)[^.!?\n]*?)(?:\.|!|\n|$)/i, posIndex: 1, hospIndex: 2 },
+                        // "We are looking for a [position] at [hospital]"
+                        { regex: /looking\s+for\s+(?:an?\s+)?(.+?)\s+at\s+((?:VCA\s+)?[^.!?\n]+?(?:Hospital|Center|Clinic|Care|Specialists?|Veterinary|Animal|Emergency|Medical)[^.!?\n]*?)(?:\.|!|\n|$)/i, posIndex: 1, hospIndex: 2 }
+                      ];
+
+                      // PATTERN GROUP 2: "[hospital] located/in [location] is looking/seeking for [position]" format
+                      const hospitalFirstPatterns = [
+                        // "Katonah Bedford Veterinary Center located in Bedford Hills, NY is looking for a Per Diem Emergency Veterinarian"
+                        { regex: /^([^,.!?\n]+(?:Hospital|Center|Clinic|Care|Veterinary|Animal|Emergency|Medical|VCA)[^,.!?\n]*?)\s+located\s+in\s+[^,.]+?,\s*[A-Z]{2}\s+is\s+(?:looking|seeking)\s+for\s+(?:a\s+|an\s+)?(.+?)(?:\.|!|\n|$)/i, hospIndex: 1, posIndex: 2 },
+                        // "VCA Hospital Name located in City, ST is looking for Position"
+                        { regex: /((?:VCA\s+)?[^,.!?\n]+(?:Hospital|Center|Clinic|Care|Veterinary|Animal|Emergency|Medical)[^,.!?\n]*?)\s+located\s+in\s+[^,.]+?,\s*[A-Z]{2}\s+is\s+(?:looking|seeking)\s+for\s+(?:a\s+|an\s+)?(.+?)(?:\.|!|\n|$)/i, hospIndex: 1, posIndex: 2 },
+                        // "Hospital Name in City, ST is looking for Position"
+                        { regex: /^([^,.!?\n]+(?:Hospital|Center|Clinic|Care|Veterinary|Animal|Emergency|Medical|VCA)[^,.!?\n]*?)\s+in\s+[^,.]+?,\s*[A-Z]{2}\s+is\s+(?:looking|seeking)\s+for\s+(?:a\s+|an\s+)?(.+?)(?:\.|!|\n|$)/i, hospIndex: 1, posIndex: 2 },
+                        // "VCA Hospital Name in City, ST is seeking a Position"
+                        { regex: /((?:VCA\s+)?[^,.!?\n]+(?:Hospital|Center|Clinic|Care|Veterinary|Animal|Emergency|Medical)[^,.!?\n]*?)\s+in\s+[^,.]+?,\s*[A-Z]{2}\s+is\s+(?:looking|seeking)\s+for\s+(?:a\s+|an\s+)?(.+?)(?:\.|!|\n|$)/i, hospIndex: 1, posIndex: 2 }
+                      ];
+
+                      // Try Pattern Group 1 first (position at hospital)
+                      for (const pattern of positionAtHospitalPatterns) {
+                        const match = text.match(pattern.regex);
+                        if (match) {
+                          let position = match[pattern.posIndex].trim();
+                          let hospital = match[pattern.hospIndex].trim();
+
+                          // Clean position: remove trailing words like "to join", "for", etc.
+                          position = position.replace(/\s+(?:to\s+join|for|with|in|on)\s*$/i, '').trim();
+
+                          // Clean hospital: remove trailing punctuation and common suffixes
+                          hospital = hospital.replace(/[\s,;:.!]+$/, '').trim();
+
+                          // Ensure hospital name ends at a reasonable point for VCA hospitals
+                          const hospitalEndMatch = hospital.match(/^((?:VCA\s+)?[^,;.\n]+(?:Hospital|Center|Clinic|Care|Specialists?|Veterinary|Animal|Emergency|Medical))/i);
+                          if (hospitalEndMatch) {
+                            hospital = hospitalEndMatch[1].trim();
+                          }
+
+                          // Limit lengths
+                          if (position.length > 100) position = position.substring(0, 100).trim();
+                          if (hospital.length > 100) hospital = hospital.substring(0, 100).trim();
+
+                          // Only return if both are reasonably sized
+                          if (position.length >= 3 && hospital.length >= 10) {
+                            return { position, hospital };
+                          }
+                        }
+                      }
+
+                      // Try Pattern Group 2 (hospital first format)
+                      for (const pattern of hospitalFirstPatterns) {
+                        const match = text.match(pattern.regex);
+                        if (match) {
+                          let hospital = match[pattern.hospIndex].trim();
+                          let position = match[pattern.posIndex].trim();
+
+                          // Clean hospital name
+                          hospital = hospital.replace(/[\s,;:.!]+$/, '').trim();
+
+                          // Clean position: remove trailing punctuation and newlines
+                          position = position.replace(/[\s,;:.!\n]+$/, '').trim();
+
+                          // Remove common trailing phrases from position
+                          position = position.replace(/\s+(?:to\s+join|for|with)\s*$/i, '').trim();
+
+                          // Limit lengths
+                          if (position.length > 100) position = position.substring(0, 100).trim();
+                          if (hospital.length > 100) hospital = hospital.substring(0, 100).trim();
+
+                          // Only return if both are reasonably sized
+                          if (position.length >= 3 && hospital.length >= 5) {
+                            return { position, hospital };
+                          }
+                        }
+                      }
+
+                      return { position: '', hospital: '' };
+                    }
+
                     // Helper: extract hospital name from text
                     function extractHospitalFromText(text) {
                       if (!text) return '';
@@ -249,9 +337,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       let city = '';
                       let state = '';
 
+                      // === PRIORITY SOURCE: Extract from description text using "Join us as..." pattern ===
+                      const descEl = document.querySelector('.jd-info[data-ph-at-id="jobdescription-text"]');
+                      if (descEl) {
+                        const descText = descEl.innerText || '';
+                        const extracted = extractPositionAndHospital(descText);
+                        if (extracted.position) {
+                          position = extracted.position;
+                        }
+                        if (extracted.hospital) {
+                          hospitalName = extracted.hospital;
+                        }
+                      }
+
                       // === SOURCE 1: phApp.ddo job data (most accurate) ===
                       if (jobData) {
-                        position = jobData.title || '';
+                        // Only set position from jobData if not already found from description pattern
+                        if (!position) {
+                          position = jobData.title || '';
+                        }
+
                         city = jobData.city || '';
                         state = jobData.state || '';
 
@@ -268,7 +373,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         }
 
                         // locationDetails has hospital name: "Vca West Los Angeles Animal Hospital | 101"
-                        if (jobData.locationDetails) {
+                        // Only use if not already extracted from description pattern
+                        if (!hospitalName && jobData.locationDetails) {
                           let locDetail = jobData.locationDetails.split('|')[0].trim();
                           locDetail = locDetail.replace(/\s*\d+\s*$/, '').trim();
                           if (locDetail.length > 80) locDetail = locDetail.substring(0, 80).trim();
@@ -283,12 +389,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                           }
                         }
 
-                        // Extract salary & hospital from jobData.description (embedded HTML)
+                        // Extract salary from jobData.description (embedded HTML)
+                        // Note: Hospital is already extracted from priority pattern, only get salary here
                         if (jobData.description) {
                           const descPlainText = stripHtml(jobData.description);
                           if (!salary) {
                             salary = extractSalary(descPlainText);
                           }
+                          // Only use fallback hospital extraction if not found from priority pattern
                           if (!hospitalName) {
                             hospitalName = extractHospitalFromText(descPlainText);
                           }
@@ -348,6 +456,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         try {
                           const ld = JSON.parse(s.textContent);
                           if (ld['@type'] === 'JobPosting') {
+                            // Only use JSON-LD position if not already found from priority pattern
                             if (!position) position = ld.title || '';
                             if (ld.jobLocation && ld.jobLocation.address) {
                               if (!city) city = ld.jobLocation.address.addressLocality || '';
@@ -373,17 +482,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         } catch(e) {}
                       }
 
-                      // === SOURCE 7: Extract from DOM description text ===
-                      const descEl = document.querySelector('.jd-info[data-ph-at-id="jobdescription-text"]');
-                      if (descEl) {
-                        const descText = descEl.innerText || '';
+                      // === SOURCE 7: Extract from DOM description text (fallback only) ===
+                      // Note: Priority pattern already checked descEl at the beginning
+                      // Only use these as fallbacks if not found
+                      if (!hospitalName || !salary) {
+                        const descElFallback = document.querySelector('.jd-info[data-ph-at-id="jobdescription-text"]');
+                        if (descElFallback) {
+                          const descText = descElFallback.innerText || '';
 
-                        if (!hospitalName) {
-                          hospitalName = extractHospitalFromText(descText);
-                        }
+                          if (!hospitalName) {
+                            hospitalName = extractHospitalFromText(descText);
+                          }
 
-                        if (!salary) {
-                          salary = extractSalary(descText);
+                          if (!salary) {
+                            salary = extractSalary(descText);
+                          }
                         }
                       }
 

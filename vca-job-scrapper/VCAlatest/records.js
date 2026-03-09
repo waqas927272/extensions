@@ -7,12 +7,22 @@ document.addEventListener('DOMContentLoaded', function() {
   const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
   const fetchDescBtn = document.getElementById('fetchDescBtn');
   const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
-  const sendWebhookBtn = document.getElementById('sendWebhookBtn');
-  const webhookSection = document.getElementById('webhookSection');
+
+  // Google Sheets elements
+  const sendGSheetBtn = document.getElementById('sendGSheetBtn');
+  const gsheetSection = document.getElementById('gsheetSection');
   const gsheetUrl = document.getElementById('gsheetUrl');
-  const sendDataBtn = document.getElementById('sendDataBtn');
+  const sendGSheetDataBtn = document.getElementById('sendGSheetDataBtn');
+  const cancelGSheetBtn = document.getElementById('cancelGSheetBtn');
+  const gsheetStatus = document.getElementById('gsheetStatus');
+
+  // Webhook elements
+  const sendWebhookBtn = document.getElementById('sendWebhookBtn');
+  const webhookExportSection = document.getElementById('webhookExportSection');
+  const webhookUrl = document.getElementById('webhookUrl');
+  const sendWebhookDataBtn = document.getElementById('sendWebhookDataBtn');
   const cancelWebhookBtn = document.getElementById('cancelWebhookBtn');
-  const exportStatus = document.getElementById('exportStatus');
+  const webhookStatus = document.getElementById('webhookStatus');
   const descriptionModal = document.getElementById('descriptionModal');
   const closeModal = document.getElementById('closeModal');
   const modalJobTitle = document.getElementById('modalJobTitle');
@@ -226,9 +236,17 @@ document.addEventListener('DOMContentLoaded', function() {
   deleteSelectedBtn.addEventListener('click', deleteSelected);
   fetchDescBtn.addEventListener('click', fetchDescriptions);
   fetchDetailsBtn.addEventListener('click', fetchDetails);
-  sendWebhookBtn.addEventListener('click', showGSheetForm);
-  sendDataBtn.addEventListener('click', exportToGSheet);
-  cancelWebhookBtn.addEventListener('click', hideGSheetForm);
+
+  // Google Sheets event listeners
+  sendGSheetBtn.addEventListener('click', showGSheetForm);
+  sendGSheetDataBtn.addEventListener('click', exportToGSheet);
+  cancelGSheetBtn.addEventListener('click', hideGSheetForm);
+
+  // Webhook event listeners
+  sendWebhookBtn.addEventListener('click', showWebhookForm);
+  sendWebhookDataBtn.addEventListener('click', sendToWebhook);
+  cancelWebhookBtn.addEventListener('click', hideWebhookForm);
+
   closeModal.addEventListener('click', hideModal);
 
   window.addEventListener('click', function(event) {
@@ -613,66 +631,170 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   function showGSheetForm() {
-    webhookSection.style.display = 'block';
+    gsheetSection.style.display = 'block';
+    webhookExportSection.style.display = 'none';
     gsheetUrl.value = `https://docs.google.com/spreadsheets/d/${GOOGLE_SHEET_ID}/edit`;
     gsheetUrl.disabled = true;
-    exportStatus.textContent = '';
+    gsheetStatus.textContent = '';
   }
 
   function hideGSheetForm() {
-    webhookSection.style.display = 'none';
-    exportStatus.textContent = '';
+    gsheetSection.style.display = 'none';
+    gsheetStatus.textContent = '';
+  }
+
+  function showWebhookForm() {
+    webhookExportSection.style.display = 'block';
+    gsheetSection.style.display = 'none';
+    webhookStatus.textContent = '';
+
+    // Load saved webhook URL if exists
+    chrome.storage.local.get(['webhookUrl'], function(result) {
+      if (result.webhookUrl) {
+        webhookUrl.value = result.webhookUrl;
+      }
+    });
+  }
+
+  function hideWebhookForm() {
+    webhookExportSection.style.display = 'none';
+    webhookStatus.textContent = '';
   }
 
   async function exportToGSheet() {
     if (allJobs.length === 0) {
-      showStatus('No jobs data to export', 'error');
+      showGSheetStatus('No jobs data to export', 'error');
       return;
     }
 
     try {
-      sendDataBtn.disabled = true;
-      sendDataBtn.textContent = 'Authenticating...';
-      showStatus('Authenticating with service account...', 'info');
-      
-      sendDataBtn.textContent = 'Exporting...';
-      showStatus('Checking for duplicates and exporting data...', 'info');
+      sendGSheetDataBtn.disabled = true;
+      sendGSheetDataBtn.textContent = 'Authenticating...';
+      showGSheetStatus('Authenticating with service account...', 'info');
+
+      sendGSheetDataBtn.textContent = 'Exporting...';
+      showGSheetStatus('Checking for duplicates and exporting data...', 'info');
 
       const result = await gsheetExporter.exportToSheet(GOOGLE_SHEET_ID, allJobs);
 
       if (result.skippedCount > 0) {
-        showStatus(`Export completed! Added ${result.addedCount} new jobs, skipped ${result.skippedCount} duplicates.`, 'success');
+        showGSheetStatus(`Export completed! Added ${result.addedCount} new jobs, skipped ${result.skippedCount} duplicates.`, 'success');
       } else {
-        showStatus(`Successfully exported ${result.addedCount} jobs to Google Sheets!`, 'success');
+        showGSheetStatus(`Successfully exported ${result.addedCount} jobs to Google Sheets!`, 'success');
       }
-      
+
       setTimeout(() => {
         hideGSheetForm();
       }, 3000);
 
     } catch (error) {
       console.error('Export error:', error);
-      
+
       if (error.message.includes('access') || error.message.includes('permission') || error.message.includes('403')) {
-        showStatus('Access denied. Please make sure the service account has edit access to the Google Sheet.', 'error');
+        showGSheetStatus('Access denied. Please make sure the service account has edit access to the Google Sheet.', 'error');
       } else if (error.message.includes('not found') || error.message.includes('404')) {
-        showStatus('Google Sheet not found. Please check if the sheet exists and is accessible.', 'error');
+        showGSheetStatus('Google Sheet not found. Please check if the sheet exists and is accessible.', 'error');
       } else if (error.message.includes('No new jobs')) {
-        showStatus(error.message, 'error');
+        showGSheetStatus(error.message, 'error');
       } else if (error.message.includes('Token exchange failed')) {
-        showStatus('Service account authentication failed. Please check the configuration.', 'error');
+        showGSheetStatus('Service account authentication failed. Please check the configuration.', 'error');
       } else {
-        showStatus('Export failed: ' + error.message, 'error');
+        showGSheetStatus('Export failed: ' + error.message, 'error');
       }
     } finally {
-      sendDataBtn.disabled = false;
-      sendDataBtn.textContent = 'Export Data';
+      sendGSheetDataBtn.disabled = false;
+      sendGSheetDataBtn.textContent = 'Export Data';
     }
   }
 
-  function showStatus(message, type) {
-    exportStatus.textContent = message;
-    exportStatus.className = `export-status ${type}`;
+  async function sendToWebhook() {
+    const url = webhookUrl.value.trim();
+
+    if (!url) {
+      showWebhookStatus('Please enter a webhook URL', 'error');
+      return;
+    }
+
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      showWebhookStatus('Please enter a valid URL (starting with http:// or https://)', 'error');
+      return;
+    }
+
+    if (allJobs.length === 0) {
+      showWebhookStatus('No jobs data to send', 'error');
+      return;
+    }
+
+    try {
+      sendWebhookDataBtn.disabled = true;
+      sendWebhookDataBtn.textContent = 'Sending...';
+      showWebhookStatus(`Sending ${allJobs.length} jobs to webhook...`, 'info');
+
+      // Save webhook URL for future use
+      chrome.storage.local.set({ webhookUrl: url });
+
+      // Prepare the payload
+      const payload = {
+        timestamp: new Date().toISOString(),
+        totalJobs: allJobs.length,
+        jobs: allJobs.map(job => ({
+          departmentId: job.departmentId || '',
+          title: job.title || '',
+          location: job.location || '',
+          category: job.category || '',
+          jobType: job.jobType || '',
+          areaOfPractice: job.areaOfPractice || '',
+          position: job.position || '',
+          salary: job.salary || '',
+          hospitalName: job.hospitalName || '',
+          city: job.city || '',
+          state: job.state || '',
+          url: job.url || '',
+          description: job.description || '',
+          scrapedAt: job.scrapedAt || ''
+        }))
+      };
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Webhook returned status ${response.status}: ${response.statusText}`);
+      }
+
+      showWebhookStatus(`Successfully sent ${allJobs.length} jobs to webhook!`, 'success');
+
+      setTimeout(() => {
+        hideWebhookForm();
+      }, 3000);
+
+    } catch (error) {
+      console.error('Webhook error:', error);
+
+      if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+        showWebhookStatus('Network error: Could not reach the webhook URL. Please check the URL and try again.', 'error');
+      } else {
+        showWebhookStatus('Failed to send data: ' + error.message, 'error');
+      }
+    } finally {
+      sendWebhookDataBtn.disabled = false;
+      sendWebhookDataBtn.textContent = 'Send Data';
+    }
+  }
+
+  function showGSheetStatus(message, type) {
+    gsheetStatus.textContent = message;
+    gsheetStatus.className = `export-status ${type}`;
+  }
+
+  function showWebhookStatus(message, type) {
+    webhookStatus.textContent = message;
+    webhookStatus.className = `export-status ${type}`;
   }
 
   function escapeHtml(text) {
