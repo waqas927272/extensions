@@ -12,7 +12,7 @@ body {
 }
 
 .container {
-  max-width: 1400px;
+  max-width: auto;
   margin: 0 auto;
   padding: 20px;
 }
@@ -136,6 +136,13 @@ h1 {
   align-items: center;
   gap: 15px;
   flex-wrap: wrap;
+}
+
+.webhook-form h3 {
+  width: 100%;
+  color: #2E86AB;
+  font-size: 18px;
+  margin-bottom: 10px;
 }
 
 .webhook-form label {

@@ -15,7 +15,8 @@
     <button id="fetchDetailsBtn" class="btn btn-fetch">Fetch Details</button>
     <button id="selectAllBtn" class="btn btn-outline">Select All</button>
     <button id="deleteSelectedBtn" class="btn btn-danger" disabled>Delete Selected</button>
-    <button id="sendWebhookBtn" class="btn btn-success">Export to GSheet</button>
+    <button id="sendGSheetBtn" class="btn btn-success">Export to GSheet</button>
+    <button id="sendWebhookBtn" class="btn btn-success">Send to Webhook</button>
   </div>
 </header>
 
@@ -51,13 +52,27 @@
   </div>
 </div>
 
-    <div class="webhook-section" id="webhookSection">
+    <!-- Google Sheets Export Section -->
+    <div class="webhook-section" id="gsheetSection">
       <div class="webhook-form">
+        <h3>Export to Google Sheets</h3>
         <label for="gsheetUrl">Target Google Sheet:</label>
         <input type="url" id="gsheetUrl" placeholder="Google Sheet URL" readonly />
-        <button id="sendDataBtn" class="btn btn-success">Export Data</button>
+        <button id="sendGSheetDataBtn" class="btn btn-success">Export Data</button>
+        <button id="cancelGSheetBtn" class="btn btn-secondary">Cancel</button>
+        <div id="gsheetStatus" class="export-status"></div>
+      </div>
+    </div>
+
+    <!-- Webhook Export Section -->
+    <div class="webhook-section" id="webhookExportSection">
+      <div class="webhook-form">
+        <h3>Send to Webhook</h3>
+        <label for="webhookUrl">Webhook URL:</label>
+        <input type="url" id="webhookUrl" placeholder="https://your-webhook-url.com/endpoint" />
+        <button id="sendWebhookDataBtn" class="btn btn-success">Send Data</button>
         <button id="cancelWebhookBtn" class="btn btn-secondary">Cancel</button>
-        <div id="exportStatus" class="export-status"></div>
+        <div id="webhookStatus" class="export-status"></div>
       </div>
     </div>
 
