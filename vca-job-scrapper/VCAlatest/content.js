@@ -4,12 +4,13 @@ let currentPage = 1;
 let scrapingState = null;
 let totalPagesToScrape = 3;
 let floatingBox = null;
-const SKIP_KEYWORDS = ['Relief', 'Intern'];
+const SKIP_KEYWORDS = ['Relief', 'Intern', 'Locum'];
 let skippedJobsStats = {
   total: 0,
   byKeyword: {
     Relief: 0,
-    Intern: 0
+    Intern: 0,
+    Locum: 0
   }
 };
 
@@ -496,7 +497,7 @@ let scrapingInterval = null;
 function startScrapingFromBox() {
   isScrapingActive = true;
   currentPage = 1;
-  skippedJobsStats = { total: 0, byKeyword: { Relief: 0, Intern: 0 } };
+  skippedJobsStats = { total: 0, byKeyword: { Relief: 0, Intern: 0, Locum: 0 } };
   chrome.storage.local.set({ skippedJobsStats });
   // Initialize scraping state
   scrapingState = {
@@ -583,7 +584,7 @@ async function stopScraping() {
 async function startScraping() {
   isScrapingActive = true;
   currentPage = 1;
-  skippedJobsStats = { total: 0, byKeyword: { Relief: 0, Intern: 0 } };
+  skippedJobsStats = { total: 0, byKeyword: { Relief: 0, Intern: 0, Locum: 0 } };
   await chrome.storage.local.set({ skippedJobsStats });
   
   // Initialize scraping state

@@ -160,57 +160,92 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       return '';
                     }
 
-                    // Helper: extract salary from text
+                    // Helper: extract salary from text with type identification
                     function extractSalary(text) {
                       if (!text) return '';
-                      const salaryPatterns = [
-                        // "$250-$350k" or "$250k-$350k"
-                        /\$[\d,]+k?\s*[-–]+\s*\$?[\d,]+k/i,
-                        // "$250,000 - $350,000" range
-                        /\$[\d,]+(?:,\d{3})*\s*[-–]+\s*\$[\d,]+(?:,\d{3})*/i,
-                        // "$X to $Y" range
-                        /\$[\d,]+(?:,\d{3})*k?\s+to\s+\$[\d,]+(?:,\d{3})*k?/i,
-                        // "$200 hourly" or "$200 per hour" or "$200/hr"
-                        /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hourly|hour|hr|\/hr)/i,
-                        // "Compensation $200 hourly, Overnight $250 hourly"
-                        /[Cc]ompensation[:\s]+\$[\d,]+[^.;\n]{0,60}/,
-                        // "$150,000 per year" or "$150,000 annually"
-                        /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:year|annually|annum|annual)/i,
-                        // "salary range...is $X-$Y" or "salary range...$X to $Y"
-                        /salary\s+range[^.\n]*?\$[\d,]+k?[^.\n]{0,40}/i,
-                        // "annual salary...is $X-$Y"
-                        /annual\s+salary[^.\n]*?\$[\d,]+k?[^.\n]{0,40}/i,
-                        // "base salary" or "base pay"
+
+                      // Hourly patterns
+                      const hourlyPatterns = [
+                        /\$[\d,]+(?:\.\d{2})?\s*[-–to]+\s*\$?[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hour|hourly|hr|\/hr)/i,
+                        /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hour|hourly|hr|\/hr)/i,
+                        /[Cc]ompensation[:\s]+\$[\d,]+(?:\.\d{2})?[^.;\n]*?(?:hour|hourly|hr)/i
+                      ];
+
+                      // Shift-based patterns
+                      const shiftPatterns = [
+                        /\$[\d,]+(?:\.\d{2})?\s*[-–to]+\s*\$?[\d,]+(?:\.\d{2})?\s*(?:per\s+)?shift/i,
+                        /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?shift/i,
+                        /[Cc]ompensation[:\s]+\$[\d,]+(?:\.\d{2})?[^.;\n]*?shift/i
+                      ];
+
+                      // Yearly/Annual patterns
+                      const yearlyPatterns = [
+                        /\$[\d,]+k?\s*[-–to]+\s*\$?[\d,]+k?\s*(?:per\s+)?(?:year|yearly|annually|annum|annual)/i,
+                        /\$[\d,]+(?:,\d{3})+\s*[-–to]+\s*\$?[\d,]+(?:,\d{3})+(?:\s*(?:per\s+)?(?:year|yearly|annually|annum|annual))?/i,
+                        /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:year|yearly|annually|annum|annual)/i,
+                        /annual\s+(?:salary|compensation|pay)[:\s]*\$[\d,]+k?[^.\n]{0,40}/i,
+                        /salary\s+range[^.\n]*?\$[\d,]+k?\s*[-–to]+\s*\$?[\d,]+k?/i,
                         /base\s+(?:salary|pay)[^.\n]*?\$[\d,]+k?[^.\n]{0,40}/i,
-                        // "starting salary" or "starting at $X"
                         /starting\s+(?:salary|at|pay)[^.\n]*?\$[\d,]+k?[^.\n]{0,40}/i,
-                        // "pay range" or "pay rate"
-                        /pay\s+(?:range|rate)[^.\n]*?\$[\d,]+k?[^.\n]{0,40}/i,
-                        // "competitive salary of $X" or "competitive compensation of $X"
                         /competitive\s+(?:salary|compensation|pay)[^.\n]*?\$[\d,]+k?[^.\n]{0,40}/i,
-                        // "up to $X" salary
-                        /up\s+to\s+\$[\d,]+(?:,\d{3})*k?/i,
-                        // "earn $X" or "earning $X"
-                        /earn(?:ing)?\s+(?:up\s+to\s+)?\$[\d,]+k?[^.\n]{0,40}/i,
-                        // "sign-on bonus" or "signing bonus"
-                        /sign(?:ing)?[\s-]*(?:on\s+)?bonus[^.\n]*?\$[\d,]+k?[^.\n]{0,30}/i,
-                        // Any "$X - $Y" with reasonable numbers (not phone numbers)
+                        /\$[\d,]+k\+?\s*[-–to]+\s*\$?[\d,]+k\+?/i,
                         /\$[\d]{2,3}(?:,\d{3})*k?\s*[-–]+\s*\$?[\d]{2,3}(?:,\d{3})*k?/i,
-                        // Standalone dollar amounts with k suffix (like "$150k" or "$200K+")
                         /\$[\d,]+k\+?/i
                       ];
-                      for (const pattern of salaryPatterns) {
+
+                      // Check hourly first
+                      for (const pattern of hourlyPatterns) {
                         const m = text.match(pattern);
                         if (m) {
                           let sal = m[0].trim();
                           sal = sal.replace(/[.,;:\s]+$/, '').trim();
                           if (sal.length > 100) sal = sal.substring(0, 100).trim();
+                          // Clean up and add type if not already present
+                          if (!/hourly|hour|hr/i.test(sal)) {
+                            sal += ' (Hourly)';
+                          } else if (!/\(Hourly\)$/i.test(sal)) {
+                            sal = sal.replace(/\s*(?:per\s+)?(?:hour|hourly|hr|\/hr)/i, '') + ' (Hourly)';
+                          }
                           return sal;
                         }
                       }
+
+                      // Check shift-based
+                      for (const pattern of shiftPatterns) {
+                        const m = text.match(pattern);
+                        if (m) {
+                          let sal = m[0].trim();
+                          sal = sal.replace(/[.,;:\s]+$/, '').trim();
+                          if (sal.length > 100) sal = sal.substring(0, 100).trim();
+                          if (!/\(Shift\)$/i.test(sal)) {
+                            sal = sal.replace(/\s*(?:per\s+)?shift/i, '') + ' (Shift)';
+                          }
+                          return sal;
+                        }
+                      }
+
+                      // Check yearly/annual
+                      for (const pattern of yearlyPatterns) {
+                        const m = text.match(pattern);
+                        if (m) {
+                          let sal = m[0].trim();
+                          sal = sal.replace(/[.,;:\s]+$/, '').trim();
+                          if (sal.length > 100) sal = sal.substring(0, 100).trim();
+                          // Clean up and add type
+                          if (!/\(Yearly\)$/i.test(sal) && !/annually|annual|year|yearly/i.test(sal)) {
+                            sal = sal.replace(/salary\s+range[:\s]*/i, '').replace(/annual\s+(?:salary|compensation|pay)[:\s]*/i, '').replace(/base\s+(?:salary|pay)[:\s]*/i, '').replace(/starting\s+(?:salary|at|pay)[:\s]*/i, '').replace(/competitive\s+(?:salary|compensation|pay)[:\s]*/i, '').trim();
+                            sal += ' (Yearly)';
+                          } else if (!/\(Yearly\)$/i.test(sal)) {
+                            sal = sal.replace(/salary\s+range[:\s]*/i, '').replace(/annual\s+(?:salary|compensation|pay)[:\s]*/i, '').replace(/\s*(?:per\s+)?(?:year|yearly|annually|annum|annual)/i, '').trim() + ' (Yearly)';
+                          }
+                          return sal;
+                        }
+                      }
+
                       // Check negotiable
                       const negMatch = text.match(/(?:salary|compensation)\s+(?:is\s+)?negotiable/i);
                       if (negMatch) return 'Negotiable';
+
                       return '';
                     }
 
@@ -232,6 +267,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                       // PATTERN GROUP 2: "[hospital] located/in [location] is looking/seeking for [position]" format
                       const hospitalFirstPatterns = [
+                        // "VCA Spring Animal Hospital is seeking an Associate Veterinarian"
+                        { regex: /^((?:VCA\s+)?[^,.!?\n]+(?:Hospital|Center|Clinic|Care|Specialists?|Veterinary|Animal|Emergency|Medical)[^,.!?\n]*?)\s+is\s+(?:looking|seeking)\s+for\s+(?:a\s+|an\s+)?(.+?)(?:\.|!|\n|$)/i, hospIndex: 1, posIndex: 2 },
                         // "Katonah Bedford Veterinary Center located in Bedford Hills, NY is looking for a Per Diem Emergency Veterinarian"
                         { regex: /^([^,.!?\n]+(?:Hospital|Center|Clinic|Care|Veterinary|Animal|Emergency|Medical|VCA)[^,.!?\n]*?)\s+located\s+in\s+[^,.]+?,\s*[A-Z]{2}\s+is\s+(?:looking|seeking)\s+for\s+(?:a\s+|an\s+)?(.+?)(?:\.|!|\n|$)/i, hospIndex: 1, posIndex: 2 },
                         // "VCA Hospital Name located in City, ST is looking for Position"
@@ -642,6 +679,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         hospitalName = hospitalName.replace(/[\s,;.]+$/, '').trim();
                         if (hospitalName.length > 80) hospitalName = hospitalName.substring(0, 80).replace(/\s+\S*$/, '').trim();
                         hospitalName = hospitalName.replace(/\b\w/g, c => c.toUpperCase());
+                      }
+
+                      // Fallback: If no hospital name found, use "VCA Animal Hospital, {City} - {State}"
+                      if (!hospitalName && city && state) {
+                        hospitalName = `VCA Animal Hospital, ${city} - ${state}`;
+                      } else if (!hospitalName && city) {
+                        hospitalName = `VCA Animal Hospital, ${city}`;
+                      } else if (!hospitalName) {
+                        hospitalName = 'VCA Animal Hospital';
                       }
 
                       // Override area of practice by matching position against jobs.docx keyword map

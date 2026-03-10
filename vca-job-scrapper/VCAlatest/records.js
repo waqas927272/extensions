@@ -42,7 +42,7 @@ document.addEventListener('DOMContentLoaded', function() {
   let currentFetchIndex = 0;
   let detailsQueue = [];
   let currentDetailsIndex = 0;
-  let skippedJobsStats = { total: 0, byKeyword: { Relief: 0, Intern: 0 } };
+  let skippedJobsStats = { total: 0, byKeyword: { Relief: 0, Intern: 0, Locum: 0 } };
 
   // Get current tab ID
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const accessToken = await this.serviceAuth.getAccessToken();
         
         const response = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A:N`,
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A:L`,
           {
             headers: {
               'Authorization': `Bearer ${accessToken}`,
@@ -106,7 +106,7 @@ document.addEventListener('DOMContentLoaded', function() {
         let startRow = existingData.length + 1;
 
         if (existingData.length === 0) {
-          const headers = ['Department ID', 'Title', 'Location', 'Category', 'Job Type', 'Area of Practice', 'Position', 'Salary', 'Hospital Name', 'City', 'State', 'URL', 'Description', 'Scraped At'];
+          const headers = ['Department ID', 'Title', 'Job Type', 'Area of Practice', 'Position', 'Salary', 'Hospital Name', 'City', 'State', 'URL', 'Description', 'Scraped At'];
           dataToAdd.push(headers);
           startRow = 1;
         }
@@ -114,8 +114,6 @@ document.addEventListener('DOMContentLoaded', function() {
         const jobData = newJobs.map(job => [
           job.departmentId || '',
           job.title || '',
-          job.location || '',
-          job.category || '',
           job.jobType || '',
           job.areaOfPractice || '',
           job.position || '',
@@ -131,7 +129,7 @@ document.addEventListener('DOMContentLoaded', function() {
         dataToAdd = [...dataToAdd, ...jobData];
 
         const response = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A${startRow}:N${startRow + dataToAdd.length - 1}?valueInputOption=RAW`,
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A${startRow}:L${startRow + dataToAdd.length - 1}?valueInputOption=RAW`,
           {
             method: 'PUT',
             headers: {
@@ -182,7 +180,7 @@ document.addEventListener('DOMContentLoaded', function() {
                       startRowIndex: 0,
                       endRowIndex: 1,
                       startColumnIndex: 0,
-                      endColumnIndex: 14
+                      endColumnIndex: 12
                     },
                     cell: {
                       userEnteredFormat: {
@@ -210,7 +208,7 @@ document.addEventListener('DOMContentLoaded', function() {
                       sheetId: 0,
                       dimension: 'COLUMNS',
                       startIndex: 0,
-                      endIndex: 14
+                      endIndex: 12
                     }
                   }
                 }
@@ -351,15 +349,11 @@ document.addEventListener('DOMContentLoaded', function() {
     jobsTableBody.innerHTML = allJobs.map((job, index) => `
       <tr>
         <td>
-          <input type="checkbox" class="job-checkbox" data-index="${index}" 
+          <input type="checkbox" class="job-checkbox" data-index="${index}"
                  ${selectedJobs.has(index) ? 'checked' : ''}>
         </td>
         <td>${escapeHtml(job.departmentId)}</td>
         <td class="job-title">${escapeHtml(job.title)}</td>
-        <td>${escapeHtml(job.location)}</td>
-        <td>
-          <span class="job-category">${escapeHtml(job.category)}</span>
-        </td>
         <td>
           <span class="job-type">${escapeHtml(job.jobType)}</span>
         </td>
@@ -375,7 +369,7 @@ document.addEventListener('DOMContentLoaded', function() {
           </a>
         </td>
         <td>
-          ${job.description && job.description !== '-' 
+          ${job.description && job.description !== '-'
             ? `<button class="btn btn-outline description-btn" data-index="${index}">View</button>`
             : '<span class="description-pending">-</span>'
           }
@@ -542,8 +536,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     modalJobDetails.innerHTML = `
       <p><strong>Department ID:</strong> ${escapeHtml(job.departmentId)}</p>
-      <p><strong>Location:</strong> ${escapeHtml(job.location)}</p>
-      <p><strong>Category:</strong> ${escapeHtml(job.category)}</p>
       <p><strong>Job Type:</strong> ${escapeHtml(job.jobType)}</p>
       <p><strong>Area of Practice:</strong> ${escapeHtml(job.areaOfPractice || '-')}</p>
       <p><strong>Position:</strong> ${escapeHtml(job.position || '-')}</p>
