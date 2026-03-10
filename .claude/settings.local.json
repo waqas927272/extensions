@@ -24,7 +24,9 @@
       "WebFetch(domain:jobs.insightpartners.com)",
       "WebFetch(domain:www.vcacareers.com)",
       "Bash(grep:*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(node -c \"C:/wamp64/www/extensions/vca-job-scrapper/VCAlatest/background.js\" 2>&1 || node -e \"try { require\\('fs'\\).readFileSync\\('C:/wamp64/www/extensions/vca-job-scrapper/VCAlatest/background.js', 'utf8'\\); new Function\\(require\\('fs'\\).readFileSync\\('C:/wamp64/www/extensions/vca-job-scrapper/VCAlatest/background.js', 'utf8'\\)\\); console.log\\('Syntax OK'\\); } catch\\(e\\) { console.log\\(e.message\\); }\")",
+      "Bash(node -e \"try { new Function\\(require\\('fs'\\).readFileSync\\('C:/wamp64/www/extensions/vca-job-scrapper/VCAlatest/background.js', 'utf8'\\)\\); console.log\\('Syntax OK'\\); } catch\\(e\\) { console.log\\('Syntax Error:', e.message\\); }\")"
     ]
   }
 }

@@ -299,6 +299,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         }
                       }
 
+                      // PATTERN GROUP 3: Broader "at [Hospital Name]" extraction from first few sentences
+                      const firstChunk = text.substring(0, 1000);
+                      const broadAtMatch = firstChunk.match(/\bat\s+((?:VCA\s+)?(?:[\w'.&-]+\s+){1,6}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?|Group|Practice)|Pet\s+(?:Hospital|Clinic|Care|Medical\s+Center)|Animal\s+(?:Clinic|Care|Medical\s+Center|Emergency)|Emergency\s+(?:Hospital|Center|Clinic)|Medical\s+Center|Specialty\s+(?:Hospital|Center)))\b/i);
+                      if (broadAtMatch) {
+                        let hospital = broadAtMatch[1].trim().replace(/[\s,;:.!]+$/, '');
+                        if (hospital.length >= 5 && hospital.length <= 100) {
+                          return { position: '', hospital };
+                        }
+                      }
+
                       return { position: '', hospital: '' };
                     }
 
@@ -306,16 +316,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     function extractHospitalFromText(text) {
                       if (!text) return '';
                       const hospPatterns = [
+                        // VCA-prefixed patterns (most specific)
                         /\bVCA\s+(?:[\w'.&-]+\s+){1,6}(?:Animal\s+Hospital|Hospital)/i,
                         /\bVCA\s+(?:[\w'.&-]+\s+){1,6}(?:Veterinary\s+(?:Hospital|Specialists?|Center|Clinic))/i,
                         /\bVCA\s+(?:[\w'.&-]+\s+){1,6}(?:Emergency|Specialty|Medical)\s+(?:Hospital|Center|Animal)/i,
                         /\bVCA\s+(?:[\w'.&-]+\s+){1,6}Pet\s+Care/i,
-                        /\bVCA\s+[\w'.&-]+(?:\s+[\w'.&-]+){0,5}/i
+                        /\bVCA\s+[\w'.&-]+(?:\s+[\w'.&-]+){0,5}/i,
+                        // Non-VCA hospital/clinic/center patterns
+                        /\b(?:[\w'.&-]+\s+){1,6}(?:Animal\s+Hospital)\b/i,
+                        /\b(?:[\w'.&-]+\s+){1,6}(?:Veterinary\s+(?:Hospital|Specialists?|Center|Clinic|Care|Group|Practice))\b/i,
+                        /\b(?:[\w'.&-]+\s+){1,6}(?:(?:Emergency|Specialty|Medical)\s+(?:Hospital|Center|Clinic))\b/i,
+                        /\b(?:[\w'.&-]+\s+){1,6}(?:Pet\s+(?:Hospital|Clinic|Care|Medical\s+Center))\b/i,
+                        /\b(?:[\w'.&-]+\s+){1,6}(?:Animal\s+(?:Clinic|Care|Medical\s+Center|Emergency))\b/i
                       ];
                       for (const pattern of hospPatterns) {
                         const m = text.match(pattern);
                         if (m) {
                           let name = m[0].trim();
+                          // Skip generic phrases that aren't actual hospital names
+                          if (/^(the|a|an|our|this|your|at|in|to|and|or)\s/i.test(name)) {
+                            name = name.replace(/^(the|a|an|our|this|your|at|in|to|and|or)\s+/i, '').trim();
+                          }
+                          if (name.length < 5) continue;
                           if (name.length > 80) name = name.substring(0, 80).trim();
                           return name;
                         }
@@ -378,14 +400,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                           let locDetail = jobData.locationDetails.split('|')[0].trim();
                           locDetail = locDetail.replace(/\s*\d+\s*$/, '').trim();
                           if (locDetail.length > 80) locDetail = locDetail.substring(0, 80).trim();
-                          hospitalName = locDetail;
+                          // Only use if it looks like a hospital/facility name (not just a city name)
+                          if (locDetail && /(?:hospital|clinic|center|care|veterinary|animal|emergency|medical|specialty|specialists?|pet|vca)/i.test(locDetail)) {
+                            hospitalName = locDetail;
+                          }
                         }
 
-                        // Try locationName from multi_location
+                        // Try locationName from multi_location (only if it looks like a hospital name, not just a city/state)
                         if (!hospitalName && jobData.multi_location && jobData.multi_location.length > 0) {
                           const loc = jobData.multi_location[0];
-                          if (loc.locationName && loc.locationName.toLowerCase().includes('vca')) {
-                            hospitalName = loc.locationName.trim();
+                          if (loc.locationName) {
+                            const locName = loc.locationName.trim();
+                            // Only use if it contains hospital/clinic/center keywords (not just "City, ST")
+                            if (/(?:hospital|clinic|center|care|veterinary|animal|emergency|medical|specialty|specialists?|pet)/i.test(locName)) {
+                              hospitalName = locName;
+                            }
                           }
                         }
 
@@ -402,9 +431,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                           }
                         }
 
-                        // Also check descriptionTeaser for salary hints
-                        if (!salary && jobData.descriptionTeaser) {
-                          salary = extractSalary(jobData.descriptionTeaser);
+                        // Also check descriptionTeaser for salary and hospital name
+                        if (jobData.descriptionTeaser) {
+                          if (!salary) {
+                            salary = extractSalary(jobData.descriptionTeaser);
+                          }
+                          // descriptionTeaser is plain text and often starts with "Join us as X at [Hospital Name]"
+                          if (!hospitalName) {
+                            const teaserExtracted = extractPositionAndHospital(jobData.descriptionTeaser);
+                            if (teaserExtracted.hospital) {
+                              hospitalName = teaserExtracted.hospital;
+                            }
+                            if (!hospitalName) {
+                              hospitalName = extractHospitalFromText(jobData.descriptionTeaser);
+                            }
+                          }
                         }
                       }
 
@@ -462,6 +503,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                               if (!city) city = ld.jobLocation.address.addressLocality || '';
                               if (!state) state = ld.jobLocation.address.addressRegion || '';
                             }
+                            // hiringOrganization often has the hospital name
+                            if (!hospitalName && ld.hiringOrganization) {
+                              const orgName = ld.hiringOrganization.name || '';
+                              // Only use if it's specific (not just "VCA Animal Hospitals" generic brand)
+                              if (orgName && orgName.toLowerCase() !== 'vca animal hospitals' && orgName.toLowerCase() !== 'vca') {
+                                hospitalName = orgName;
+                              }
+                            }
+                            // JSON-LD description contains the full HTML - extract hospital from it
+                            if (!hospitalName && ld.description) {
+                              const ldDescText = stripHtml(ld.description);
+                              const ldExtracted = extractPositionAndHospital(ldDescText);
+                              if (ldExtracted.hospital) {
+                                hospitalName = ldExtracted.hospital;
+                              }
+                              if (!hospitalName) {
+                                hospitalName = extractHospitalFromText(ldDescText);
+                              }
+                            }
                             // JSON-LD may have baseSalary
                             if (!salary && ld.baseSalary) {
                               if (ld.baseSalary.value) {
@@ -509,6 +569,70 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                           for (const section of salarySection) {
                             salary = extractSalary(section);
                             if (salary) break;
+                          }
+                        }
+                      }
+
+                      // === SOURCE 9: Extract hospital from page title ===
+                      if (!hospitalName) {
+                        const pageTitle = document.title || '';
+                        // Page titles often have format: "Job Title - Hospital Name | VCA Careers"
+                        const titleMatch = pageTitle.match(/[-–]\s*(.+?)(?:\s*[|]\s*VCA|$)/i);
+                        if (titleMatch) {
+                          let candidate = titleMatch[1].trim();
+                          // Only use if it looks like a hospital/clinic name
+                          if (/(?:hospital|clinic|center|care|veterinary|animal|emergency|medical|specialty|specialists?|pet)/i.test(candidate)) {
+                            hospitalName = candidate;
+                          }
+                        }
+                      }
+
+                      // === SOURCE 10: Extract hospital from breadcrumbs or location spans ===
+                      if (!hospitalName) {
+                        // Try location-name or facility-name elements
+                        const locNameEl = document.querySelector('.location-name, .facility-name, [data-ph-at-id="job-location-name"]');
+                        if (locNameEl) {
+                          const locName = locNameEl.textContent.trim();
+                          if (locName && locName.length > 3) {
+                            hospitalName = locName;
+                          }
+                        }
+                      }
+
+                      // === SOURCE 11: Broader description scan for hospital names ===
+                      if (!hospitalName) {
+                        const descElBroad = document.querySelector('.jd-info[data-ph-at-id="jobdescription-text"]');
+                        if (descElBroad) {
+                          const descText = descElBroad.innerText || '';
+                          // Look for "at [Name]" patterns near the beginning of the description
+                          const atMatch = descText.match(/\bat\s+((?:[\w'.&-]+\s+){1,6}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)|Medical\s+Center|Hospital|Clinic|Center))\b/i);
+                          if (atMatch) {
+                            hospitalName = atMatch[1].trim();
+                          }
+                        }
+                      }
+
+                      // === SOURCE 12: Try phApp.ddo for any additional location/facility fields ===
+                      if (!hospitalName && jobData) {
+                        // Some jobs store hospital name in customField or other properties
+                        const fieldsToCheck = ['facility', 'hospitalName', 'siteName', 'branchName', 'storeName'];
+                        for (const field of fieldsToCheck) {
+                          if (jobData[field] && typeof jobData[field] === 'string' && jobData[field].trim().length > 2) {
+                            const fieldVal = jobData[field].trim();
+                            // Only use if it looks like a hospital/facility name
+                            if (/(?:hospital|clinic|center|care|veterinary|animal|emergency|medical|specialty|specialists?|pet|vca)/i.test(fieldVal)) {
+                              hospitalName = fieldVal;
+                              break;
+                            }
+                          }
+                        }
+                        // Check customField array
+                        if (!hospitalName && jobData.customField && Array.isArray(jobData.customField)) {
+                          for (const cf of jobData.customField) {
+                            if (cf && cf.name && /hospital|facility|location.*name|site/i.test(cf.name) && cf.value) {
+                              hospitalName = cf.value.trim();
+                              break;
+                            }
                           }
                         }
                       }
