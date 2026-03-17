@@ -164,6 +164,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     function extractSalary(text) {
                       if (!text) return '';
 
+                      // Priority patterns for full sentences
+                      const priorityPatterns = [
+                        /(?:compensation|salary)\s+for this position is\s+\$[\d,]+k?(?:\s*[-–to]+\s*\$?[\d,]+k?)?/i,
+                        /base\s+salary\s+of\s+\$[\d,]+k?(?:\s*[-–to]+\s*\$?[\d,]+k?)?/i,
+                        /competitive\s+salary\s+of\s+\$[\d,]+k?/i,
+                      ];
+
+                      for (const pattern of priorityPatterns) {
+                        const m = text.match(pattern);
+                        if (m) {
+                          let sal = m[0].trim().replace(/[.,;:\s]+$/, '');
+                          if (!/\(Yearly\)$/i.test(sal) && !/hourly|shift/i.test(sal)) sal += ' (Yearly)';
+                          return sal;
+                        }
+                      }
+
                       // Hourly patterns
                       const hourlyPatterns = [
                         /\$[\d,]+(?:\.\d{2})?\s*[-–to]+\s*\$?[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hour|hourly|hr|\/hr)/i,
@@ -287,10 +303,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                           let hospital = match[pattern.hospIndex].trim();
 
                           // Clean position: remove trailing words like "to join", "for", etc.
-                          position = position.replace(/\s+(?:to\s+join|for|with|in|on)\s*$/i, '').trim();
+                          position = position.replace(/\s+(?:to\s+join|for|with|in|on|, and you’ll quickly discover).*$/i, '').trim();
 
                           // Clean hospital: remove trailing punctuation and common suffixes
                           hospital = hospital.replace(/[\s,;:.!]+$/, '').trim();
+                          hospital = hospital.replace(/<A Href=.*$/i, '').trim();
 
                           // Ensure hospital name ends at a reasonable point for VCA hospitals
                           const hospitalEndMatch = hospital.match(/^((?:VCA\s+)?[^,;.\n]+(?:Hospital|Center|Clinic|Care|Specialists?|Veterinary|Animal|Emergency|Medical))/i);
@@ -303,7 +320,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                           if (hospital.length > 100) hospital = hospital.substring(0, 100).trim();
 
                           // Only return if both are reasonably sized
-                          if (position.length >= 3 && hospital.length >= 10) {
+                          if (position.length >= 3 && hospital.length >= 5) {
                             return { position, hospital };
                           }
                         }
@@ -318,12 +335,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                           // Clean hospital name
                           hospital = hospital.replace(/[\s,;:.!]+$/, '').trim();
+                          hospital = hospital.replace(/<A Href=.*$/i, '').trim();
 
                           // Clean position: remove trailing punctuation and newlines
                           position = position.replace(/[\s,;:.!\n]+$/, '').trim();
-
-                          // Remove common trailing phrases from position
-                          position = position.replace(/\s+(?:to\s+join|for|with)\s*$/i, '').trim();
+                          position = position.replace(/\s+(?:to\s+join|for|with|, and you’ll quickly discover).*$/i, '').trim();
 
                           // Limit lengths
                           if (position.length > 100) position = position.substring(0, 100).trim();
@@ -371,8 +387,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         if (m) {
                           let name = m[0].trim();
                           // Skip generic phrases that aren't actual hospital names
-                          if (/^(the|a|an|our|this|your|at|in|to|and|or)\s/i.test(name)) {
-                            name = name.replace(/^(the|a|an|our|this|your|at|in|to|and|or)\s+/i, '').trim();
+                          if (/^(the|a|an|our|this|your|at|in|to|and|or|<a href)/i.test(name)) {
+                            name = name.replace(/^(the|a|an|our|this|your|at|in|to|and|or|<a href)\s+/i, '').trim();
                           }
                           if (name.length < 5) continue;
                           if (name.length > 80) name = name.substring(0, 80).trim();
@@ -690,10 +706,38 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         hospitalName = 'VCA Animal Hospital';
                       }
 
-                      // Override area of practice by matching position against jobs.docx keyword map
-                      const lookedUpArea = lookupAreaOfPractice(position);
-                      if (lookedUpArea) {
-                        areaOfPractice = lookedUpArea;
+                      // Final logic for Salary and Area of Practice based on user request
+                      try {
+                        // If salary is still not found after all checks, set to 'N/A'
+                        if (!salary) {
+                          salary = 'N/A';
+                        }
+
+                        // New rule for Area of Practice: Check description for specialty keywords first
+                        let combinedDescription = '';
+                        const descElForCheck = document.querySelector('.jd-info[data-ph-at-id="jobdescription-text"]');
+                        if (descElForCheck && descElForCheck.innerText) {
+                            combinedDescription += ' ' + descElForCheck.innerText.toLowerCase();
+                        }
+                        if (jobData && jobData.description) {
+                            combinedDescription += ' ' + stripHtml(jobData.description).toLowerCase();
+                        }
+
+                        if (combinedDescription.includes('board certified') || combinedDescription.includes('residency trained') || combinedDescription.includes('residence trained')) {
+                            areaOfPractice = 'Specialty Care';
+                        } else {
+                            // Fallback to existing keyword lookup on the position title
+                            const lookedUpArea = lookupAreaOfPractice(position);
+                            if (lookedUpArea) {
+                                areaOfPractice = lookedUpArea;
+                            }
+                        }
+                      } catch (e) {
+                          // In case of any error in the new logic, fall back to the old logic for safety
+                          const lookedUpArea = lookupAreaOfPractice(position);
+                          if (lookedUpArea) {
+                              areaOfPractice = lookedUpArea;
+                          }
                       }
 
                       return { areaOfPractice, position, salary, hospitalName, city, state };
@@ -702,19 +746,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 }
               }).then((results) => {
                 chrome.tabs.remove(tab.id);
-                chrome.runtime.sendMessage({
+                sendResponse({
                   action: 'detailsFetched',
                   details: results && results[0] ? results[0].result : {},
                   jobIndex: request.jobIndex
-                }).catch(() => {});
+                });
               }).catch((err) => {
                 console.error('Error extracting job details:', err);
                 chrome.tabs.remove(tab.id);
-                chrome.runtime.sendMessage({
+                sendResponse({
                   action: 'detailsFetched',
                   details: {},
                   jobIndex: request.jobIndex
-                }).catch(() => {});
+                });
               });
             }, 500);
           }, 3000);

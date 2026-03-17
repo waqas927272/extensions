@@ -22,12 +22,19 @@ document.addEventListener('DOMContentLoaded', function() {
     if (result.scrapingState && result.scrapingState.active) {
       isScrapingActive = true;
       updateUI('Scraping...', true);
-      
+
       // Update progress based on current page
       const currentPage = result.scrapingState.currentPage || 1;
-      const percentage = Math.round((currentPage / 3) * 100);
-      progressFill.style.width = percentage + '%';
-      progressText.textContent = `Page ${currentPage}/3 (${percentage}%)`;
+      const totalPages = result.scrapingState.totalPages || 3;
+
+      if (totalPages === 'all') {
+        progressFill.style.width = '50%';
+        progressText.textContent = `Page ${currentPage} (All pages mode)`;
+      } else {
+        const percentage = Math.round((currentPage / totalPages) * 100);
+        progressFill.style.width = percentage + '%';
+        progressText.textContent = `Page ${currentPage}/${totalPages} (${percentage}%)`;
+      }
     }
   }
 

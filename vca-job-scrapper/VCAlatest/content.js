@@ -711,7 +711,7 @@ async function continueScraping() {
       } else {
         // No more pages available
         await stopScraping();
-        updateFloatingBoxUI('All jobs are scrapped', false);
+        updateFloatingBoxUI('All jobs are scraped', false);
         chrome.runtime.sendMessage({
           action: 'scrapingComplete',
           data: { totalScraped: newJobs.length }
@@ -720,7 +720,7 @@ async function continueScraping() {
     } else {
       // Scraping complete
       await stopScraping();
-      updateFloatingBoxUI('All jobs are scrapped', false);
+      updateFloatingBoxUI('All jobs are scraped', false);
       chrome.runtime.sendMessage({
         action: 'scrapingComplete',
         data: { totalScraped: newJobs.length }
@@ -1054,7 +1054,12 @@ function extractJobData(jobItem) {
     
     // Extract Job Type (Part time / Full time)
     const jobTypeElement = jobItem.querySelector('.type span:last-child') || jobItem.querySelector('[data-ph-at-job-type-text]');
-    const jobType = jobTypeElement?.textContent?.trim() || jobTypeElement?.getAttribute('data-ph-at-job-type-text') || '';
+    let jobType = jobTypeElement?.textContent?.trim() || jobTypeElement?.getAttribute('data-ph-at-job-type-text') || '';
+
+    // Fix for when job type is incorrectly parsed as the title
+    if (jobType.toLowerCase().includes('veterinarian') || jobType.length > 20) {
+      jobType = ''; // Reset if it looks like a title instead of "Full time" / "Part time"
+    }
     
     // Validate required fields
     if (!departmentId || !title) {
