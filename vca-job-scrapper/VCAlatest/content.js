@@ -1048,10 +1048,41 @@ function extractJobData(jobItem) {
       }
     }
     
-    // Extract URL
-    const linkElement = jobItem.querySelector('a[href*="/job/"]') || jobItem.querySelector('[data-ph-at-id="job-link"]');
+    // Extract URL - Use more specific selectors to get the correct job link
+    // Priority 1: Link with data attribute (most specific)
+    let linkElement = jobItem.querySelector('[data-ph-at-id="job-link"]');
+
+    // Priority 2: Job title link (most common)
+    if (!linkElement) {
+      linkElement = jobItem.querySelector('.job-title a[href*="/job/"]');
+    }
+
+    // Priority 3: Any link with job ID matching the department ID (ensures URL matches the job)
+    if (!linkElement && departmentId) {
+      linkElement = jobItem.querySelector(`a[href*="/job/${departmentId}"]`);
+    }
+
+    // Priority 4: First link with /job/ in URL (fallback)
+    if (!linkElement) {
+      linkElement = jobItem.querySelector('a[href*="/job/"]');
+    }
+
     const url = linkElement?.href || '';
-    
+
+    // VALIDATION: Ensure URL matches the Department ID to prevent wrong URL assignment
+    if (url && departmentId && !url.includes(departmentId)) {
+      console.warn(`URL mismatch! Department ID: ${departmentId}, URL: ${url}`);
+      // Try to find the correct URL by department ID
+      const correctLink = jobItem.querySelector(`a[href*="${departmentId}"]`);
+      if (correctLink) {
+        console.log(`Fixed URL mismatch. Using: ${correctLink.href}`);
+        linkElement = correctLink;
+      }
+    }
+
+    // Re-extract URL after validation fix
+    const validatedUrl = linkElement?.href || url;
+
     // Extract Job Type (Part time / Full time)
     const jobTypeElement = jobItem.querySelector('.type span:last-child') || jobItem.querySelector('[data-ph-at-job-type-text]');
     let jobType = jobTypeElement?.textContent?.trim() || jobTypeElement?.getAttribute('data-ph-at-job-type-text') || '';
@@ -1066,13 +1097,25 @@ function extractJobData(jobItem) {
       console.warn('Missing required fields for job item:', { departmentId, title });
       return null;
     }
-    
+
+    // Final validation: Log if URL doesn't match department ID
+    if (validatedUrl && !validatedUrl.includes(departmentId)) {
+      console.error('❌ CRITICAL: URL does not match Department ID!', {
+        departmentId,
+        title,
+        url: validatedUrl,
+        jobItem: jobItem.outerHTML.substring(0, 200) + '...'
+      });
+    } else if (validatedUrl) {
+      console.log('✅ URL validated:', { departmentId, url: validatedUrl });
+    }
+
     return {
       departmentId: departmentId,
       title: title,
       location: location,
       category: category,
-      url: url,
+      url: validatedUrl,  // Use validated URL that matches department ID
       jobType: jobType,
       scrapedAt: new Date().toISOString()
     };

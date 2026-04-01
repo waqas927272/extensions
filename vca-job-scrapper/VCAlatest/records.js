@@ -8,6 +8,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const fetchDescBtn = document.getElementById('fetchDescBtn');
   const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
   const clearDetailsBtn = document.getElementById('clearDetailsBtn');
+  const exportCsvBtn = document.getElementById('exportCsvBtn');
 
   // Google Sheets elements
   const sendGSheetBtn = document.getElementById('sendGSheetBtn');
@@ -238,6 +239,7 @@ document.addEventListener('DOMContentLoaded', function() {
   fetchDescBtn.addEventListener('click', fetchDescriptions);
   fetchDetailsBtn.addEventListener('click', fetchDetails);
   clearDetailsBtn.addEventListener('click', clearFetchedDetails);
+  exportCsvBtn.addEventListener('click', exportToCSV);
 
   // Google Sheets event listeners
   sendGSheetBtn.addEventListener('click', showGSheetForm);
@@ -818,6 +820,87 @@ document.addEventListener('DOMContentLoaded', function() {
   function showWebhookStatus(message, type) {
     webhookStatus.textContent = message;
     webhookStatus.className = `export-status ${type}`;
+  }
+
+  function exportToCSV() {
+    if (allJobs.length === 0) {
+      alert('No jobs data to export');
+      return;
+    }
+
+    try {
+      // Define CSV headers
+      const headers = [
+        'Department ID',
+        'Title',
+        'Job Type',
+        'Area of Practice',
+        'Position',
+        'Salary',
+        'Hospital Name',
+        'City',
+        'State',
+        'URL',
+        'Description',
+        'Scraped At'
+      ];
+
+      // Convert jobs to CSV rows
+      const rows = allJobs.map(job => [
+        job.departmentId || '',
+        job.title || '',
+        job.jobType || '',
+        job.areaOfPractice || '',
+        job.position || '',
+        job.salary || '',
+        job.hospitalName || '',
+        job.city || '',
+        job.state || '',
+        job.url || '',
+        job.description || '',
+        job.scrapedAt ? new Date(job.scrapedAt).toLocaleString() : ''
+      ]);
+
+      // Escape CSV values (handle commas, quotes, newlines)
+      const escapeCSVValue = (value) => {
+        if (value === null || value === undefined) return '';
+        const stringValue = String(value);
+        // If value contains comma, quote, or newline, wrap in quotes and escape quotes
+        if (stringValue.includes(',') || stringValue.includes('"') || stringValue.includes('\n') || stringValue.includes('\r')) {
+          return '"' + stringValue.replace(/"/g, '""') + '"';
+        }
+        return stringValue;
+      };
+
+      // Build CSV content
+      let csvContent = headers.map(escapeCSVValue).join(',') + '\n';
+      rows.forEach(row => {
+        csvContent += row.map(escapeCSVValue).join(',') + '\n';
+      });
+
+      // Create blob and download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+
+      // Generate filename with timestamp
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const filename = `vca-jobs-export-${timestamp}.csv`;
+
+      link.setAttribute('href', url);
+      link.setAttribute('download', filename);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      alert(`Successfully exported ${allJobs.length} jobs to CSV file: ${filename}`);
+
+    } catch (error) {
+      console.error('CSV export error:', error);
+      alert('Failed to export CSV: ' + error.message);
+    }
   }
 
   function escapeHtml(text) {

@@ -164,17 +164,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     function extractSalary(text) {
                       if (!text) return '';
 
-                      // Priority patterns for full sentences
+                      // Priority patterns for full sentences - Extract ONLY the salary amount, not incomplete prefixes
                       const priorityPatterns = [
-                        /(?:compensation|salary)\s+for this position is\s+\$[\d,]+k?(?:\s*[-–to]+\s*\$?[\d,]+k?)?/i,
-                        /base\s+salary\s+of\s+\$[\d,]+k?(?:\s*[-–to]+\s*\$?[\d,]+k?)?/i,
-                        /competitive\s+salary\s+of\s+\$[\d,]+k?/i,
+                        /(?:compensation|salary)\s+for this position is\s+(\$[\d,]+k?(?:\s*[-–to]+\s*\$?[\d,]+k?)?)/i,
+                        /base\s+salary\s+of\s+(\$[\d,]+k?(?:\s*[-–to]+\s*\$?[\d,]+k?)?)/i,
+                        /competitive\s+salary\s+of\s+(\$[\d,]+k?)/i,
                       ];
 
                       for (const pattern of priorityPatterns) {
                         const m = text.match(pattern);
                         if (m) {
-                          let sal = m[0].trim().replace(/[.,;:\s]+$/, '');
+                          // Use capture group to get ONLY the salary amount, not the prefix text
+                          let sal = m[1].trim().replace(/[.,;:\s]+$/, '');
                           if (!/\(Yearly\)$/i.test(sal) && !/hourly|shift/i.test(sal)) sal += ' (Yearly)';
                           return sal;
                         }
@@ -315,8 +316,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                             hospital = hospitalEndMatch[1].trim();
                           }
 
-                          // Limit lengths
-                          if (position.length > 100) position = position.substring(0, 100).trim();
+                          // Limit lengths (increased position limit to avoid truncation)
+                          if (position.length > 300) position = position.substring(0, 300).trim();
                           if (hospital.length > 100) hospital = hospital.substring(0, 100).trim();
 
                           // Only return if both are reasonably sized
@@ -341,8 +342,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                           position = position.replace(/[\s,;:.!\n]+$/, '').trim();
                           position = position.replace(/\s+(?:to\s+join|for|with|, and you’ll quickly discover).*$/i, '').trim();
 
-                          // Limit lengths
-                          if (position.length > 100) position = position.substring(0, 100).trim();
+                          // Limit lengths (increased position limit to avoid truncation)
+                          if (position.length > 300) position = position.substring(0, 300).trim();
                           if (hospital.length > 100) hospital = hospital.substring(0, 100).trim();
 
                           // Only return if both are reasonably sized
@@ -690,11 +691,43 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         }
                       }
 
-                      // Clean up hospital name
+                      // Clean up hospital name and validate
                       if (hospitalName) {
                         hospitalName = hospitalName.replace(/[\s,;.]+$/, '').trim();
-                        if (hospitalName.length > 80) hospitalName = hospitalName.substring(0, 80).replace(/\s+\S*$/, '').trim();
-                        hospitalName = hospitalName.replace(/\b\w/g, c => c.toUpperCase());
+
+                        // VALIDATION: Reject invalid hospital names (VCA taglines, job description text, etc.)
+                        const invalidHospitalPatterns = [
+                          /future\s+of\s+veterinary/i,  // VCA tagline
+                          /\bthe\s+future\s+of\b/i,     // VCA tagline
+                          /\bour\s+hands\b/i,           // VCA tagline ending
+                          /client\s+communication/i,    // Job description text
+                          /providing\s+compassionate/i, // Job description text
+                          /pets\s+in\s+need/i,          // Job description text
+                          /world[- ]class\s+medicine/i, // Job description text
+                          /you'll\s+quickly\s+discover/i, // Job description text
+                          /well\s+supported\s+by/i,     // Job description text
+                          /^vca\s*,\s*the\s+/i,         // "VCA, The..."
+                          /^vca\s+network$/i,           // Generic "VCA Network"
+                          /^vca\s+animal\s+hospitals?$/i, // Generic brand name
+                          /^vca\s*$/i                   // Just "VCA"
+                        ];
+
+                        let isInvalid = false;
+                        for (const invalidPattern of invalidHospitalPatterns) {
+                          if (invalidPattern.test(hospitalName)) {
+                            isInvalid = true;
+                            break;
+                          }
+                        }
+
+                        // If invalid, clear the hospital name so fallback can be used
+                        if (isInvalid) {
+                          hospitalName = '';
+                        } else {
+                          // Valid hospital name - apply normal cleanup
+                          if (hospitalName.length > 80) hospitalName = hospitalName.substring(0, 80).replace(/\s+\S*$/, '').trim();
+                          hospitalName = hospitalName.replace(/\b\w/g, c => c.toUpperCase());
+                        }
                       }
 
                       // Fallback: If no hospital name found, use "VCA Animal Hospital, {City} - {State}"
@@ -711,6 +744,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         // If salary is still not found after all checks, set to 'N/A'
                         if (!salary) {
                           salary = 'N/A';
+                        }
+
+                        // FIX: Clean up incomplete salary prefixes (Bug #1)
+                        if (salary && salary !== 'N/A' && salary !== 'Negotiable') {
+                          // Remove incomplete prefix patterns like "for this position is", "is", etc.
+                          salary = salary.replace(/^(?:the\s+)?(?:compensation\s+)?for\s+this\s+position\s+is\s+/i, '');
+                          salary = salary.replace(/^(?:the\s+)?(?:salary\s+)?for\s+this\s+position\s+is\s+/i, '');
+                          salary = salary.replace(/^is\s+/i, '');
+                          salary = salary.replace(/^(?:the\s+)?salary\s+is\s+/i, '');
+                          salary = salary.trim();
+                        }
+
+                        // FIX: If position is incomplete (just "Medical"), use the full job title
+                        if (position === 'Medical' && jobData && jobData.title) {
+                          position = jobData.title;
                         }
 
                         // New rule for Area of Practice: Check description for specialty keywords first
