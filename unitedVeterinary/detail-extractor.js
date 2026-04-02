@@ -1,27 +1,119 @@
 (() => {
-    // Get full page description/content
+    // Get full page description/content - complete text from .jv-wrapper
     function getFullDescription() {
-        // Try multiple selectors to get the complete job description
-        const selectors = [
-            '.jv-job-detail-description',
-            '.jv-page-body .jv-wrapper',
-            '.jv-page-body',
-            '.jv-job-description',
-            'body'
-        ];
+        let completeData = '';
 
-        for (const selector of selectors) {
-            const el = document.querySelector(selector);
-            if (el && el.innerText && el.innerText.trim().length > 100) {
-                return el.innerText.trim();
+        // 1. Extract JSON-LD structured data first (contains rich metadata)
+        const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
+        let jsonLdData = '';
+        for (const script of jsonLdScripts) {
+            try {
+                const data = JSON.parse(script.textContent);
+                if (data['@type'] === 'JobPosting') {
+                    // Format JSON data as readable text
+                    jsonLdData += `\n=== JOB POSTING DATA ===\n`;
+                    jsonLdData += `Title: ${data.title || ''}\n`;
+                    jsonLdData += `Date Posted: ${data.datePosted || ''}\n`;
+                    jsonLdData += `Industry/Category: ${data.industry || ''}\n`;
+                    jsonLdData += `Employment Type: ${data.employmentType || ''}\n`;
+
+                    // Extract organization name
+                    if (data.hiringOrganization && data.hiringOrganization.name) {
+                        jsonLdData += `Hiring Organization: ${data.hiringOrganization.name}\n`;
+                    }
+
+                    // Extract all job locations
+                    if (data.jobLocation) {
+                        const locations = Array.isArray(data.jobLocation) ? data.jobLocation : [data.jobLocation];
+                        jsonLdData += `Locations:\n`;
+                        locations.forEach(loc => {
+                            if (loc.address) {
+                                const addr = loc.address;
+                                jsonLdData += `  - ${addr.addressLocality || ''}, ${addr.addressRegion || ''}, ${addr.addressCountry || ''}\n`;
+                            }
+                        });
+                    }
+
+                    // Extract salary if available
+                    if (data.baseSalary && data.baseSalary.value) {
+                        const salary = data.baseSalary.value;
+                        if (salary.minValue || salary.maxValue) {
+                            jsonLdData += `Salary Range: ${salary.currency || '$'}${salary.minValue || ''} - ${salary.maxValue || ''} ${salary.unitText || ''}\n`;
+                        }
+                    }
+
+                    // Extract and clean description from JSON-LD
+                    if (data.description) {
+                        const temp = document.createElement('div');
+                        temp.innerHTML = data.description;
+                        jsonLdData += `\n=== FULL JOB DESCRIPTION ===\n`;
+                        jsonLdData += temp.innerText.trim() + '\n';
+                    }
+                }
+            } catch (e) {}
+        }
+
+        // 2. Get the complete text from .jv-wrapper (contains everything visible on the page)
+        const wrapperElement = document.querySelector('.jv-wrapper');
+        let wrapperText = '';
+        if (wrapperElement) {
+            wrapperText = wrapperElement.innerText.trim();
+        }
+
+        // 3. Combine both sources
+        if (jsonLdData.length > 100) {
+            completeData = jsonLdData;
+            if (wrapperText && wrapperText.length > 100) {
+                completeData += `\n\n=== ADDITIONAL PAGE CONTENT ===\n${wrapperText}`;
+            }
+        } else if (wrapperText.length > 100) {
+            completeData = wrapperText;
+        } else {
+            // Last resort
+            const selectors = ['.jv-page-body', '.jv-job-detail', 'body'];
+            for (const selector of selectors) {
+                const el = document.querySelector(selector);
+                if (el && el.innerText && el.innerText.trim().length > 100) {
+                    completeData = el.innerText.trim();
+                    break;
+                }
             }
         }
+
+        // Clean up
+        if (completeData) {
+            completeData = completeData.replace(/\n{3,}/g, '\n\n');
+            completeData = completeData.replace(/\t+/g, ' ');
+            return completeData.trim();
+        }
+
         return document.body.innerText.trim();
     }
 
-    // Extract salary with existing patterns (keep as is - working correctly)
+    // Extract salary - try JSON-LD first, then text patterns
     function extractSalary(text) {
         if (!text) return '';
+
+        // First try to get salary from JSON-LD structured data
+        const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
+        for (const script of jsonLdScripts) {
+            try {
+                const data = JSON.parse(script.textContent);
+                if (data['@type'] === 'JobPosting' && data.baseSalary && data.baseSalary.value) {
+                    const salary = data.baseSalary.value;
+                    if (salary.minValue && salary.maxValue) {
+                        const currency = salary.currency || '$';
+                        const unit = salary.unitText || 'per year';
+                        return `${currency}${salary.minValue} - ${currency}${salary.maxValue} ${unit}`;
+                    } else if (salary.minValue) {
+                        const currency = salary.currency || '$';
+                        return `${currency}${salary.minValue}+`;
+                    }
+                }
+            } catch (e) {}
+        }
+
+        // Fallback to text pattern matching
         const salaryPatterns = [
             /(?:Pay|Salary|Compensation)[:\s]+\$([\d,]+(?:\.\d{2})?(?:\s*[-–]\s*\$[\d,]+(?:\.\d{2})?)?(?:\s*per\s*\w+)?)/i,
             /\$[\d,]+k?\s*[-–]+\s*\$?[\d,]+k/i,
@@ -49,13 +141,21 @@
             }
         }
 
-        // Check for specialty keywords
+        // Check for specialty keywords (excluding 'dentist' since dental work is common in general practice)
         const specialtyKeywords = ['criticalist', 'oncologist', 'internist', 'neurologist', 'cardiologist',
-                                   'dentist', 'surgeon', 'radiologist', 'ophthalmologist', 'anesthesiologist',
+                                   'surgeon', 'radiologist', 'ophthalmologist', 'anesthesiologist',
                                    'dermatologist', 'theriogenologist', 'specialist', 'dacvecc', 'dacvim',
-                                   'dacvr', 'dacvs', 'acvs', 'dacvd', 'dacvo', 'dacvaa', 'dact'];
+                                   'dacvr', 'dacvs', 'acvs', 'dacvd', 'dacvo', 'dacvaa', 'dact', 'davdc'];
         for (const kw of specialtyKeywords) {
             if (combined.includes(kw)) {
+                // Additional check: if it's "surgeon" or "specialist", verify board certification/residency
+                if ((kw === 'surgeon' || kw === 'specialist') &&
+                    !combined.includes('board certified') &&
+                    !combined.includes('residency trained') &&
+                    !combined.includes('diplomate') &&
+                    !combined.includes('dacv')) {
+                    continue; // Skip, likely general practice
+                }
                 return 'Specialty Care';
             }
         }
@@ -93,14 +193,18 @@
         const combined = (positionText + ' ' + descriptionText).toLowerCase();
 
         if (areaOfPractice === 'Specialty Care') {
-            // Specialty positions
+            // Specialty positions - only classify as specialist if board certified/residency trained
             if (combined.includes('ecc') || combined.includes('criticalist') || combined.includes('emergency & critical care')) return 'ECC Specialist';
             if (combined.includes('oncologist') && combined.includes('radiation')) return 'Radiation Oncologist';
             if (combined.includes('oncologist')) return 'Medical Oncologist';
             if (combined.includes('internist') || (combined.includes('internal medicine') && combined.includes('specialist'))) return 'Internal Medicine Specialist';
             if (combined.includes('neurologist') || combined.includes('neurosurgeon')) return 'Neurologist';
             if (combined.includes('cardiologist')) return 'Cardiologist';
-            if (combined.includes('dentist') || combined.includes('dental')) return 'Dental Specialist';
+            // For dental specialist, verify they have DAVDC or board certification
+            if ((combined.includes('dental specialist') || combined.includes('davdc') || combined.includes('veterinary dental college')) &&
+                (combined.includes('board certified') || combined.includes('residency trained') || combined.includes('diplomate'))) {
+                return 'Dental Specialist';
+            }
             if (combined.includes('dermatologist')) return 'Dermatologist';
             if (combined.includes('surgeon') && !combined.includes('neurosurgeon')) return 'Surgeon';
             if (combined.includes('radiologist') || combined.includes('diagnostic imaging')) return 'Radiologist';
@@ -153,9 +257,39 @@
         return 'Associate Veterinarian';
     }
 
-    // Extract locations from hero section or multi-location list
+    // Extract locations from JSON-LD, hero section, or multi-location list
     function extractLocations() {
         const locations = [];
+
+        // First try to get locations from JSON-LD structured data
+        const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
+        for (const script of jsonLdScripts) {
+            try {
+                const data = JSON.parse(script.textContent);
+                if (data['@type'] === 'JobPosting' && data.jobLocation) {
+                    const jobLocations = Array.isArray(data.jobLocation) ? data.jobLocation : [data.jobLocation];
+                    jobLocations.forEach(loc => {
+                        if (loc.address) {
+                            const addr = loc.address;
+                            const city = addr.addressLocality || '';
+                            const state = addr.addressRegion || '';
+                            if (city && state) {
+                                locations.push({
+                                    city: city,
+                                    state: state,
+                                    location: `${city}, ${state}`
+                                });
+                            }
+                        }
+                    });
+                }
+            } catch (e) {}
+        }
+
+        // If we found locations in JSON-LD, return them (most reliable)
+        if (locations.length > 0) {
+            return locations;
+        }
 
         // Check hero section for location badge/info
         const heroSelectors = [
@@ -168,13 +302,22 @@
         for (const selector of heroSelectors) {
             const elements = document.querySelectorAll(selector);
             for (const el of elements) {
-                const text = el.innerText || el.textContent;
+                let text = el.innerText || el.textContent;
+
+                // Clean up the text - remove "Description", "Position at", etc.
+                text = text.replace(/^Description\s*/i, '');
+                text = text.replace(/^Position at\s*/i, '');
+                text = text.split('\n')[0]; // Only take first line to avoid grabbing description text
+
                 // Match patterns like "City, ST" or "City, State"
-                const matches = text.matchAll(/([A-Za-z\s.]+),\s*([A-Z]{2})\b/g);
+                const matches = text.matchAll(/\b([A-Za-z][\w\s.'()-]*[A-Za-z])\s*,\s*([A-Z]{2})\b/g);
                 for (const match of matches) {
-                    const city = match[1].trim();
+                    let city = match[1].trim();
                     const state = match[2].trim();
-                    if (city && state && city.length > 1) {
+
+                    // Filter out common non-city words
+                    const invalidWords = ['description', 'position', 'associate', 'veterinarian', 'hospital', 'care', 'center', 'clinic'];
+                    if (!invalidWords.some(word => city.toLowerCase().includes(word)) && city.length > 1 && city.length < 50) {
                         locations.push({ city, state, location: `${city}, ${state}` });
                     }
                 }
@@ -236,17 +379,37 @@
         positionTitle = document.querySelector('.jv-header, .jv-job-detail-title, h1, h2')?.innerText.trim() || '';
     }
 
-    // Get hospital name
+    // Get hospital name - try JSON-LD first
     let hospitalName = '';
-    if (window.phApp?.ddo?.jobDetail?.data?.job?.hiringOrganization?.name) {
+
+    // Try JSON-LD structured data first
+    if (!hospitalName) {
+        const ldScripts = document.querySelectorAll('script[type="application/ld+json"]');
+        for (const s of ldScripts) {
+            try {
+                const ld = JSON.parse(s.textContent);
+                if (ld['@type'] === 'JobPosting' && ld.hiringOrganization && ld.hiringOrganization.name) {
+                    hospitalName = ld.hiringOrganization.name;
+                    break;
+                }
+            } catch (e) {}
+        }
+    }
+
+    // Try window data
+    if (!hospitalName && window.phApp?.ddo?.jobDetail?.data?.job?.hiringOrganization?.name) {
         hospitalName = window.phApp.ddo.jobDetail.data.job.hiringOrganization.name;
     }
+
+    // Try meta element
     if (!hospitalName) {
         const metaEm = document.querySelector('.jv-meta em, .jv-job-detail-description .jv-meta em');
         if (metaEm && metaEm.innerText.includes('Position at')) {
             hospitalName = metaEm.innerText.replace('Position at', '').trim();
         }
     }
+
+    // Try logo alt text
     if (!hospitalName) {
         hospitalName = document.querySelector('#subsidiaryLogo img')?.alt.trim() || '';
     }
@@ -271,13 +434,27 @@
 
     // If no locations found, try to extract from anywhere in the page
     if (locations.length === 0) {
-        const locMatch = fullDescription.match(/([A-Za-z\s.]+),\s*([A-Z]{2})\b/);
+        // Remove "Description" and "Position at" prefixes before extracting
+        let cleanedDescription = fullDescription.replace(/^Description\s*/i, '');
+        cleanedDescription = cleanedDescription.replace(/^Position at\s*/i, '');
+
+        // Try to find location pattern in first 500 characters to avoid false matches deep in description
+        const searchText = cleanedDescription.substring(0, 500);
+        const locMatch = searchText.match(/\b([A-Za-z][\w\s.'()-]*[A-Za-z])\s*,\s*([A-Z]{2})\b/);
+
         if (locMatch) {
-            locations.push({
-                city: locMatch[1].trim(),
-                state: locMatch[2].trim(),
-                location: `${locMatch[1].trim()}, ${locMatch[2].trim()}`
-            });
+            let city = locMatch[1].trim();
+            const state = locMatch[2].trim();
+
+            // Filter out invalid city names
+            const invalidWords = ['description', 'position', 'associate', 'veterinarian', 'hospital', 'care', 'center', 'clinic', 'location'];
+            if (!invalidWords.some(word => city.toLowerCase().includes(word)) && city.length > 1 && city.length < 50) {
+                locations.push({
+                    city: city,
+                    state: state,
+                    location: `${city}, ${state}`
+                });
+            }
         }
     }
 
