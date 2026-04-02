@@ -454,7 +454,7 @@ document.addEventListener('DOMContentLoaded', function() {
       jobsToFetch = Array.from(selectedJobs).map(index => ({ job: allJobs[index], index }));
     } else {
       jobsToFetch = allJobs.map((job, index) => ({ job, index })).filter(item => {
-        return !item.job.hospitalName || !item.job.city || !item.job.state;
+        return !item.job.detailsFetched;
       });
     }
 
@@ -507,13 +507,27 @@ document.addEventListener('DOMContentLoaded', function() {
           const details = response.details;
           const job = allJobs[response.jobIndex];
           if (job && details) {
+              // Check if we got meaningful data back (page actually loaded)
+              const hasMeaningfulData = details.city || details.state || details.hospitalName || details.position || details.salary;
+
               job.areaOfPractice = details.areaOfPractice || job.areaOfPractice || '';
               job.position = details.position || job.position || job.title || '';
               job.salary = details.salary || job.salary || '';
               job.hospitalName = details.hospitalName || job.hospitalName || '';
-              // For city/state, trust the details result even if empty (validation already done in background.js)
-              if (details.hasOwnProperty('city')) job.city = details.city || '';
-              if (details.hasOwnProperty('state')) job.state = details.state || '';
+              job.jobType = details.jobType || job.jobType || '';
+              job.city = details.city || job.city || '';
+              job.state = details.state || job.state || '';
+
+              // Fallback: parse city/state from the job's location field if still missing
+              if ((!job.city || !job.state) && job.location) {
+                const locStr = job.location.replace(/,?\s*United States of America/gi, '').replace(/,?\s*USA$/gi, '').trim();
+                const locParts = locStr.split(',').map(s => s.trim()).filter(Boolean);
+                if (locParts.length >= 2) {
+                  if (!job.city) job.city = locParts[0];
+                  if (!job.state) job.state = locParts[1];
+                }
+              }
+
               job.address = details.address || job.address || '';
               job.phone = details.phone || job.phone || '';
               job.websiteUrl = details.websiteUrl || job.websiteUrl || '';
@@ -535,6 +549,17 @@ document.addEventListener('DOMContentLoaded', function() {
                   if (details.hospitalName) {
                     locAddress = locAddress ? details.hospitalName + ', ' + locAddress : details.hospitalName;
                   }
+                  // Parse city/state from location string if missing
+                  let locCity = loc.city || '';
+                  let locState = loc.state || '';
+                  if ((!locCity || !locState) && loc.location) {
+                    const locStr = loc.location.replace(/,?\s*United States of America/gi, '').replace(/,?\s*USA$/gi, '').trim();
+                    const locParts = locStr.split(',').map(s => s.trim()).filter(Boolean);
+                    if (locParts.length >= 2) {
+                      if (!locCity) locCity = locParts[0];
+                      if (!locState) locState = locParts[1];
+                    }
+                  }
                   allJobs.push({
                     departmentId: job.departmentId + '-loc' + (i + 1),
                     title: job.title,
@@ -547,8 +572,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     position: details.position || '',
                     salary: details.salary || '',
                     hospitalName: details.hospitalName || '',
-                    city: loc.city || '',
-                    state: loc.state || '',
+                    city: locCity,
+                    state: locState,
                     address: locAddress,
                     description: job.description || '',
                     phone: details.phone || '',
@@ -556,6 +581,11 @@ document.addEventListener('DOMContentLoaded', function() {
                   });
                 }
                 console.log(`Job has ${details.allLocations.length} locations. Created ${details.allLocations.length - 1} extra record(s).`);
+              }
+
+              // Only mark as fetched if we got meaningful data
+              if (hasMeaningfulData) {
+                job.detailsFetched = true;
               }
           }
           chrome.storage.local.set({ jobs: allJobs });
@@ -720,6 +750,7 @@ document.addEventListener('DOMContentLoaded', function() {
       job.city = '';
       job.state = '';
       job.description = '';
+      job.detailsFetched = false;
     });
 
     // Save the cleared data back to storage

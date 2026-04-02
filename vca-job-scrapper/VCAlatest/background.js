@@ -142,47 +142,35 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       }
                     ];
 
-                    // Position mapping from jobs.docx - maps keywords to exact position names
+                    // Position mapping from CorrectJobNames.txt - maps keywords to exact position names
                     // Order: most specific first to avoid false matches
                     const positionMap = [
                       // Specialty Care - Doctors (most specific first)
                       { position: 'Radiation Oncologist', keywords: ['radiation oncologist', 'dacvr-ro', 'radonc'] },
-                      { position: 'Medical Oncologist', keywords: ['medical oncologist', 'medonc', 'dacvim oncology'] },
-                      { position: 'Criticalist', keywords: ['criticalist', 'dacvecc', 'emergency & critical care specialist', 'ecc veterinarian', 'critical care'] },
-                      { position: 'Internist', keywords: ['internal medicine specialist', 'internal medicine', 'internist', 'veterinary internist', 'saim', 'small animal internal medicine'] },
+                      { position: 'Medical Oncologist', keywords: ['medical oncologist', 'medonc', 'dacvim oncology', 'oncologist'] },
+                      { position: 'ECC Specialist', keywords: ['criticalist', 'dacvecc', 'emergency & critical care specialist', 'ecc veterinarian', 'critical care', 'ecc specialist', 'ecc'] },
+                      { position: 'Internal Medicine Specialist', keywords: ['internal medicine specialist', 'internal medicine', 'internist', 'veterinary internist', 'saim', 'small animal internal medicine', 'dacvim', 'acvim'] },
                       { position: 'Neurologist & Neurosurgeon', keywords: ['neurologist', 'neurosurgeon', 'veterinary neurologist', 'veterinary neurosurgeon'] },
                       { position: 'Cardiologist', keywords: ['cardiologist', 'veterinary cardiologist', 'small animal cardiologist'] },
-                      { position: 'Dentist & Oral Surgeon', keywords: ['dentist', 'oral surgeon', 'davdc', 'dental surgeon'] },
+                      { position: 'Dental Specialist', keywords: ['dentist', 'oral surgeon', 'davdc', 'dental surgeon', 'dental specialist'] },
                       { position: 'Dermatologist', keywords: ['dermatologist', 'veterinary dermatologist', 'dacvd', 'acvd'] },
                       { position: 'Surgeon', keywords: ['surgeon', 'veterinary surgery', 'dacvs', 'acvs', 'small animal surgeon'] },
                       { position: 'Radiologist', keywords: ['radiologist', 'veterinary radiologist', 'diagnostic imaging specialist', 'dacvr', 'acvr'] },
                       { position: 'Ophthalmologist', keywords: ['ophthalmologist', 'veterinary ophthalmologist', 'dacvo', 'acvo'] },
                       { position: 'Anesthesiologist', keywords: ['anesthesiologist', 'veterinary anesthesiologist', 'dacvaa', 'acvaa'] },
+                      { position: 'DABVP Specialist', keywords: ['dabvp', 'diplomate abvp', 'board certified veterinary practitioner'] },
                       { position: 'Theriogenologist', keywords: ['theriogenologist', 'veterinary theriogenologist', 'dact'] },
                       { position: 'Rehabilitation Therapist (CCRT)', keywords: ['rehabilitation therapist', 'ccrt', 'canine rehabilitation', 'rehab technician'] },
-                      { position: 'Oncologist', keywords: ['oncologist'] },
-                      // Specialty - VTS Technicians
-                      { position: 'Veterinary Technician Specialist - Anesthesia', keywords: ['vts anesthesia'] },
-                      { position: 'Veterinary Technician Specialist - ECC', keywords: ['vts ecc', 'vts emergency'] },
-                      { position: 'Veterinary Technician Specialist - Dentistry', keywords: ['vts dentistry'] },
-                      { position: 'Veterinary Technician Specialist - Internal Medicine', keywords: ['vts internal medicine', 'vts saim'] },
-                      { position: 'Veterinary Technician Specialist - Neurology', keywords: ['vts neurology', 'vts neuro'] },
-                      { position: 'Veterinary Technician Specialist - Cardiology', keywords: ['vts cardiology', 'vts cardio'] },
-                      { position: 'Veterinary Technician Specialist - Dermatology', keywords: ['vts dermatology', 'vts derm'] },
-                      { position: 'Veterinary Technician Specialist - Ophthalmology', keywords: ['vts ophthalmology', 'vts ophtho'] },
-                      { position: 'Veterinary Technician Specialist - Diagnostic Imaging', keywords: ['vts diagnostic imaging'] },
-                      { position: 'Veterinary Technician Specialist', keywords: ['veterinary technician specialist', 'vts'] },
+                      // Credentialed Veterinary Technician Specialist (all VTS variants consolidated)
+                      { position: 'Credentialed Veterinary Technician Specialist', keywords: ['vts anesthesia', 'vts ecc', 'vts emergency', 'vts dentistry', 'vts internal medicine', 'vts saim', 'vts neurology', 'vts neuro', 'vts cardiology', 'vts cardio', 'vts dermatology', 'vts derm', 'vts ophthalmology', 'vts ophtho', 'vts diagnostic imaging', 'veterinary technician specialist', 'vts'] },
                       // Equine / Bovine / Exotics
                       { position: 'Equine/Bovine Veterinarian', keywords: ['equine veterinarian', 'equine vet', 'equine dvm', 'bovine veterinarian', 'large animal', 'equine/bovine', 'equine'] },
                       { position: 'Avian & Exotics Veterinarian', keywords: ['avian veterinarian', 'exotics veterinarian', 'avian vet', 'exotics vet', 'avian & exotics', 'associate exotics'] },
-                      // Emergency / Urgent
-                      { position: 'Relief Emergency Veterinarian', keywords: ['relief emergency veterinarian', 'relief emergency vet'] },
-                      { position: 'Emergency Veterinarian', keywords: ['emergency veterinarian', 'er vet', 'er veterinarian', 'er dvm'] },
-                      { position: 'Associate Veterinarian', keywords: ['urgent care veterinarian', 'urgent veterinarian', 'urgent care'] },
-                      // General Practice
+                      // Emergency / Urgent / General Practice
                       { position: 'Medical Director', keywords: ['medical director', 'veterinarian medical director'] },
-                      { position: 'Relief Veterinarian', keywords: ['relief veterinarian', 'relief dvm', 'locum veterinarian'] },
-                      { position: 'Associate Veterinarian', keywords: ['associate veterinarian', 'gp vet', 'quick care veterinarian'] },
+                      { position: 'Lead Veterinarian', keywords: ['lead veterinarian', 'lead vet', 'lead dvm'] },
+                      { position: 'Partner Veterinarian', keywords: ['partner veterinarian', 'partner vet', 'partner dvm'] },
+                      { position: 'Associate Veterinarian', keywords: ['associate veterinarian', 'gp vet', 'quick care veterinarian', 'emergency veterinarian', 'er vet', 'er veterinarian', 'er dvm', 'urgent care veterinarian', 'urgent veterinarian', 'relief veterinarian', 'relief dvm', 'locum veterinarian', 'relief emergency veterinarian', 'relief emergency vet'] },
                       // Technicians / Assistants
                       { position: 'Veterinary Technician', keywords: ['veterinary technician', 'vet tech', 'veterinary nurse', 'vet nurse', 'cvt', 'lvt', 'rvt'] },
                       { position: 'Veterinary Assistant', keywords: ['veterinary assistant', 'vet assistant', 'vet assist'] },
@@ -193,7 +181,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       // Sterile Processing
                       { position: 'Sterile Processing Technician', keywords: ['sterile processing', 'crcst', 'surgical processing'] },
                       // Generic fallbacks (least specific - must be last)
-                      { position: 'Veterinarian', keywords: ['veterinarian', 'dvm', 'vmd'] },
+                      { position: 'Associate Veterinarian', keywords: ['veterinarian', 'dvm', 'vmd'] },
                     ];
 
                     // Match raw title/position text to exact docx position name
@@ -378,10 +366,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                           hospital = hospital.replace(/[\s,;:.!]+$/, '').trim();
                           hospital = hospital.replace(/<A Href=.*$/i, '').trim();
 
-                          // Ensure hospital name ends at a reasonable point for VCA hospitals
-                          const hospitalEndMatch = hospital.match(/^((?:VCA\s+)?[^,;.\n]+(?:Hospital|Center|Clinic|Care|Specialists?|Veterinary|Animal|Emergency|Medical))/i);
-                          if (hospitalEndMatch) {
-                            hospital = hospitalEndMatch[1].trim();
+                          // Ensure hospital name ends at a reasonable point
+                          // If it starts with VCA, keep the full name up to punctuation
+                          if (/^VCA\b/i.test(hospital)) {
+                            hospital = hospital.replace(/[,;.\n].*$/, '').trim();
+                          } else {
+                            // For non-VCA, try to end at a known facility keyword
+                            const hospitalEndMatch = hospital.match(/^([^,;.\n]+(?:Hospital|Center|Clinic|Care|Specialists?|Veterinary|Animal|Emergency|Medical)(?:\s+of\s+(?:the\s+)?[\w'.&-]+(?:\s+[\w'.&-]+)*)?)/i);
+                            if (hospitalEndMatch) {
+                              hospital = hospitalEndMatch[1].trim();
+                            }
                           }
 
                           // Limit lengths (increased position limit to avoid truncation)
@@ -423,7 +417,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                       // PATTERN GROUP 3: Broader "at [Hospital Name]" extraction from first few sentences
                       const firstChunk = text.substring(0, 1000);
-                      const broadAtMatch = firstChunk.match(/\bat\s+((?:VCA\s+)?(?:[\w'.&-]+\s+){1,6}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?|Group|Practice)|Pet\s+(?:Hospital|Clinic|Care|Medical\s+Center)|Animal\s+(?:Clinic|Care|Medical\s+Center|Emergency)|Emergency\s+(?:Hospital|Center|Clinic)|Medical\s+Center|Specialty\s+(?:Hospital|Center)))\b/i);
+                      // Try "of the/of" pattern first (e.g., "at VCA Veterinary Specialists of the Valley")
+                      const broadAtOfMatch = firstChunk.match(/\bat\s+((?:VCA\s+)?(?:[\w'.&-]+\s+){0,6}(?:Veterinary\s+Specialists?|Animal\s+Hospital|Hospital|Emergency|Specialty|Medical)\s+of\s+(?:the\s+)?[\w'.&-]+(?:\s+[\w'.&-]+)*)/i);
+                      if (broadAtOfMatch) {
+                        let hospital = broadAtOfMatch[1].trim().replace(/[\s,;:.!]+$/, '');
+                        if (hospital.length >= 5 && hospital.length <= 100) {
+                          return { position: '', hospital };
+                        }
+                      }
+                      const broadAtMatch = firstChunk.match(/\bat\s+((?:VCA\s+)?(?:[\w'.&-]+\s+){0,6}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?|Group|Practice)|Pet\s+(?:Hospital|Clinic|Care|Medical\s+Center)|Animal\s+(?:Clinic|Care|Medical\s+Center|Emergency)|Emergency\s+(?:Hospital|Center|Clinic)|Medical\s+Center|Specialty\s+(?:Hospital|Center)))\b/i);
                       if (broadAtMatch) {
                         let hospital = broadAtMatch[1].trim().replace(/[\s,;:.!]+$/, '');
                         if (hospital.length >= 5 && hospital.length <= 100) {
@@ -438,11 +440,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     function extractHospitalFromText(text) {
                       if (!text) return '';
                       const hospPatterns = [
-                        // VCA-prefixed patterns ending with a facility keyword (most specific)
-                        /\bVCA\s+(?:[\w'.&-]+\s+){1,6}(?:Animal\s+Hospital|Hospital)/i,
-                        /\bVCA\s+(?:[\w'.&-]+\s+){1,6}(?:Veterinary\s+(?:Hospital|Specialists?|Center|Clinic))/i,
-                        /\bVCA\s+(?:[\w'.&-]+\s+){1,6}(?:Emergency|Specialty|Medical)\s+(?:Hospital|Center|Animal)/i,
-                        /\bVCA\s+(?:[\w'.&-]+\s+){1,6}Pet\s+Care/i,
+                        // VCA-prefixed patterns with "of the/of" trailing words (e.g., "VCA Veterinary Specialists of the Valley")
+                        /\bVCA\s+(?:[\w'.&-]+\s+){0,6}(?:Veterinary\s+Specialists?|Animal\s+Hospital|Hospital|Emergency|Specialty|Medical)\s+of\s+(?:the\s+)?[\w'.&-]+(?:\s+[\w'.&-]+)*/i,
+                        // VCA-prefixed patterns ending with a facility keyword ({0,6} to handle "VCA Veterinary ...")
+                        /\bVCA\s+(?:[\w'.&-]+\s+){0,6}(?:Animal\s+Hospital|Hospital)/i,
+                        /\bVCA\s+(?:[\w'.&-]+\s+){0,6}(?:Veterinary\s+(?:Hospital|Specialists?|Center|Clinic))/i,
+                        /\bVCA\s+(?:[\w'.&-]+\s+){0,6}(?:Emergency|Specialty|Medical)\s+(?:Hospital|Center|Animal)/i,
+                        /\bVCA\s+(?:[\w'.&-]+\s+){0,6}Pet\s+Care/i,
+                        // Non-VCA with "of the/of" trailing words
+                        /\b(?:[\w'.&-]+\s+){1,6}(?:Veterinary\s+Specialists?|Animal\s+Hospital|Hospital)\s+of\s+(?:the\s+)?[\w'.&-]+(?:\s+[\w'.&-]+)*/i,
                         // Non-VCA hospital/clinic/center patterns
                         /\b(?:[\w'.&-]+\s+){1,6}(?:Animal\s+Hospital)\b/i,
                         /\b(?:[\w'.&-]+\s+){1,6}(?:Veterinary\s+(?:Hospital|Specialists?|Center|Clinic|Care|Group|Practice))\b/i,
@@ -580,6 +586,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         city = cleanField(jobData.city) || '';
                         state = cleanField(jobData.state) || '';
 
+                        // Try combined location field if city/state are missing
+                        if ((!city || !state) && jobData.location) {
+                          const locStr = cleanField(jobData.location).replace(/,?\s*United States of America/i, '').replace(/,?\s*USA$/i, '').trim();
+                          const locParts = locStr.split(',').map(s => s.trim()).filter(Boolean);
+                          if (locParts.length >= 2) {
+                            if (!city) city = locParts[0];
+                            if (!state) state = locParts[1];
+                          } else if (locParts.length === 1 && !state) {
+                            // Might be just a state
+                            state = locParts[0];
+                          }
+                        }
+
                         // Collect ALL locations from multi_location
                         if (jobData.multi_location && jobData.multi_location.length > 0) {
                           console.log('multi_location found:', JSON.stringify(jobData.multi_location));
@@ -638,8 +657,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                           const loc = jobData.multi_location[0];
                           if (loc.locationName) {
                             const locName = cleanField(loc.locationName).trim();
-                            // Only use if it contains hospital/clinic/center keywords (not just "City, ST")
-                            if (/(?:hospital|clinic|center|care|veterinary|animal|emergency|medical|specialty|specialists?|pet)/i.test(locName)) {
+                            // Only use if it contains hospital/clinic/center keywords or starts with VCA (not just "City, ST")
+                            if (/(?:hospital|clinic|center|care|veterinary|animal|emergency|medical|specialty|specialists?|pet|^vca\b)/i.test(locName)) {
                               hospitalName = locName;
                             }
                           }
@@ -689,12 +708,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                             position = isMarketingTitle(attrTitle) ? cleanMarketingTitle(attrTitle) : attrTitle;
                           }
                         }
+                        if (!hospitalName) {
+                          const attrCompany = jobInfoEl.getAttribute('data-ph-at-job-company-text') || jobInfoEl.getAttribute('data-ph-at-job-location-name') || '';
+                          if (attrCompany && attrCompany.toLowerCase() !== 'vca animal hospitals' && attrCompany.toLowerCase() !== 'vca') {
+                            hospitalName = attrCompany;
+                          }
+                        }
                         if (!areaOfPractice) {
                           areaOfPractice = jobInfoEl.getAttribute('data-ph-at-job-category-text') || '';
                         }
                         if (!city || !state) {
-                          const locText = jobInfoEl.getAttribute('data-ph-at-job-location-text') || '';
-                          const parts = locText.split(',').map(s => s.trim());
+                          const locText = (jobInfoEl.getAttribute('data-ph-at-job-location-text') || '').replace(/,?\s*United States of America/i, '').replace(/,?\s*USA$/i, '').trim();
+                          const parts = locText.split(',').map(s => s.trim()).filter(Boolean);
                           if (!city && parts[0]) city = parts[0];
                           if (!state && parts[1]) state = parts[1];
                         }
@@ -719,14 +744,36 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         }
                       }
 
-                      // === SOURCE 5: .job-location span ===
+                      // === SOURCE 5: location from data attribute (any element) ===
+                      if (!city || !state) {
+                        const locAttrEl = document.querySelector('[data-ph-at-job-location-text]');
+                        if (locAttrEl) {
+                          const locText = (locAttrEl.getAttribute('data-ph-at-job-location-text') || '').replace(/,?\s*United States of America/gi, '').replace(/,?\s*USA$/gi, '').trim();
+                          const parts = locText.split(',').map(s => s.trim()).filter(Boolean);
+                          if (!city && parts[0]) city = parts[0];
+                          if (!state && parts[1]) state = parts[1];
+                        }
+                      }
+
+                      // === SOURCE 5a: .job-location span text ===
                       if (!city || !state) {
                         const locEl = document.querySelector('span.job-location');
                         if (locEl) {
-                          const locText = locEl.textContent.replace('Location', '').trim();
-                          const parts = locText.split(',').map(s => s.trim());
+                          const locText = locEl.textContent.replace('Location', '').replace(/,?\s*United States of America/gi, '').replace(/,?\s*USA/gi, '').trim();
+                          const parts = locText.split(',').map(s => s.trim()).filter(Boolean);
                           if (!city && parts[0]) city = parts[0];
                           if (!state && parts[1]) state = parts[1];
+                        }
+                      }
+
+                      // === SOURCE 5b: DOM company/hospital name element ===
+                      if (!hospitalName) {
+                        const companyEl = document.querySelector('[data-ph-at-id="job-company-text"], .job-company, .jd-info .company-name, .job-info .company, .company-name');
+                        if (companyEl) {
+                          const companyName = companyEl.textContent.trim();
+                          if (companyName && companyName.toLowerCase() !== 'vca animal hospitals' && companyName.toLowerCase() !== 'vca') {
+                            hospitalName = companyName;
+                          }
                         }
                       }
 
@@ -739,8 +786,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                             if (!position && ld.title) {
                               position = isMarketingTitle(ld.title) ? cleanMarketingTitle(ld.title) : ld.title;
                             }
-                            if (ld.jobLocation && ld.jobLocation.address) {
-                              const addr = ld.jobLocation.address;
+                            if (ld.jobLocation) {
+                              // jobLocation can be an object or an array
+                              const jobLoc = Array.isArray(ld.jobLocation) ? ld.jobLocation[0] : ld.jobLocation;
+                              const addr = jobLoc.address || jobLoc;
                               if (!city) city = addr.addressLocality || '';
                               if (!state) state = addr.addressRegion || '';
                               // Build full address from JSON-LD PostalAddress
@@ -839,8 +888,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         const titleMatch = pageTitle.match(/[-–]\s*(.+?)(?:\s*[|]\s*VCA|$)/i);
                         if (titleMatch) {
                           let candidate = titleMatch[1].trim();
-                          // Only use if it looks like a hospital/clinic name
-                          if (/(?:hospital|clinic|center|care|veterinary|animal|emergency|medical|specialty|specialists?|pet)/i.test(candidate)) {
+                          // Accept if it looks like a hospital/clinic name OR starts with VCA
+                          if (/(?:hospital|clinic|center|care|veterinary|animal|emergency|medical|specialty|specialists?|pet|^vca\b)/i.test(candidate)) {
                             hospitalName = candidate;
                           }
                         }
@@ -863,10 +912,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         const descElBroad = document.querySelector('.jd-info[data-ph-at-id="jobdescription-text"]');
                         if (descElBroad) {
                           const descText = descElBroad.innerText || '';
-                          // Look for "at [Name]" patterns near the beginning of the description
-                          const atMatch = descText.match(/\bat\s+((?:[\w'.&-]+\s+){1,6}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)|Medical\s+Center|Hospital|Clinic|Center))\b/i);
-                          if (atMatch) {
-                            hospitalName = atMatch[1].trim();
+                          // Try "at VCA [Name]" first (VCA names may not end with facility keyword)
+                          const atVcaMatch = descText.match(/\bat\s+(VCA\s+[^,;.!?\n]{3,60}?)(?:[,;.!?\n]|\s+(?:in|located|is|we|where|our|and|to)\b)/i);
+                          if (atVcaMatch) {
+                            hospitalName = atVcaMatch[1].trim();
+                          }
+                          // Fallback: "at [Name]" patterns ending with facility keyword
+                          if (!hospitalName) {
+                            const atMatch = descText.match(/\bat\s+((?:[\w'.&-]+\s+){0,6}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)|Medical\s+Center|Hospital|Clinic|Center)(?:\s+of\s+(?:the\s+)?[\w'.&-]+(?:\s+[\w'.&-]+)*)?)\b/i);
+                            if (atMatch) {
+                              hospitalName = atMatch[1].trim();
+                            }
                           }
                         }
                       }
@@ -874,7 +930,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       // === SOURCE 12: Try phApp.ddo for any additional location/facility fields ===
                       if (!hospitalName && jobData) {
                         // Some jobs store hospital name in customField or other properties
-                        const fieldsToCheck = ['facility', 'hospitalName', 'siteName', 'branchName', 'storeName'];
+                        const fieldsToCheck = ['facility', 'hospitalName', 'siteName', 'branchName', 'storeName', 'company', 'organizationName', 'employer', 'brand'];
                         for (const field of fieldsToCheck) {
                           if (jobData[field] && typeof jobData[field] === 'string' && jobData[field].trim().length > 2) {
                             const fieldVal = cleanField(jobData[field]).trim();
@@ -937,7 +993,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                           hospitalName = '';
                         } else {
                           if (hospitalName.length > 80) hospitalName = hospitalName.substring(0, 80).replace(/\s+\S*$/, '').trim();
-                          hospitalName = hospitalName.replace(/\b\w/g, c => c.toUpperCase());
+                          // Title-case but preserve known acronyms and lowercase small words
+                          hospitalName = hospitalName.replace(/\b\w+/g, (word, offset) => {
+                            const upper = word.toUpperCase();
+                            // Preserve acronyms: VCA, VTS, ECC, etc.
+                            if (/^[A-Z]{2,}$/.test(word)) return word;
+                            // Keep small words lowercase (except first word)
+                            if (offset > 0 && /^(of|the|and|in|at|on|for|by|a|an)$/i.test(word)) return word.toLowerCase();
+                            // Title-case everything else
+                            return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+                          });
                         }
                       }
 
@@ -1009,6 +1074,68 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         }
                       }
 
+                      // === Last resort: extract city/state from address string ===
+                      if ((!city || !state) && address) {
+                        const addrClean = address.replace(/,?\s*United States of America/i, '').replace(/,?\s*USA$/i, '').trim();
+                        const addrParts = addrClean.split(',').map(s => s.trim()).filter(Boolean);
+                        // Address format: "Hospital, Street, City, State, Zip" or "City, State, Zip" etc.
+                        // Try to find state (2-letter code or full name) from the end
+                        for (let i = addrParts.length - 1; i >= 0; i--) {
+                          const part = addrParts[i].replace(/\d{5}(-\d{4})?/, '').trim(); // strip zip
+                          if (!part) continue;
+                          // 2-letter state code
+                          if (/^[A-Z]{2}$/.test(part)) {
+                            if (!state) state = part;
+                            if (!city && i > 0) city = addrParts[i - 1];
+                            break;
+                          }
+                          // Full state name (at least 4 chars, no digits)
+                          if (part.length >= 4 && part.length <= 20 && !/\d/.test(part) && /^[A-Za-z\s]+$/.test(part)) {
+                            if (!state) state = part;
+                            if (!city && i > 0) city = addrParts[i - 1];
+                            break;
+                          }
+                        }
+                      }
+
+                      // === Last resort: try specific location elements on the page ===
+                      if (!city || !state) {
+                        // Only target leaf-level elements likely to contain clean "City, State" text
+                        const locSelectors = [
+                          'span.job-location',
+                          '[data-ph-at-id="job-location"] span',
+                          '.job-location span',
+                          '[itemprop="addressLocality"]',
+                          '[itemprop="addressRegion"]'
+                        ];
+                        // Try itemprop elements first (most reliable)
+                        const cityItemprop = document.querySelector('[itemprop="addressLocality"]');
+                        const stateItemprop = document.querySelector('[itemprop="addressRegion"]');
+                        if (!city && cityItemprop) city = cityItemprop.textContent.trim();
+                        if (!state && stateItemprop) state = stateItemprop.textContent.trim();
+                        // Fallback: try span elements with location text
+                        if (!city || !state) {
+                          for (const sel of locSelectors) {
+                            const els = document.querySelectorAll(sel);
+                            for (const el of els) {
+                              const text = el.textContent.replace('Location', '').replace(/,?\s*United States of America/gi, '').replace(/,?\s*USA/gi, '').trim();
+                              if (!text || text.length > 60 || text.length < 3) continue;
+                              const parts = text.split(',').map(s => s.trim()).filter(Boolean);
+                              if (parts.length >= 2) {
+                                if (!city) city = parts[0];
+                                if (!state) state = parts[1];
+                                break;
+                              }
+                            }
+                            if (city && state) break;
+                          }
+                        }
+                      }
+
+                      // Clean up city/state values before validation
+                      if (city) city = city.replace(/,?\s*United States of America/gi, '').replace(/,?\s*USA$/gi, '').replace(/\d{5}(-\d{4})?/, '').trim();
+                      if (state) state = state.replace(/,?\s*United States of America/gi, '').replace(/,?\s*USA$/gi, '').replace(/\d{5}(-\d{4})?/, '').trim();
+
                       // Validate city/state are not junk text (e.g. "This job is available in 2 locations")
                       function isValidCityState(val) {
                         if (!val) return false;
@@ -1022,7 +1149,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                       // Fallback hospital name
                       if (!hospitalName) {
-                        hospitalName = 'VCA Animal Hospital';
+                        hospitalName = 'VCA Veterinary Hospital';
                       }
 
                       // Final logic for Salary and Area of Practice
@@ -1214,13 +1341,70 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                       console.log('Phone:', phone, '| Website:', websiteUrl);
 
+                      // === Extract Job Type (Full time / Part time) ===
+                      let jobType = '';
+                      // Try phApp.ddo fields
+                      if (jobData) {
+                        const typeFields = ['type', 'jobType', 'employmentType', 'job_type', 'workType', 'positionType'];
+                        for (const field of typeFields) {
+                          if (jobData[field] && typeof jobData[field] === 'string' && jobData[field].trim()) {
+                            jobType = jobData[field].trim();
+                            break;
+                          }
+                        }
+                        // Check jobSchedule or similar
+                        if (!jobType && jobData.jobSchedule) {
+                          jobType = cleanField(jobData.jobSchedule);
+                        }
+                      }
+                      // Try JSON-LD employmentType
+                      if (!jobType) {
+                        const ldScriptsType = document.querySelectorAll('script[type="application/ld+json"]');
+                        for (const s of ldScriptsType) {
+                          try {
+                            const ld = JSON.parse(s.textContent);
+                            if (ld['@type'] === 'JobPosting' && ld.employmentType) {
+                              jobType = Array.isArray(ld.employmentType) ? ld.employmentType.join(', ') : ld.employmentType;
+                              break;
+                            }
+                          } catch(e) {}
+                        }
+                      }
+                      // Try DOM elements
+                      if (!jobType) {
+                        const typeEl = document.querySelector('[data-ph-at-job-type-text], .job-type, .type span:last-child, .jd-info .job-type, [data-ph-at-id="job-type"]');
+                        if (typeEl) {
+                          jobType = typeEl.getAttribute('data-ph-at-job-type-text') || typeEl.textContent.trim();
+                        }
+                      }
+                      // Try data attribute on job-info element
+                      if (!jobType) {
+                        const jobInfoForType = document.querySelector('[data-ph-at-job-type-text]');
+                        if (jobInfoForType) {
+                          jobType = jobInfoForType.getAttribute('data-ph-at-job-type-text') || '';
+                        }
+                      }
+                      // Normalize job type values
+                      if (jobType) {
+                        const typeLower = jobType.toLowerCase().replace(/[-_]/g, ' ').trim();
+                        if (/full\s*time/i.test(typeLower)) jobType = 'Full time';
+                        else if (/part\s*time/i.test(typeLower)) jobType = 'Part time';
+                        else if (/contract/i.test(typeLower)) jobType = 'Contract';
+                        else if (/temporary|temp\b/i.test(typeLower)) jobType = 'Temporary';
+                        else if (/intern/i.test(typeLower)) jobType = 'Intern';
+                        // Reject if it looks like a job title instead of a type
+                        if (jobType.length > 30 || /veterinarian|doctor|technician|surgeon/i.test(jobType)) {
+                          jobType = '';
+                        }
+                      }
+
                       // Map position to exact docx position name
                       const mappedPosition = lookupPosition(position);
                       if (mappedPosition) {
                         position = mappedPosition;
                       }
 
-                      return { areaOfPractice, position, salary, hospitalName, city, state, address, allLocations, phone, websiteUrl };
+                      return { areaOfPractice, position, salary, hospitalName, city, state, address, allLocations, phone, websiteUrl, jobType };
                     }
                   });
                 }
