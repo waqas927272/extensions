@@ -105,6 +105,11 @@ body {
   color: #ffb74d;
 }
 
+.stat-icon-blue {
+  background: rgba(66, 153, 225, 0.2);
+  color: #63b3ed;
+}
+
 .stat-info {
   display: flex;
   flex-direction: column;
@@ -162,6 +167,15 @@ body {
 
 .btn svg {
   flex-shrink: 0;
+}
+
+.btn-info {
+  background: #2557a7;
+  color: white;
+}
+
+.btn-info:hover:not(:disabled) {
+  background: #1a4291;
 }
 
 .btn-success {

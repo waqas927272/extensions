@@ -1,50 +1,107 @@
-// VetPractice Job Scraper - Background Service Worker
+// VetPractice Scraper - Background Service Worker
+
+console.log("Background script loaded");
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'scrapeJobDescription') {
-    const { tabId, jobIndex, jobLink } = request;
+    handleScrapeDescription(request);
+    return true;
+  }
+
+  if (request.action === 'fetchJobDetails') {
+    handleFetchDetails(request);
+    return true;
+  }
+
+  return true;
+});
+
+function handleScrapeDescription(request) {
+    const { tabId, jobIndex } = request;
 
     chrome.tabs.onUpdated.addListener(function listener(updatedTabId, info) {
       if (updatedTabId === tabId && info.status === 'complete') {
         chrome.tabs.onUpdated.removeListener(listener);
 
-        // Use greenhouse-description-scraper.js since all VPP jobs link to greenhouse.io
-        chrome.scripting.executeScript({
-          target: { tabId: tabId },
-          files: ['greenhouse-description-scraper.js']
-        }).then((results) => {
-          const description = (results && results[0] && results[0].result) ? results[0].result : '';
+        // Small delay for dynamic content
+        setTimeout(() => {
+            chrome.scripting.executeScript({
+                target: { tabId: tabId },
+                files: ['greenhouse-description-scraper.js']
+            }).then((results) => {
+                const description = (results && results[0] && results[0].result) ? results[0].result : '';
 
-          chrome.storage.local.get(['scrapedJobs'], (result) => {
-            const jobs = result.scrapedJobs || [];
-            if (jobs[jobIndex]) {
-              jobs[jobIndex].description = description;
+                chrome.storage.local.get(['scrapedJobs'], (result) => {
+                    const jobs = result.scrapedJobs || [];
+                    if (jobs[jobIndex]) {
+                        jobs[jobIndex].description = description;
 
-              chrome.storage.local.set({ scrapedJobs: jobs }, () => {
-                console.log(`Description saved for job ${jobIndex + 1}`);
-                chrome.tabs.remove(tabId);
-                chrome.runtime.sendMessage({
-                  action: 'descriptionSaved',
-                  jobIndex: jobIndex,
-                  success: true
+                        chrome.storage.local.set({ scrapedJobs: jobs }, () => {
+                            console.log(`Description saved for job ${jobIndex + 1}`);
+                            chrome.tabs.remove(tabId).catch(() => {});
+                            chrome.runtime.sendMessage({
+                                action: 'descriptionSaved',
+                                jobIndex: jobIndex,
+                                success: true
+                            }).catch(() => {});
+                        });
+                    }
                 });
-              });
-            }
-          });
-        }).catch(err => {
-          console.error('Error extracting description:', err);
-          chrome.tabs.remove(tabId).catch(() => {});
-          chrome.runtime.sendMessage({
-            action: 'descriptionSaved',
-            jobIndex: jobIndex,
-            success: false
-          });
-        });
+            }).catch(err => {
+                console.error('Error extracting description:', err);
+                chrome.tabs.remove(tabId).catch(() => {});
+                chrome.runtime.sendMessage({
+                    action: 'descriptionSaved',
+                    jobIndex: jobIndex,
+                    success: false
+                }).catch(() => {});
+            });
+        }, 2000);
       }
     });
+}
 
-    return true;
-  }
+function handleFetchDetails(request) {
+    const { url, jobIndex } = request;
+    if (!url) {
+        chrome.runtime.sendMessage({ action: 'detailsFetched', details: {}, jobIndex: jobIndex }).catch(() => {});
+        return;
+    }
 
-  return true;
+    chrome.tabs.create({ url: url, active: false }, (tab) => {
+        if (!tab) return;
+        chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
+            if (tabId === tab.id && info.status === 'complete') {
+                chrome.tabs.onUpdated.removeListener(listener);
+                
+                // Small delay for Greenhouse dynamic content
+                setTimeout(() => {
+                    chrome.scripting.executeScript({
+                        target: { tabId: tab.id },
+                        files: ['detail-extractor.js']
+                    }).then((results) => {
+                        const details = (results && results[0] && results[0].result) ? results[0].result : {};
+                        chrome.tabs.remove(tab.id).catch(() => {});
+                        chrome.runtime.sendMessage({
+                            action: 'detailsFetched',
+                            details: details,
+                            jobIndex: jobIndex
+                        }).catch(() => {});
+                    }).catch(err => {
+                        console.error('Error extracting details:', err);
+                        chrome.tabs.remove(tab.id).catch(() => {});
+                        chrome.runtime.sendMessage({
+                            action: 'detailsFetched',
+                            details: {},
+                            jobIndex: jobIndex
+                        }).catch(() => {});
+                    });
+                }, 3000);
+            }
+        });
+    });
+}
+
+chrome.runtime.onInstalled.addListener(() => {
+  console.log("Extension installed");
 });

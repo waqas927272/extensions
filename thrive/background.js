@@ -39,6 +39,186 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // Keep message channel open for async response
   }
 
+  if (request.action === 'fetchJobDetails') {
+    const { url, jobIndex } = request;
+
+    chrome.tabs.create({ url: url, active: false }, (tab) => {
+      chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
+        if (tabId === tab.id && info.status === 'complete') {
+          chrome.tabs.onUpdated.removeListener(listener);
+
+          setTimeout(() => {
+            chrome.scripting.executeScript({
+              target: { tabId: tab.id },
+              func: () => {
+                const result = {
+                  hospitalName: '',
+                  streetAddress: '',
+                  city: '',
+                  state: '',
+                  postalCode: '',
+                  jobType: '',
+                  salary: '',
+                  position: '',
+                  areaOfPractice: ''
+                };
+
+                function stripHtml(html) {
+                  const temp = document.createElement('div');
+                  temp.innerHTML = html;
+                  return temp.textContent || temp.innerText || '';
+                }
+
+                // Area of Practice keyword mapping from jobs.docx (same as VCA scrapper)
+                const areaOfPracticeMap = [
+                  { area: 'General Practice Care', keywords: ['medical director', 'veterinarian medical director', 'associate veterinarian', 'gp vet', 'quick care veterinarian', 'dvm', 'vmd', 'relief veterinarian', 'relief dvm', 'locum veterinarian', 'veterinarian'] },
+                  { area: 'Emergency Care', keywords: ['emergency veterinarian', 'er vet', 'er veterinarian', 'er dvm', 'urgent care veterinarian', 'relief emergency veterinarian', 'relief emergency vet'] },
+                  { area: 'Urgent Care', keywords: ['urgent care veterinarian', 'urgent veterinarian'] },
+                  { area: 'General Practice Care / Emergency Care / Urgent Care', keywords: ['equine veterinarian', 'equine vet', 'bovine veterinarian', 'large animal', 'equine dvm', 'avian veterinarian', 'exotics veterinarian', 'avian vet', 'exotics vet', 'associate exotics veterinarian', 'avian & exotics', 'equine/bovine'] },
+                  { area: 'Specialty Care', keywords: ['criticalist', 'dacvecc', 'board certified criticalist', 'residency trained criticalist', 'emergency & critical care', 'ecc', 'medical oncologist', 'oncologist', 'dacvim', 'acvim', 'medonc', 'radiation oncologist', 'dacvr-ro', 'radonc', 'internal medicine specialist', 'internist', 'veterinary internist', 'saim', 'small animal internal medicine', 'neurologist', 'neurosurgeon', 'veterinary neurologist', 'cardiologist', 'veterinary cardiologist', 'small animal cardiologist', 'dentist', 'oral surgeon', 'dentist & oral surgeon', 'davdc', 'dermatologist', 'veterinary dermatologist', 'dacvd', 'acvd', 'surgeon', 'veterinary surgery', 'dacvs', 'acvs', 'small animal surgeon', 'radiologist', 'veterinary radiologist', 'diagnostic imaging specialist', 'dacvr', 'acvr', 'ophthalmologist', 'veterinary ophthalmologist', 'dacvo', 'acvo', 'anesthesiologist', 'veterinary anesthesiologist', 'dacvaa', 'acvaa', 'theriogenologist', 'veterinary theriogenologist', 'dact', 'rehabilitation therapist', 'ccrt', 'canine rehabilitation', 'veterinary technician specialist', 'vts', 'residency trained', 'board certified', 'veterinary specialist', 'specialty doctor'] }
+                ];
+
+                function lookupAreaOfPractice(positionText) {
+                  if (!positionText) return '';
+                  const posLower = positionText.toLowerCase();
+                  for (let i = areaOfPracticeMap.length - 1; i >= 0; i--) {
+                    const entry = areaOfPracticeMap[i];
+                    for (const kw of entry.keywords) {
+                      if (posLower.includes(kw)) return entry.area;
+                    }
+                  }
+                  return '';
+                }
+
+                function extractSalary(text) {
+                  if (!text) return '';
+                  const patterns = [
+                    /\$[\d,]+k?\s*[-–]+\s*\$?[\d,]+k/i,
+                    /\$[\d,]+(?:,\d{3})*\s*[-–]+\s*\$[\d,]+(?:,\d{3})*/i,
+                    /\$[\d,]+(?:\.\d{2})?\s*[-–\/]+\s*\$?[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hourly|hour|hr|\/hr|\/\s*hour)/i,
+                    /\$[\d,]+(?:\.\d{2})?\s*[-–]+\s*\$?[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:year|annually|annum|annual)/i,
+                    /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hourly|hour|hr|\/hr|\/\s*hour)/i,
+                    /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:year|annually|annum|annual)/i,
+                    /salary\s+range[^.\n]*?\$[\d,]+k?[^.\n]{0,40}/i,
+                    /pay[:\s]+\$[\d,]+(?:\.\d{2})?[^.\n]{0,60}/i,
+                    /compensation[:\s]+\$[\d,]+[^.\n]{0,60}/i,
+                    /\$[\d]{2,3}(?:,\d{3})*k?\s*[-–]+\s*\$?[\d]{2,3}(?:,\d{3})*k?/i,
+                    /\$[\d,]+k\+?/i
+                  ];
+                  for (const p of patterns) {
+                    const m = text.match(p);
+                    if (m) {
+                      let sal = m[0].trim().replace(/[.,;:\s]+$/, '').trim();
+                      if (sal.length > 100) sal = sal.substring(0, 100).trim();
+                      return sal;
+                    }
+                  }
+                  return '';
+                }
+
+                // === SOURCE 1: JSON-LD ===
+                const ldScripts = document.querySelectorAll('script[type="application/ld+json"]');
+                for (const s of ldScripts) {
+                  try {
+                    const ld = JSON.parse(s.textContent);
+                    if (ld['@type'] === 'JobPosting') {
+                      if (ld.title) result.position = ld.title;
+                      if (ld.employmentType) result.jobType = ld.employmentType;
+                      if (ld.jobLocation && ld.jobLocation.address) {
+                        const addr = ld.jobLocation.address;
+                        result.streetAddress = addr.streetAddress || '';
+                        result.city = addr.addressLocality || '';
+                        result.state = addr.addressRegion || '';
+                        result.postalCode = addr.postalCode || '';
+                      }
+                      if (ld.description) {
+                        const descText = stripHtml(ld.description);
+                        result.salary = extractSalary(descText);
+                        // Hospital: "Thrive Pet Healthcare - Falcon is looking for"
+                        const hospMatch = descText.match(/(Thrive(?:\s+Pet\s+Healthcare)?\s*[-–]\s*[\w\s'.&-]+?)(?:\s+is\s+looking|\s+in\s+\w)/i);
+                        if (hospMatch) result.hospitalName = hospMatch[1].trim();
+                      }
+                      break;
+                    }
+                  } catch (e) {}
+                }
+
+                // === SOURCE 2: DOM h1 (position) ===
+                if (!result.position) {
+                  const h1 = document.querySelector('.job-details-inner-js h1');
+                  if (h1) result.position = h1.textContent.trim();
+                }
+
+                // === SOURCE 3: DOM info block (hospital, location, time type) ===
+                // Structure: "Thrive Falcon<br> <strong>Location</strong>: Katy, TX, 77494<br> <strong>Time Type</strong>: Full-Time"
+                const infoP = document.querySelector('.job-details__main p');
+                if (infoP) {
+                  const html = infoP.innerHTML;
+                  const text = infoP.textContent || '';
+
+                  // Hospital name: text before the first <br> or <strong>
+                  const hospPart = html.split(/<br\s*\/?>/i)[0];
+                  if (hospPart) {
+                    const hospText = stripHtml(hospPart).trim();
+                    if (hospText && !hospText.startsWith('Location') && !hospText.startsWith('Time')) {
+                      if (!result.hospitalName) result.hospitalName = hospText;
+                    }
+                  }
+
+                  // Location: after "Location:"
+                  const locMatch = text.match(/Location\s*:\s*([^,]+),\s*(\w+),?\s*(\d{5})?/i);
+                  if (locMatch) {
+                    if (!result.city) result.city = locMatch[1].trim();
+                    if (!result.state) result.state = locMatch[2].trim();
+                    if (!result.postalCode && locMatch[3]) result.postalCode = locMatch[3].trim();
+                  }
+
+                  // Time Type
+                  const timeMatch = text.match(/Time\s+Type\s*:\s*(.+)/i);
+                  if (timeMatch && !result.jobType) {
+                    result.jobType = timeMatch[1].trim();
+                  }
+                }
+
+                // === SOURCE 4: Area of Practice from position ===
+                if (result.position) {
+                  result.areaOfPractice = lookupAreaOfPractice(result.position);
+                }
+                // Fallback: scan description text
+                if (!result.areaOfPractice) {
+                  const descEl = document.querySelector('.job-details-inner-js');
+                  if (descEl) {
+                    result.areaOfPractice = lookupAreaOfPractice(descEl.innerText || '');
+                  }
+                }
+
+                return result;
+              }
+            }).then((results) => {
+              const details = results[0]?.result || {};
+              chrome.tabs.remove(tab.id);
+              chrome.runtime.sendMessage({
+                action: 'detailsFetched',
+                details: details,
+                jobIndex: jobIndex
+              }).catch(() => {});
+            }).catch((err) => {
+              console.error('Error extracting job details:', err);
+              chrome.tabs.remove(tab.id).catch(() => {});
+              chrome.runtime.sendMessage({
+                action: 'detailsFetched',
+                details: {},
+                jobIndex: jobIndex
+              }).catch(() => {});
+            });
+          }, 3000);
+        }
+      });
+    });
+
+    return true;
+  }
+
   if (request.action === 'scrapeJobDescription') {
     const { tabId, jobIndex, jobLink } = request;
 

@@ -65,7 +65,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const accessToken = await this.serviceAuth.getAccessToken();
         
         const response = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A:L`,
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A:Q`,
           {
             headers: {
               'Authorization': `Bearer ${accessToken}`,
@@ -110,7 +110,7 @@ document.addEventListener('DOMContentLoaded', function() {
         let startRow = existingData.length + 1;
 
         if (existingData.length === 0) {
-          const headers = ['Department ID', 'Title', 'Job Type', 'Area of Practice', 'Position', 'Salary', 'Hospital Name', 'City', 'State', 'URL', 'Description', 'Scraped At'];
+          const headers = ['Department ID', 'Title', 'Location', 'Category', 'Job Type', 'Area of Practice', 'Position', 'Salary', 'Hospital Name', 'City', 'State', 'Address', 'Phone', 'Website', 'URL', 'Description', 'Scraped At'];
           dataToAdd.push(headers);
           startRow = 1;
         }
@@ -125,6 +125,9 @@ document.addEventListener('DOMContentLoaded', function() {
           job.hospitalName || '',
           job.city || '',
           job.state || '',
+          job.address || '',
+          job.phone || '',
+          job.websiteUrl || '',
           job.url || '',
           job.description || '-',
           new Date(job.scrapedAt).toLocaleString()
@@ -133,7 +136,7 @@ document.addEventListener('DOMContentLoaded', function() {
         dataToAdd = [...dataToAdd, ...jobData];
 
         const response = await fetch(
-          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A${startRow}:L${startRow + dataToAdd.length - 1}?valueInputOption=RAW`,
+          `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/A${startRow}:Q${startRow + dataToAdd.length - 1}?valueInputOption=RAW`,
           {
             method: 'PUT',
             headers: {
@@ -184,7 +187,7 @@ document.addEventListener('DOMContentLoaded', function() {
                       startRowIndex: 0,
                       endRowIndex: 1,
                       startColumnIndex: 0,
-                      endColumnIndex: 12
+                      endColumnIndex: 17
                     },
                     cell: {
                       userEnteredFormat: {
@@ -212,7 +215,7 @@ document.addEventListener('DOMContentLoaded', function() {
                       sheetId: 0,
                       dimension: 'COLUMNS',
                       startIndex: 0,
-                      endIndex: 12
+                      endIndex: 17
                     }
                   }
                 }
@@ -278,6 +281,7 @@ document.addEventListener('DOMContentLoaded', function() {
           finishDescriptionFetching();
         }
       }
+
       displayJobs();
     } else if (request.action === 'skippedStatsUpdate' && request.data) {
       skippedJobsStats = request.data;
@@ -329,6 +333,14 @@ document.addEventListener('DOMContentLoaded', function() {
         <td>${escapeHtml(job.hospitalName || '-')}</td>
         <td>${escapeHtml(job.city || '-')}</td>
         <td>${escapeHtml(job.state || '-')}</td>
+        <td>${escapeHtml(job.address || '-')}</td>
+        <td>${escapeHtml(job.phone || '-')}</td>
+        <td class="job-url">
+          ${job.websiteUrl
+            ? `<a href="${escapeHtml(job.websiteUrl)}" target="_blank" title="${escapeHtml(job.websiteUrl)}">Visit</a>`
+            : '-'
+          }
+        </td>
         <td class="job-url">
           <a href="${escapeHtml(job.url)}" target="_blank" title="${escapeHtml(job.url)}">
             ${job.url ? 'View Job' : 'N/A'}
@@ -496,13 +508,57 @@ document.addEventListener('DOMContentLoaded', function() {
           const job = allJobs[response.jobIndex];
           if (job && details) {
               job.areaOfPractice = details.areaOfPractice || job.areaOfPractice || '';
-              job.position = details.position || job.position || '';
+              job.position = details.position || job.position || job.title || '';
               job.salary = details.salary || job.salary || '';
               job.hospitalName = details.hospitalName || job.hospitalName || '';
               job.city = details.city || job.city || '';
               job.state = details.state || job.state || '';
+              job.address = details.address || job.address || '';
+              job.phone = details.phone || job.phone || '';
+              job.websiteUrl = details.websiteUrl || job.websiteUrl || '';
+
+              // Handle multiple locations: update original with first, create new records for the rest
+              if (details.allLocations && details.allLocations.length > 1) {
+                const firstLoc = details.allLocations[0];
+                job.location = firstLoc.location || job.location;
+                job.city = firstLoc.city || job.city;
+                job.state = firstLoc.state || job.state;
+                job.address = firstLoc.address || '';
+                if (job.hospitalName) {
+                  job.address = job.address ? job.hospitalName + ', ' + job.address : job.hospitalName;
+                }
+
+                for (let i = 1; i < details.allLocations.length; i++) {
+                  const loc = details.allLocations[i];
+                  let locAddress = loc.address || '';
+                  if (details.hospitalName) {
+                    locAddress = locAddress ? details.hospitalName + ', ' + locAddress : details.hospitalName;
+                  }
+                  allJobs.push({
+                    departmentId: job.departmentId + '-loc' + (i + 1),
+                    title: job.title,
+                    location: loc.location || '',
+                    category: job.category,
+                    url: job.url,
+                    jobType: job.jobType,
+                    scrapedAt: job.scrapedAt,
+                    areaOfPractice: details.areaOfPractice || '',
+                    position: details.position || '',
+                    salary: details.salary || '',
+                    hospitalName: details.hospitalName || '',
+                    city: loc.city || '',
+                    state: loc.state || '',
+                    address: locAddress,
+                    description: job.description || '',
+                    phone: details.phone || '',
+                    websiteUrl: details.websiteUrl || ''
+                  });
+                }
+                console.log(`Job has ${details.allLocations.length} locations. Created ${details.allLocations.length - 1} extra record(s).`);
+              }
           }
           chrome.storage.local.set({ jobs: allJobs });
+          updateRecordCount();
 
           const currentDetail = detailsQueue[currentDetailsIndex];
           if (currentDetail && currentDetail.index === response.jobIndex) {
@@ -519,6 +575,22 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       }
     );
+  }
+
+  function moveToNextDetail(jobIndex) {
+    const currentDetail = detailsQueue[currentDetailsIndex];
+    if (currentDetail && currentDetail.index === jobIndex) {
+      currentDetailsIndex++;
+      fetchDetailsBtn.textContent = `Fetching... (${currentDetailsIndex}/${detailsQueue.length})`;
+
+      if (currentDetailsIndex < detailsQueue.length) {
+        setTimeout(() => {
+          processNextDetail();
+        }, 1500);
+      } else {
+        finishDetailsFetching();
+      }
+    }
   }
 
   function finishDetailsFetching() {
@@ -546,6 +618,9 @@ document.addEventListener('DOMContentLoaded', function() {
       <p><strong>Hospital Name:</strong> ${escapeHtml(job.hospitalName || '-')}</p>
       <p><strong>City:</strong> ${escapeHtml(job.city || '-')}</p>
       <p><strong>State:</strong> ${escapeHtml(job.state || '-')}</p>
+      <p><strong>Address:</strong> ${escapeHtml(job.address || '-')}</p>
+      <p><strong>Phone:</strong> ${escapeHtml(job.phone || '-')}</p>
+      <p><strong>Website:</strong> ${job.websiteUrl ? `<a href="${escapeHtml(job.websiteUrl)}" target="_blank">${escapeHtml(job.websiteUrl)}</a>` : '-'}</p>
       <p><strong>URL:</strong> <a href="${escapeHtml(job.url)}" target="_blank">View Original</a></p>
     `;
     
@@ -750,49 +825,83 @@ document.addEventListener('DOMContentLoaded', function() {
       return;
     }
 
+    if (!confirm(`Are you sure you want to send ${allJobs.length} jobs to the webhook?`)) {
+      return;
+    }
+
     try {
       sendWebhookDataBtn.disabled = true;
       sendWebhookDataBtn.textContent = 'Sending...';
-      showWebhookStatus(`Sending ${allJobs.length} jobs to webhook...`, 'info');
 
       // Save webhook URL for future use
       chrome.storage.local.set({ webhookUrl: url });
 
-      // Prepare the payload
-      const payload = {
-        timestamp: new Date().toISOString(),
-        totalJobs: allJobs.length,
-        jobs: allJobs.map(job => ({
-          departmentId: job.departmentId || '',
-          title: job.title || '',
-          location: job.location || '',
-          category: job.category || '',
-          jobType: job.jobType || '',
-          areaOfPractice: job.areaOfPractice || '',
-          position: job.position || '',
-          salary: job.salary || '',
-          hospitalName: job.hospitalName || '',
-          city: job.city || '',
-          state: job.state || '',
-          url: job.url || '',
-          description: job.description || '',
-          scrapedAt: job.scrapedAt || ''
-        }))
-      };
+      // Prepare jobs data
+      const jobsData = allJobs.map(job => ({
+        departmentId: job.departmentId || '',
+        title: job.title || '',
+        location: job.location || '',
+        category: job.category || '',
+        jobType: job.jobType || '',
+        areaOfPractice: job.areaOfPractice || '',
+        position: job.position || '',
+        salary: job.salary || '',
+        parentClientName: 'VCA Animal Hospitals (Parent Client)',
+        city: job.city || '',
+        state: job.state || '',
+        address: job.address || '',
+        phone: job.phone || '',
+        websiteUrl: job.websiteUrl || '',
+        url: job.url || '',
+        description: job.description || '',
+        scrapedAt: job.scrapedAt || ''
+      }));
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload)
-      });
+      // Send in batches of 50
+      const BATCH_SIZE = 50;
+      const totalBatches = Math.ceil(jobsData.length / BATCH_SIZE);
+      const syncId = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+      const timestamp = new Date().toISOString();
 
-      if (!response.ok) {
-        throw new Error(`Webhook returned status ${response.status}: ${response.statusText}`);
+      for (let i = 0; i < totalBatches; i++) {
+        const batchNumber = i + 1;
+        const start = i * BATCH_SIZE;
+        const batchData = jobsData.slice(start, start + BATCH_SIZE);
+
+        showWebhookStatus(`Sending batch ${batchNumber}/${totalBatches}...`, 'info');
+        sendWebhookDataBtn.textContent = `Sending ${batchNumber}/${totalBatches}...`;
+
+        const payload = {
+          source: 'VCA Animal Hospitals',
+          parentClientName: 'VCA Animal Hospitals (Parent Client)',
+          syncId: syncId,
+          timestamp: timestamp,
+          batchNumber: batchNumber,
+          totalBatches: totalBatches,
+          batchSize: batchData.length,
+          totalRecords: jobsData.length,
+          data: batchData
+        };
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+          throw new Error(`Webhook returned status ${response.status} on batch ${batchNumber}: ${response.statusText}`);
+        }
+
+        // 500ms delay between batches
+        if (batchNumber < totalBatches) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
       }
 
-      showWebhookStatus(`Successfully sent ${allJobs.length} jobs to webhook!`, 'success');
+      showWebhookStatus(`Successfully sent ${allJobs.length} jobs in ${totalBatches} batch(es)!`, 'success');
 
       setTimeout(() => {
         hideWebhookForm();

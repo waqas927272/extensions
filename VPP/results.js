@@ -1,6 +1,9 @@
 // Global variables
 let isGettingDescriptions = false;
+let isFetchingDetails = false;
 let currentJobIndex = 0;
+let detailsQueue = [];
+let currentDetailsIndex = 0;
 let allJobs = [];
 let filteredJobs = [];
 let currentSort = { field: null, direction: 'asc' };
@@ -15,6 +18,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('clearData').addEventListener('click', clearData);
     document.getElementById('sendWebhookBtn').addEventListener('click', sendToWebhook);
     document.getElementById('getDescriptionsBtn').addEventListener('click', getJobDescriptions);
+    document.getElementById('fetchDetailsBtn').addEventListener('click', getJobDetails);
 
     // Add event listeners for search and filters
     const searchInput = document.getElementById('searchInput');
@@ -213,6 +217,9 @@ function displayJobs(jobs) {
             <td>${escapeHtml(job.location)}</td>
             <td>${escapeHtml(job.city)}</td>
             <td>${escapeHtml(job.state)}</td>
+            <td>${escapeHtml(job.areaOfPractice || '-')}</td>
+            <td>${escapeHtml(job.position || '-')}</td>
+            <td>${escapeHtml(job.salary || '-')}</td>
             <td><a href="${escapeHtml(job.link)}" target="_blank" class="job-link-btn">View Job</a></td>
             <td class="description-col">${descriptionHtml}</td>
         `;
@@ -334,8 +341,123 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
                 setTimeout(() => processNextJob(), 1500);
             }
         });
+    } else if (message.action === 'detailsFetched') {
+        const details = message.details;
+        chrome.storage.local.get(['scrapedJobs'], (data) => {
+            const jobs = data.scrapedJobs || [];
+            if (jobs[message.jobIndex]) {
+                const job = jobs[message.jobIndex];
+                job.areaOfPractice = details.areaOfPractice || job.areaOfPractice || '';
+                job.position = details.position || job.position || '';
+                job.salary = details.salary || job.salary || '';
+                
+                if (details.hospitalName) job.location = details.hospitalName;
+                if (details.city) job.city = details.city;
+                if (details.state) job.state = details.state;
+
+                chrome.storage.local.set({ scrapedJobs: jobs }, () => {
+                    allJobs = jobs;
+                    filteredJobs = [...jobs];
+                    applyFilters();
+                    updateStatsDashboard();
+
+                    if (isFetchingDetails) {
+                        currentDetailsIndex++;
+                        setTimeout(() => processNextDetail(), 1500);
+                    }
+                });
+            }
+        });
     }
 })
+
+async function getJobDetails() {
+    if (isFetchingDetails) {
+        alert('Already fetching details. Please wait...');
+        return;
+    }
+
+    const data = await chrome.storage.local.get(['scrapedJobs']);
+    const jobs = data.scrapedJobs || [];
+
+    const jobsToFetch = jobs.map((job, index) => ({ job, index }))
+        .filter(item => !item.job.areaOfPractice || !item.job.position || !item.job.salary);
+
+    if (jobsToFetch.length === 0) {
+        if (confirm('All jobs already have details. Do you want to re-fetch details for all jobs?')) {
+            detailsQueue = jobs.map((job, index) => ({ job, index }));
+        } else {
+            return;
+        }
+    } else {
+        detailsQueue = jobsToFetch;
+    }
+
+    isFetchingDetails = true;
+    currentDetailsIndex = 0;
+
+    const fetchBtn = document.getElementById('fetchDetailsBtn');
+    fetchBtn.disabled = true;
+    fetchBtn.innerHTML = `
+        <svg class="btn-icon loading" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        Fetching Details...
+    `;
+
+    const progressSection = document.getElementById('progressSection');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const progressLabel = document.getElementById('progressLabel');
+    progressSection.classList.remove('hidden');
+    progressLabel.textContent = 'Fetching Details';
+    progressText.textContent = `0 / ${detailsQueue.length}`;
+    progressBar.style.width = '0%';
+
+    processNextDetail();
+}
+
+async function processNextDetail() {
+    if (currentDetailsIndex >= detailsQueue.length) {
+        isFetchingDetails = false;
+        const fetchBtn = document.getElementById('fetchDetailsBtn');
+        fetchBtn.disabled = false;
+        fetchBtn.innerHTML = `
+            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 2A10 10 0 002 12a10 10 0 0010 10 10 10 0 0010-10A10 10 0 0012 2m0 18a8 8 0 110-16 8 8 0 010 16m1-13h-2v5l4.3 2.5.7-1.3-3.5-2V7z"/>
+            </svg>
+            Fetch Details
+        `;
+        document.getElementById('progressSection').classList.add('hidden');
+        alert('All job details have been fetched!');
+        return;
+    }
+
+    const { job, index } = detailsQueue[currentDetailsIndex];
+    
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    progressText.textContent = `${currentDetailsIndex + 1} / ${detailsQueue.length}`;
+    progressBar.style.width = `${((currentDetailsIndex + 1) / detailsQueue.length) * 100}%`;
+
+    let ghUrl = job.link;
+    const jobsPathMatch = job.link.match(/greenhouse\.io\/([^\/]+)\/jobs\/(\d+)/);
+    const ghJidMatch = job.link.match(/gh_jid=(\d+)/);
+    
+    if (jobsPathMatch) {
+        ghUrl = `https://boards.greenhouse.io/embed/job_app?for=${jobsPathMatch[1]}&token=${jobsPathMatch[2]}`;
+    } else if (ghJidMatch) {
+        const boardMatch = job.link.match(/greenhouse\.io\/([^\/\?]+)/);
+        const boardName = boardMatch ? boardMatch[1] : 'vetpracticepartners';
+        ghUrl = `https://boards.greenhouse.io/embed/job_app?for=${boardName}&token=${ghJidMatch[1]}`;
+    }
+
+    chrome.runtime.sendMessage({
+        action: 'fetchJobDetails',
+        url: ghUrl,
+        jobIndex: index
+    });
+}
 
 
 function exportToCSV() {
@@ -347,10 +469,10 @@ function exportToCSV() {
             return;
         }
 
-        let csv = 'Job Title,Job ID,Location,City,State,Link,Description\n';
+        let csv = 'Job Title,Job ID,Hospital,City,State,Area of Practice,Position,Salary,Link,Description\n';
         jobs.forEach(job => {
             const description = job.description ? `"${job.description.replace(/"/g, '""')}"` : '';
-            csv += `"${job.jobTitle}","${job.jobId || ''}","${job.location}","${job.city}","${job.state}","${job.link}",${description}\n`;
+            csv += `"${job.jobTitle}","${job.jobId || ''}","${job.location}","${job.city}","${job.state}","${job.areaOfPractice || ''}","${job.position || ''}","${job.salary || ''}","${job.link}",${description}\n`;
         });
 
         downloadFile(csv, 'vetpractice-jobs.csv', 'text/csv;charset=utf-8;');

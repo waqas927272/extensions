@@ -58,8 +58,52 @@ function clickNextPage() {
     }
 }
 
+function applyFiltersAndSearch() {
+    const categorySelect = document.getElementById('jv-search-category');
+    const searchButton = document.querySelector('.jv-search-form .jv-button-primary');
+
+    if (!categorySelect || !searchButton) {
+        return { success: false, error: "Filters or Search button not found." };
+    }
+
+    const targetCategories = [
+        "Specialty Diplomate",
+        "Surgeon Diplomate",
+        "Veterinarian (ER)",
+        "Veterinarian (Gen Practice)"
+    ];
+
+    // Clear existing selections
+    Array.from(categorySelect.options).forEach(option => option.selected = false);
+
+    // Select target categories
+    let selectedCount = 0;
+    Array.from(categorySelect.options).forEach(option => {
+        if (targetCategories.includes(option.value.trim()) || targetCategories.includes(option.text.trim())) {
+            option.selected = true;
+            selectedCount++;
+        }
+    });
+
+    if (selectedCount === 0) {
+        return { success: false, error: "Target categories not found in dropdown." };
+    }
+
+    // Trigger change event for AngularJS
+    categorySelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+    // Click search
+    searchButton.click();
+
+    return { success: true, message: `Selected ${selectedCount} categories and clicked Search.` };
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'scrapeCurrentPage') {
+  if (request.action === 'applyFiltersAndSearch') {
+    const result = applyFiltersAndSearch();
+    sendResponse(result);
+    return true;
+  } else if (request.action === 'scrapeCurrentPage') {
     const jobs = scrapeCurrentPage();
     sendResponse({ jobs: jobs });
     return true; // Indicate asynchronous response

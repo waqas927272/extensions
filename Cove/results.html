@@ -53,10 +53,31 @@
             <span class="stat-text">Pending</span>
           </div>
         </div>
+        <div class="stat-card">
+          <div class="stat-icon stat-icon-blue">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+          </div>
+          <div class="stat-info">
+            <span class="stat-number" id="withDetails">0</span>
+            <span class="stat-text">With Details</span>
+          </div>
+        </div>
       </div>
 
       <div class="actions-section">
         <h3>Actions</h3>
+        <button id="fetchDetails" class="btn btn-info">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="16" x2="12" y2="12"></line>
+            <line x1="12" y1="8" x2="12.01" y2="8"></line>
+          </svg>
+          Fetch Details
+        </button>
         <button id="getDescriptions" class="btn btn-success">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -164,6 +185,10 @@
               <th>City</th>
               <th>State</th>
               <th>Zip Code</th>
+              <th>Job Type</th>
+              <th>Position</th>
+              <th>Area of Practice</th>
+              <th>Salary</th>
               <th>Description</th>
               <th>Link</th>
             </tr>
@@ -214,6 +239,10 @@
                 <th>City</th>
                 <th>State</th>
                 <th>Zip Code</th>
+                <th>Job Type</th>
+                <th>Position</th>
+                <th>Area of Practice</th>
+                <th>Salary</th>
                 <th>Description</th>
                 <th>Link</th>
               </tr>

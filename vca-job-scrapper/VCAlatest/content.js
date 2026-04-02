@@ -5,12 +5,56 @@ let scrapingState = null;
 let totalPagesToScrape = 3;
 let floatingBox = null;
 const SKIP_KEYWORDS = ['Relief', 'Intern', 'Locum'];
+
+// Whitelist keywords from jobs.docx - only save jobs whose title matches at least one keyword
+const ALLOWED_POSITION_KEYWORDS = [
+  // General Practice / Emergency / Urgent Care - Doctors
+  'medical director', 'associate veterinarian', 'veterinarian', 'dvm', 'vmd',
+  'emergency veterinarian', 'er vet', 'er veterinarian', 'er dvm',
+  'urgent care veterinarian', 'urgent veterinarian', 'quick care veterinarian',
+  'relief veterinarian', 'relief dvm', 'relief emergency', 'locum veterinarian',
+  'gp vet',
+  // Equine / Bovine / Exotics
+  'equine veterinarian', 'equine vet', 'equine dvm', 'bovine veterinarian',
+  'large animal', 'avian veterinarian', 'exotics veterinarian', 'avian vet', 'exotics vet',
+  // Specialty Care - Doctors
+  'criticalist', 'dacvecc', 'ecc',
+  'oncologist', 'medical oncologist', 'radiation oncologist', 'medonc', 'radonc', 'dacvr-ro',
+  'internist', 'internal medicine', 'dacvim', 'acvim', 'saim',
+  'neurologist', 'neurosurgeon',
+  'cardiologist',
+  'dentist', 'oral surgeon', 'davdc',
+  'dermatologist', 'dacvd', 'acvd',
+  'surgeon', 'dacvs', 'acvs',
+  'radiologist', 'dacvr', 'acvr', 'diagnostic imaging',
+  'ophthalmologist', 'dacvo', 'acvo',
+  'anesthesiologist', 'dacvaa', 'acvaa',
+  'theriogenologist', 'dact',
+  'rehabilitation therapist', 'ccrt', 'canine rehabilitation',
+  'board certified', 'residency trained', 'veterinary specialist',
+  'specialty', 'specialist',
+  // Technicians
+  'veterinary technician', 'vet tech', 'veterinary nurse', 'vet nurse',
+  'veterinary technician specialist', 'vts',
+  'cvt', 'lvt', 'rvt',
+  // Assistants
+  'veterinary assistant', 'vet assistant', 'vet assist',
+  // Front Desk / Admin
+  'receptionist', 'veterinary receptionist', 'front desk', 'customer service representative',
+  'csr', 'front office manager', 'medical records', 'billing',
+  // Externs
+  'extern', 'externship', 'pre-vet', 'pre vet',
+  // Sterile Processing
+  'sterile processing', 'crcst', 'surgical processing',
+];
+
 let skippedJobsStats = {
   total: 0,
   byKeyword: {
     Relief: 0,
     Intern: 0,
-    Locum: 0
+    Locum: 0,
+    'Not in whitelist': 0
   }
 };
 
@@ -497,7 +541,7 @@ let scrapingInterval = null;
 function startScrapingFromBox() {
   isScrapingActive = true;
   currentPage = 1;
-  skippedJobsStats = { total: 0, byKeyword: { Relief: 0, Intern: 0, Locum: 0 } };
+  skippedJobsStats = { total: 0, byKeyword: { Relief: 0, Intern: 0, Locum: 0, 'Not in whitelist': 0 } };
   chrome.storage.local.set({ skippedJobsStats });
   // Initialize scraping state
   scrapingState = {
@@ -584,7 +628,7 @@ async function stopScraping() {
 async function startScraping() {
   isScrapingActive = true;
   currentPage = 1;
-  skippedJobsStats = { total: 0, byKeyword: { Relief: 0, Intern: 0, Locum: 0 } };
+  skippedJobsStats = { total: 0, byKeyword: { Relief: 0, Intern: 0, Locum: 0, 'Not in whitelist': 0 } };
   await chrome.storage.local.set({ skippedJobsStats });
   
   // Initialize scraping state
@@ -795,25 +839,43 @@ async function scrapePage(pageNumber, existingIds) {
   
   for (let i = 0; i < jobItems.length && isScrapingActive; i++) {
     const jobItem = jobItems[i];
-    const jobData = extractJobData(jobItem);
-    
-    if (jobData && !existingIds.has(jobData.departmentId)) {
-      // Check for skip keywords (exact word, case-insensitive)
-      let skipped = false;
-      for (const keyword of SKIP_KEYWORDS) {
-        const regex = new RegExp(`\\b${keyword}\\b`, 'i');
-        if (regex.test(jobData.title)) {
-          skippedJobsStats.total++;
-          skippedJobsStats.byKeyword[keyword]++;
-          skipped = true;
-          break;
+    const jobDataResult = extractJobData(jobItem);
+
+    if (!jobDataResult) continue;
+
+    // extractJobData now returns an array (one per location)
+    for (const jobData of jobDataResult) {
+      if (!existingIds.has(jobData.departmentId)) {
+        // Check for skip keywords (exact word, case-insensitive)
+        let skipped = false;
+        for (const keyword of SKIP_KEYWORDS) {
+          const regex = new RegExp(`\\b${keyword}\\b`, 'i');
+          if (regex.test(jobData.title)) {
+            skippedJobsStats.total++;
+            skippedJobsStats.byKeyword[keyword]++;
+            skipped = true;
+            break;
+          }
+        }
+
+        // Check whitelist - title must match at least one allowed keyword from jobs.docx
+        if (!skipped) {
+          const titleLower = jobData.title.toLowerCase();
+          const isAllowed = ALLOWED_POSITION_KEYWORDS.some(keyword => titleLower.includes(keyword));
+          if (!isAllowed) {
+            skippedJobsStats.total++;
+            skippedJobsStats.byKeyword['Not in whitelist']++;
+            skipped = true;
+            console.log(`Skipped (not in whitelist): "${jobData.title}"`);
+          }
+        }
+
+        if (!skipped) {
+          pageJobs.push(jobData);
         }
       }
-      if (!skipped) {
-        pageJobs.push(jobData);
-      }
     }
-    
+
     // Reduced delay for faster processing
     await new Promise(resolve => setTimeout(resolve, 20));
   }
@@ -1020,21 +1082,33 @@ function extractJobDetails() {
 function extractJobData(jobItem) {
   try {
     // Extract Department ID
-    const departmentId = jobItem.querySelector('[data-ph-at-job-id-text]')?.getAttribute('data-ph-at-job-id-text') || 
+    const departmentId = jobItem.querySelector('[data-ph-at-job-id-text]')?.getAttribute('data-ph-at-job-id-text') ||
                         jobItem.querySelector('.jobId span:last-child')?.textContent?.trim() || '';
-    
+
     // Extract Title
     const titleElement = jobItem.querySelector('.job-title span') || jobItem.querySelector('[data-ph-at-job-title-text]');
     const title = titleElement?.textContent?.trim() || titleElement?.getAttribute('data-ph-at-job-title-text') || '';
-    
-    // Extract Location
-    const locationElement = jobItem.querySelector('.job-location') || jobItem.querySelector('[data-ph-at-job-location-text]');
-    let location = '';
+
+    // Extract Location - use attribute first (most reliable), then text content
+    const locationElement = jobItem.querySelector('[data-ph-at-job-location-text]') || jobItem.querySelector('.job-location');
+    let fullLocationText = '';
     if (locationElement) {
-      location = locationElement.textContent?.replace('Location', '').trim() || 
-                locationElement.getAttribute('data-ph-at-job-location-text') || '';
+      // Prefer the data attribute which has clean location text
+      const attrLoc = locationElement.getAttribute('data-ph-at-job-location-text') || '';
+      if (attrLoc) {
+        fullLocationText = attrLoc;
+      } else {
+        // Fallback to text content but strip the title if it's mixed in
+        let locText = locationElement.textContent?.replace('Location', '').trim() || '';
+        // Remove the job title from the beginning if it got mixed in
+        if (title && locText.startsWith(title)) {
+          locText = locText.substring(title.length).trim();
+        }
+        fullLocationText = locText;
+      }
     }
-    
+    console.log(`Job "${title}" raw location:`, fullLocationText);
+
     // Extract Category
     let category = '';
     const categoryElement = jobItem.querySelector('[data-ph-at-job-category-text]');
@@ -1047,7 +1121,7 @@ function extractJobData(jobItem) {
         category = Array.from(multiCategoryItems).map(item => item.textContent.trim()).join(', ');
       }
     }
-    
+
     // Extract URL - Use more specific selectors to get the correct job link
     // Priority 1: Link with data attribute (most specific)
     let linkElement = jobItem.querySelector('[data-ph-at-id="job-link"]');
@@ -1072,7 +1146,6 @@ function extractJobData(jobItem) {
     // VALIDATION: Ensure URL matches the Department ID to prevent wrong URL assignment
     if (url && departmentId && !url.includes(departmentId)) {
       console.warn(`URL mismatch! Department ID: ${departmentId}, URL: ${url}`);
-      // Try to find the correct URL by department ID
       const correctLink = jobItem.querySelector(`a[href*="${departmentId}"]`);
       if (correctLink) {
         console.log(`Fixed URL mismatch. Using: ${correctLink.href}`);
@@ -1089,37 +1162,57 @@ function extractJobData(jobItem) {
 
     // Fix for when job type is incorrectly parsed as the title
     if (jobType.toLowerCase().includes('veterinarian') || jobType.length > 20) {
-      jobType = ''; // Reset if it looks like a title instead of "Full time" / "Part time"
+      jobType = '';
     }
-    
+
     // Validate required fields
     if (!departmentId || !title) {
       console.warn('Missing required fields for job item:', { departmentId, title });
       return null;
     }
 
-    // Final validation: Log if URL doesn't match department ID
-    if (validatedUrl && !validatedUrl.includes(departmentId)) {
-      console.error('❌ CRITICAL: URL does not match Department ID!', {
-        departmentId,
-        title,
-        url: validatedUrl,
-        jobItem: jobItem.outerHTML.substring(0, 200) + '...'
-      });
-    } else if (validatedUrl) {
-      console.log('✅ URL validated:', { departmentId, url: validatedUrl });
+    // Check for multiple locations
+    // VCA shows: "Las Vegas, Nevada, United States of America Reno, Nevada, United States of America"
+    const locations = [];
+    const locParts = fullLocationText.split(/United States of America|USA/i).filter(s => s.replace(/[,\s]+/g, '').trim());
+    if (locParts.length > 1) {
+      for (const part of locParts) {
+        let cleaned = part.replace(/[,\s]+$/, '').replace(/^[,\s]+/, '').trim();
+        if (!cleaned) continue;
+        const commaIdx = cleaned.lastIndexOf(',');
+        if (commaIdx === -1) continue;
+        const segments = cleaned.split(',').map(s => s.trim()).filter(Boolean);
+        if (segments.length >= 2) {
+          const locationSegments = segments.slice(-2);
+          locations.push(locationSegments.join(', ') + ', United States of America');
+        }
+      }
     }
 
-    return {
+    // If multiple locations found, return one job per location
+    if (locations.length > 1) {
+      console.log(`Job "${title}" has ${locations.length} locations:`, locations);
+      return locations.map((loc, i) => ({
+        departmentId: i === 0 ? departmentId : departmentId + '-loc' + (i + 1),
+        title: title,
+        location: loc,
+        category: category,
+        url: validatedUrl,
+        jobType: jobType,
+        scrapedAt: new Date().toISOString()
+      }));
+    }
+
+    return [{
       departmentId: departmentId,
       title: title,
-      location: location,
+      location: fullLocationText,
       category: category,
-      url: validatedUrl,  // Use validated URL that matches department ID
+      url: validatedUrl,
       jobType: jobType,
       scrapedAt: new Date().toISOString()
-    };
-    
+    }];
+
   } catch (error) {
     console.error('Error extracting job data:', error);
     return null;

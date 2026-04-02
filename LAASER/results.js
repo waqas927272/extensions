@@ -52,12 +52,18 @@ document.addEventListener('DOMContentLoaded', () => {
   const closeResultsBtn = document.getElementById('closeResultsBtn');
   const copyResultsBtn = document.getElementById('copyResults');
 
+  const fetchDetailsBtn = document.getElementById('fetchDetails');
+  const withDetailsEl = document.getElementById('withDetails');
+
   let storedJobs = [];
   let uniqueJobs = [];
   let duplicateJobs = [];
   let webhooks = [];
   let currentJobIndex = 0;
   let isGettingDescriptions = false;
+  let isFetchingDetails = false;
+  let detailsQueue = [];
+  let currentDetailsIndex = 0;
 
   const STORAGE_KEY = 'laaserJobs';
   const PARENT_CLIENT_NAME = 'Los Angeles Animal Specialty Emergency and Rehabilitation (LAASER)';
@@ -138,9 +144,11 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateStats() {
     const total = storedJobs.length;
     const withDesc = storedJobs.filter(job => job.description).length;
+    const withDet = storedJobs.filter(job => job.detailsFetched).length;
     totalRecordsEl.textContent = total;
     withDescriptionsEl.textContent = withDesc;
     pendingDescriptionsEl.textContent = total - withDesc;
+    withDetailsEl.textContent = withDet;
   }
 
   function buildRowHtml(job, index, actualIndex, type) {
@@ -160,8 +168,11 @@ document.addEventListener('DOMContentLoaded', () => {
       <td class="job-title">${escapeHtml(job.title)}</td>
       <td class="job-type-cell">${escapeHtml(job.jobType || 'N/A')}</td>
       <td class="salary-cell">${escapeHtml(job.salary || 'N/A')}</td>
+      <td>${escapeHtml(job.hospitalName || 'N/A')}</td>
       <td class="city-cell">${escapeHtml(job.city || 'N/A')}</td>
       <td class="state-cell">${escapeHtml(job.state || 'N/A')}</td>
+      <td>${escapeHtml(job.position || 'N/A')}</td>
+      <td>${escapeHtml(job.areaOfPractice || 'N/A')}</td>
       <td class="description-cell">${descriptionHtml}</td>
       <td><a href="${job.link}" target="_blank" class="link-btn">Open &rarr;</a></td>
     `;
@@ -176,7 +187,7 @@ document.addEventListener('DOMContentLoaded', () => {
       updateStats();
 
       if (storedJobs.length === 0) {
-        jobRecordsTableBody.innerHTML = `<tr><td colspan="11" class="no-records">
+        jobRecordsTableBody.innerHTML = `<tr><td colspan="14" class="no-records">
           <svg class="no-records-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
             <polyline points="14 2 14 8 20 8"></polyline>
@@ -218,7 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ) : duplicateJobs;
 
       if (filteredUnique.length === 0) {
-        jobRecordsTableBody.innerHTML = `<tr><td colspan="11" class="no-records"><p class="no-records-text">No jobs match your search.</p></td></tr>`;
+        jobRecordsTableBody.innerHTML = `<tr><td colspan="14" class="no-records"><p class="no-records-text">No jobs match your search.</p></td></tr>`;
       } else {
         filteredUnique.forEach((job, index) => {
           const row = document.createElement('tr');
@@ -234,7 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
           duplicateRecordsTableBody.appendChild(row);
         });
       } else if (duplicateJobs.length > 0) {
-        duplicateRecordsTableBody.innerHTML = `<tr><td colspan="11" class="no-records"><p class="no-records-text">No duplicates match your search.</p></td></tr>`;
+        duplicateRecordsTableBody.innerHTML = `<tr><td colspan="14" class="no-records"><p class="no-records-text">No duplicates match your search.</p></td></tr>`;
       }
 
       document.querySelectorAll('.view-desc-btn').forEach(btn => {
@@ -288,8 +299,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const jobsPayload = selectedJobs.map(job => ({
       parent_client: PARENT_CLIENT_NAME, job_id: job.jobId || '', job_title: job.title || '',
-      job_type: job.jobType || '', salary: job.salary || '', city: job.city || '',
-      state: job.state || '', description: job.description || '', link: job.link || ''
+      job_type: job.jobType || '', salary: job.salary || '', hospital: job.hospitalName || '',
+      city: job.city || '', state: job.state || '', position: job.position || '',
+      area_of_practice: job.areaOfPractice || '', description: job.description || '', link: job.link || ''
     }));
 
     const batches = [];
@@ -428,6 +440,90 @@ document.addEventListener('DOMContentLoaded', () => {
   resultsModal.addEventListener('click', (e) => { if (e.target === resultsModal) hideResultsModal(); });
 
   // Webhook functions
+  // ==================== FETCH DETAILS FUNCTIONS ====================
+
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === 'detailsFetched') {
+      const details = request.details || {};
+      const jobIndex = request.jobIndex;
+
+      chrome.storage.local.get([STORAGE_KEY], (result) => {
+        const jobs = result[STORAGE_KEY] || [];
+        if (jobs[jobIndex]) {
+          if (details.hospitalName) jobs[jobIndex].hospitalName = details.hospitalName;
+          if (details.streetAddress) jobs[jobIndex].streetAddress = details.streetAddress;
+          if (details.city) jobs[jobIndex].city = details.city;
+          if (details.state) jobs[jobIndex].state = details.state;
+          if (details.postalCode) jobs[jobIndex].postalCode = details.postalCode;
+          if (details.jobType) jobs[jobIndex].jobType = details.jobType;
+          if (details.salary) jobs[jobIndex].salary = details.salary;
+          if (details.position) jobs[jobIndex].position = details.position;
+          if (details.areaOfPractice) jobs[jobIndex].areaOfPractice = details.areaOfPractice;
+          jobs[jobIndex].detailsFetched = true;
+
+          chrome.storage.local.set({ [STORAGE_KEY]: jobs }, () => {
+            storedJobs = jobs;
+            displayRecords(searchInput.value);
+
+            if (isFetchingDetails) {
+              currentDetailsIndex++;
+              const percent = Math.round((currentDetailsIndex / detailsQueue.length) * 100);
+              progressBar.style.width = `${percent}%`;
+              progressText.textContent = `${currentDetailsIndex} / ${detailsQueue.length} details`;
+
+              if (currentDetailsIndex < detailsQueue.length) {
+                setTimeout(() => processNextDetail(), 1500);
+              } else {
+                finishDetailsFetching();
+              }
+            }
+          });
+        }
+      });
+    }
+  });
+
+  function fetchDetails() {
+    if (isFetchingDetails) return;
+    const jobsToFetch = storedJobs.map((job, index) => ({ job, index })).filter(item => !item.job.detailsFetched);
+    if (jobsToFetch.length === 0) {
+      if (confirm('All jobs already have details. Re-fetch for all jobs?')) {
+        detailsQueue = storedJobs.map((job, index) => ({ job, index }));
+      } else return;
+    } else {
+      if (!confirm(`Fetch details for ${jobsToFetch.length} jobs by opening each job page. Continue?`)) return;
+      detailsQueue = jobsToFetch;
+    }
+    currentDetailsIndex = 0;
+    isFetchingDetails = true;
+    fetchDetailsBtn.disabled = true;
+    fetchDetailsBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg> Fetching Details...';
+    progressSection.classList.remove('hidden');
+    progressBar.style.width = '0%';
+    progressText.textContent = `0 / ${detailsQueue.length} details`;
+    processNextDetail();
+  }
+
+  function processNextDetail() {
+    if (currentDetailsIndex >= detailsQueue.length) { finishDetailsFetching(); return; }
+    const { job, index } = detailsQueue[currentDetailsIndex];
+    chrome.runtime.sendMessage({ action: 'fetchJobDetails', url: job.link, jobIndex: index });
+  }
+
+  function finishDetailsFetching() {
+    isFetchingDetails = false;
+    fetchDetailsBtn.disabled = false;
+    fetchDetailsBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg> Fetch Details';
+    progressSection.classList.add('hidden');
+    detailsQueue = [];
+    currentDetailsIndex = 0;
+    alert('Details fetching completed!');
+  }
+
+  fetchDetailsBtn.addEventListener('click', fetchDetails);
+
+  // ==================== WEBHOOK FUNCTIONS ====================
+
   function loadWebhooks() { chrome.storage.local.get(['laaserWebhook'], (r) => { webhooks = r.laaserWebhook || []; renderWebhooks(); }); }
   function saveWebhooks() { chrome.storage.local.set({ laaserWebhook: webhooks }); }
   function renderWebhooks() {
@@ -482,8 +578,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const jobsPayload = storedJobs.map(job => ({
       parent_client: PARENT_CLIENT_NAME, job_id: job.jobId || '', job_title: job.title || '',
-      job_type: job.jobType || '', salary: job.salary || '', city: job.city || '',
-      state: job.state || '', description: job.description || '', link: job.link || ''
+      job_type: job.jobType || '', salary: job.salary || '', hospital: job.hospitalName || '',
+      city: job.city || '', state: job.state || '', position: job.position || '',
+      area_of_practice: job.areaOfPractice || '', description: job.description || '', link: job.link || ''
     }));
 
     const batches = [];

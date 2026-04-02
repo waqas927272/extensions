@@ -4,7 +4,10 @@ let allJobs = [];
 let filteredJobs = [];
 let selectedIndexes = new Set();
 let isGettingDescriptions = false;
+let isFetchingDetails = false;
 let currentJobIndex = 0;
+let detailsQueue = [];
+let currentDetailsIndex = 0;
 
 document.addEventListener('DOMContentLoaded', () => {
   loadJobs();
@@ -62,6 +65,7 @@ function setupEventListeners() {
 
   document.getElementById('select-duplicates-btn').addEventListener('click', selectDuplicates);
   document.getElementById('get-descriptions-btn').addEventListener('click', getDescriptions);
+  document.getElementById('fetch-details-btn').addEventListener('click', getDetails);
   document.getElementById('export-csv-btn').addEventListener('click', exportCSV);
   document.getElementById('delete-selected-btn').addEventListener('click', deleteSelected);
 
@@ -158,6 +162,9 @@ function renderJobs() {
       <td class="col-hospital">${escapeHtml(job.hospitalName || '')}</td>
       <td class="col-location">${escapeHtml(job.city)}${job.state ? ', ' + escapeHtml(job.state) : ''}</td>
       <td class="col-category">${escapeHtml(job.category || '')}</td>
+      <td class="col-practice">${escapeHtml(job.areaOfPractice || '-')}</td>
+      <td class="col-position">${escapeHtml(job.position || '-')}</td>
+      <td class="col-salary">${escapeHtml(job.salary || '-')}</td>
       <td class="col-type">${escapeHtml(job.jobType || '')}</td>
       <td class="col-description">
         ${hasDescription
@@ -324,6 +331,95 @@ async function processNextJob() {
   }
 }
 
+async function getDetails() {
+  if (isFetchingDetails) {
+    alert('Already fetching details. Please wait...');
+    return;
+  }
+
+  const data = await chrome.storage.local.get(['vipvetJobs']);
+  const jobs = data.vipvetJobs || [];
+
+  // Filter jobs that need details
+  const jobsToFetch = jobs.map((job, index) => ({ job, index }))
+    .filter(item => !item.job.areaOfPractice || !item.job.position || !item.job.salary);
+
+  if (jobsToFetch.length === 0) {
+    if (confirm('All jobs already have details. Do you want to re-fetch details for all jobs?')) {
+      detailsQueue = jobs.map((job, index) => ({ job, index }));
+    } else {
+      return;
+    }
+  } else {
+    detailsQueue = jobsToFetch;
+  }
+
+  isFetchingDetails = true;
+  currentDetailsIndex = 0;
+
+  const btn = document.getElementById('fetch-details-btn');
+  btn.disabled = true;
+  btn.textContent = 'Fetching Details...';
+
+  // Show progress
+  const progressSection = document.getElementById('progress-bar');
+  const progressLabel = document.getElementById('progress-label');
+  const progressDetail = document.getElementById('progress-detail');
+  const progressFill = document.getElementById('progress-fill');
+  progressSection.classList.remove('hidden');
+  progressLabel.textContent = 'Fetching Details';
+  progressDetail.textContent = `0 / ${detailsQueue.length}`;
+  progressFill.style.width = '0%';
+
+  processNextDetail();
+}
+
+async function processNextDetail() {
+  if (currentDetailsIndex >= detailsQueue.length) {
+    isFetchingDetails = false;
+    const btn = document.getElementById('fetch-details-btn');
+    btn.disabled = false;
+    btn.textContent = 'Fetch Details';
+    document.getElementById('progress-bar').classList.add('hidden');
+    alert('All job details have been fetched!');
+    return;
+  }
+
+  const { job, index } = detailsQueue[currentDetailsIndex];
+  
+  // Update progress
+  const progressFill = document.getElementById('progress-fill');
+  const progressDetail = document.getElementById('progress-detail');
+  progressDetail.textContent = `${currentDetailsIndex + 1} / ${detailsQueue.length}`;
+  progressFill.style.width = `${((currentDetailsIndex + 1) / detailsQueue.length) * 100}%`;
+
+  // Convert to Greenhouse embed URL
+  let ghUrl = job.link;
+  let ghJobId = '';
+  let boardName = '';
+
+  const ghJidMatch = job.link.match(/gh_jid=(\d+)/);
+  const jobsPathMatch = job.link.match(/greenhouse\.io\/([^\/]+)\/jobs\/(\d+)/);
+
+  if (jobsPathMatch) {
+    boardName = jobsPathMatch[1];
+    ghJobId = jobsPathMatch[2];
+  } else if (ghJidMatch) {
+    ghJobId = ghJidMatch[1];
+    boardName = 'veterinaryinnovativepartners';
+  }
+
+  if (ghJobId && boardName) {
+    ghUrl = `https://boards.greenhouse.io/embed/job_app?for=${boardName}&token=${ghJobId}`;
+  }
+
+  chrome.runtime.sendMessage({
+    action: 'fetchJobDetails',
+    url: ghUrl,
+    jobIndex: index
+  });
+}
+
 // Listen for description saved messages from background.js
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === 'descriptionSaved') {
@@ -338,6 +434,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         setTimeout(() => processNextJob(), 1500);
       }
     });
+  } else if (message.action === 'detailsFetched') {
+    const details = message.details;
+    chrome.storage.local.get(['vipvetJobs'], (data) => {
+      const jobs = data.vipvetJobs || [];
+      if (jobs[message.jobIndex]) {
+        const job = jobs[message.jobIndex];
+        job.areaOfPractice = details.areaOfPractice || job.areaOfPractice || '';
+        job.position = details.position || job.position || '';
+        job.salary = details.salary || job.salary || '';
+        
+        if (details.hospitalName) job.hospitalName = details.hospitalName;
+        if (details.city) job.city = details.city;
+        if (details.state) job.state = details.state;
+
+        chrome.storage.local.set({ vipvetJobs: jobs }, () => {
+          allJobs = jobs;
+          filteredJobs = [...jobs];
+          filterJobs();
+          updateStats();
+
+          if (isFetchingDetails) {
+            currentDetailsIndex++;
+            setTimeout(() => processNextDetail(), 1500);
+          }
+        });
+      }
+    });
   }
 });
 
@@ -346,7 +469,7 @@ function exportCSV() {
     ? Array.from(selectedIndexes).map(i => filteredJobs[i])
     : allJobs;
 
-  const headers = ['Title', 'Req ID', 'Hospital Name', 'City', 'State', 'Country', 'Category', 'Job Type', 'Link', 'Description'];
+  const headers = ['Title', 'Req ID', 'Hospital Name', 'City', 'State', 'Country', 'Category', 'Area of Practice', 'Position', 'Salary', 'Job Type', 'Link', 'Description'];
 
   const csvContent = [
     headers.join(','),
@@ -358,6 +481,9 @@ function exportCSV() {
       `"${escapeCSV(job.state)}"`,
       `"${escapeCSV(job.country)}"`,
       `"${escapeCSV(job.category)}"`,
+      `"${escapeCSV(job.areaOfPractice)}"`,
+      `"${escapeCSV(job.position)}"`,
+      `"${escapeCSV(job.salary)}"`,
       `"${escapeCSV(job.jobType)}"`,
       `"${escapeCSV(job.link)}"`,
       `"${escapeCSV(job.description)}"`
@@ -431,6 +557,9 @@ async function sendToWebhook() {
     state: job.state || '',
     country: job.country || '',
     category: job.category || '',
+    area_of_practice: job.areaOfPractice || '',
+    position: job.position || '',
+    salary: job.salary || '',
     job_type: job.jobType || '',
     link: job.link || '',
     description: job.description || ''
@@ -520,6 +649,9 @@ function showJobDetails(job) {
     <p><strong>Hospital:</strong> ${escapeHtml(job.hospitalName || 'N/A')}</p>
     <p><strong>Location:</strong> ${escapeHtml(job.city)}${job.state ? ', ' + escapeHtml(job.state) : ''}</p>
     <p><strong>Category:</strong> ${escapeHtml(job.category || 'N/A')}</p>
+    <p><strong>Area of Practice:</strong> ${escapeHtml(job.areaOfPractice || 'N/A')}</p>
+    <p><strong>Position:</strong> ${escapeHtml(job.position || 'N/A')}</p>
+    <p><strong>Salary:</strong> ${escapeHtml(job.salary || 'N/A')}</p>
     <p><strong>Job Type:</strong> ${escapeHtml(job.jobType || 'N/A')}</p>
     <p><strong>Link:</strong> <a href="${escapeHtml(job.link)}" target="_blank">${escapeHtml(job.link)}</a></p>
     <hr style="margin: 16px 0;">

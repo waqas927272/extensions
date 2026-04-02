@@ -23,7 +23,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["description-scraper.js"],
+      "resources": ["description-scraper.js", "detail-extractor.js"],
       "matches": ["<all_urls>"]
     }
   ]

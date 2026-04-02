@@ -29,7 +29,8 @@
     {
       "resources": [
         "vpp-content.js",
-        "greenhouse-description-scraper.js"
+        "greenhouse-description-scraper.js",
+        "detail-extractor.js"
       ],
       "matches": ["<all_urls>"]
     }

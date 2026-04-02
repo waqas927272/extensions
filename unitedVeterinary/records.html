@@ -390,7 +390,7 @@
     .table-container {
       background: white;
       border-radius: 24px;
-      overflow: hidden;
+      overflow-x: auto;
       box-shadow:
         0 4px 24px rgba(0, 0, 0, 0.06),
         0 1px 2px rgba(0, 0, 0, 0.04);
@@ -399,6 +399,7 @@
 
     table {
       width: 100%;
+      min-width: 1300px;
       border-collapse: collapse;
     }
 
@@ -755,6 +756,12 @@
           </svg>
           Get Descriptions
         </button>
+        <button class="btn btn-primary" id="fetchDetailsBtn">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M11,7V13L16.2,16.2L17,14.9L12.5,12.2V7H11Z"/>
+          </svg>
+          Fetch Details
+        </button>
         <button class="btn btn-primary" id="exportCsv">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
             <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M12,19L8,15H10.5V12H13.5V15H16L12,19Z"/>
@@ -789,6 +796,9 @@
             <th data-sort="hospital">Hospital</th>
             <th data-sort="city">City</th>
             <th data-sort="location">Location</th>
+            <th data-sort="areaOfPractice">Area of Practice</th>
+            <th data-sort="position">Position</th>
+            <th data-sort="salary">Salary</th>
             <th data-sort="link">Link</th>
             <th>Description</th>
           </tr>

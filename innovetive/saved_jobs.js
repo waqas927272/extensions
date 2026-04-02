@@ -2,7 +2,10 @@ let allJobs = [];
 let filteredJobs = [];
 let currentSort = { field: null, direction: 'asc' };
 let isGettingDescriptions = false;
+let isFetchingDetails = false;
 let currentJobIndex = 0;
+let detailsQueue = [];
+let currentDetailsIndex = 0;
 
 document.addEventListener('DOMContentLoaded', () => {
   loadJobs();
@@ -13,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('save-webhook-btn').addEventListener('click', saveWebhookConfig);
   document.getElementById('send-webhook-btn').addEventListener('click', sendToWebhook);
   document.getElementById('get-descriptions-btn').addEventListener('click', startGetDescriptions);
+  document.getElementById('fetch-details-btn').addEventListener('click', getJobDetails);
 
   // Webhook toggle
   document.getElementById('toggle-webhook').addEventListener('click', toggleWebhook);
@@ -204,6 +208,8 @@ function displayJobs(jobs) {
       <td>${escapeHtml(job.hospitalName || '')}</td>
       <td>${escapeHtml(job.location || '')}</td>
       <td>${escapeHtml(job.areaOfPractice || '')}</td>
+      <td>${escapeHtml(job.position || '-')}</td>
+      <td>${escapeHtml(job.salary || '-')}</td>
       <td>${escapeHtml(job.jobType || '')}</td>
       <td style="text-align:center;">${descHtml}</td>
       <td style="text-align:center;">${linkHtml}</td>
@@ -220,13 +226,15 @@ function exportCSV() {
     return;
   }
 
-  let csv = 'Job Title,Job ID,Hospital,Location,Area of Practice,Job Type,Link,Description\n';
+  let csv = 'Job Title,Job ID,Hospital,Location,Area of Practice,Position,Salary,Job Type,Link,Description\n';
   jobs.forEach(job => {
     csv += `"${(job.jobTitle || '').replace(/"/g, '""')}",`;
     csv += `"${(job.jobId || '').replace(/"/g, '""')}",`;
     csv += `"${(job.hospitalName || '').replace(/"/g, '""')}",`;
     csv += `"${(job.location || '').replace(/"/g, '""')}",`;
     csv += `"${(job.areaOfPractice || '').replace(/"/g, '""')}",`;
+    csv += `"${(job.position || '').replace(/"/g, '""')}",`;
+    csv += `"${(job.salary || '').replace(/"/g, '""')}",`;
     csv += `"${(job.jobType || '').replace(/"/g, '""')}",`;
     csv += `"${(job.link || '').replace(/"/g, '""')}",`;
     csv += `"${((job.description || '').replace(/[\r\n]+/g, ' ')).replace(/"/g, '""')}"\n`;
@@ -332,6 +340,8 @@ async function sendToWebhook() {
     hospital: job.hospitalName || '',
     location: job.location || '',
     area_of_practice: job.areaOfPractice || '',
+    position: job.position || '',
+    salary: job.salary || '',
     job_type: job.jobType || '',
     link: job.link || '',
     description: job.description || ''
@@ -440,8 +450,8 @@ chrome.runtime.onMessage.addListener((request) => {
       const percent = Math.round((withDesc / total) * 100);
       const progressBar = document.getElementById('progress-bar');
       const progressText = document.getElementById('progress-text');
-      progressBar.style.width = `${percent}%`;
-      progressText.textContent = `${withDesc} / ${total}`;
+      if (progressBar) progressBar.style.width = `${percent}%`;
+      if (progressText) progressText.textContent = `${withDesc} / ${total}`;
 
       if (isGettingDescriptions) {
         setTimeout(() => {
@@ -449,8 +459,105 @@ chrome.runtime.onMessage.addListener((request) => {
         }, 1500);
       }
     });
+  } else if (request.action === 'detailsFetched') {
+    const details = request.details;
+    chrome.storage.local.get(['jobs'], (data) => {
+      const jobs = data.jobs || [];
+      if (jobs[request.jobIndex]) {
+        const job = jobs[request.jobIndex];
+        job.areaOfPractice = details.areaOfPractice || job.areaOfPractice || '';
+        job.position = details.position || job.position || '';
+        job.salary = details.salary || job.salary || '';
+        
+        if (details.hospitalName) job.hospitalName = details.hospitalName;
+        if (details.city && details.state) {
+           job.location = `${details.city}, ${details.state}`;
+        } else if (details.city) {
+           job.location = details.city;
+        }
+
+        chrome.storage.local.set({ jobs: jobs }, () => {
+          allJobs = jobs;
+          filteredJobs = [...jobs];
+          applyFilters();
+          updateStats();
+
+          if (isFetchingDetails) {
+            currentDetailsIndex++;
+            setTimeout(() => processNextDetail(), 1500);
+          }
+        });
+      }
+    });
   }
 });
+
+async function getJobDetails() {
+  if (isFetchingDetails) {
+    alert('Already fetching details. Please wait...');
+    return;
+  }
+
+  const data = await chrome.storage.local.get(['jobs']);
+  const jobs = data.jobs || [];
+
+  const jobsToFetch = jobs.map((job, index) => ({ job, index }))
+    .filter(item => !item.job.areaOfPractice || !item.job.position || !item.job.salary || item.job.salary === '-');
+
+  if (jobsToFetch.length === 0) {
+    if (confirm('All jobs already have details. Do you want to re-fetch details for all jobs?')) {
+      detailsQueue = jobs.map((job, index) => ({ job, index }));
+    } else {
+      return;
+    }
+  } else {
+    detailsQueue = jobsToFetch;
+  }
+
+  isFetchingDetails = true;
+  currentDetailsIndex = 0;
+
+  const btn = document.getElementById('fetch-details-btn');
+  btn.disabled = true;
+  btn.textContent = 'Processing...';
+
+  // Show progress
+  const progressSection = document.getElementById('progress-section');
+  const progressBar = document.getElementById('progress-bar');
+  const progressText = document.getElementById('progress-text');
+  progressSection.classList.remove('hidden');
+  progressBar.style.width = '0%';
+  progressText.textContent = `0 / ${detailsQueue.length}`;
+
+  processNextDetail();
+}
+
+async function processNextDetail() {
+  if (currentDetailsIndex >= detailsQueue.length) {
+    isFetchingDetails = false;
+    const btn = document.getElementById('fetch-details-btn');
+    btn.disabled = false;
+    btn.textContent = 'Fetch Details';
+    document.getElementById('progress-section').classList.add('hidden');
+    alert('All job details have been fetched!');
+    return;
+  }
+
+  const { job, index } = detailsQueue[currentDetailsIndex];
+  
+  // Update progress
+  const progressBar = document.getElementById('progress-bar');
+  const progressText = document.getElementById('progress-text');
+  const percent = Math.round(((currentDetailsIndex + 1) / detailsQueue.length) * 100);
+  progressBar.style.width = `${percent}%`;
+  progressText.textContent = `${currentDetailsIndex + 1} / ${detailsQueue.length}`;
+
+  chrome.runtime.sendMessage({
+    action: 'fetchJobDetails',
+    url: job.link,
+    jobIndex: index
+  });
+}
 
 function processNextJob() {
   // Refresh from storage first

@@ -15,8 +15,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentSortDirection = 'asc';
     let allJobs = [];
     let isGettingDescriptions = false;
+    let isFetchingDetails = false;
     let currentJobIndex = 0;
+    let detailsQueue = [];
+    let currentDetailsIndex = 0;
     const getDescriptionsBtn = document.getElementById('getDescriptionsBtn');
+    const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
 
     if (!tableBody) {
         console.error('Could not find table body!');
@@ -71,14 +75,20 @@ document.addEventListener('DOMContentLoaded', () => {
             row.insertCell(2).textContent = job.hospital;
             row.insertCell(3).textContent = job.city;
             row.insertCell(4).textContent = job.location;
-            const linkCell = row.insertCell(5);
+            
+            // New Detail Columns
+            row.insertCell(5).textContent = job.areaOfPractice || '-';
+            row.insertCell(6).textContent = job.position || '-';
+            row.insertCell(7).textContent = job.salary || '-';
+
+            const linkCell = row.insertCell(8);
             const link = document.createElement('a');
             link.href = job.link;
             link.textContent = 'View Job';
             link.target = '_blank';
             linkCell.appendChild(link);
 
-            const descCell = row.insertCell(6);
+            const descCell = row.insertCell(9);
             if (job.description) {
                 const descDiv = document.createElement('div');
                 descDiv.className = 'description-cell';
@@ -128,7 +138,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const headers = ['Job Title', 'Job ID', 'Hospital', 'City', 'Location', 'Link', 'Description'];
+        const headers = ['Job Title', 'Job ID', 'Hospital', 'City', 'Location', 'Area of Practice', 'Position', 'Salary', 'Link', 'Description'];
         const csvContent = [
             headers.join(','),
             ...allJobs.map(job => [
@@ -137,6 +147,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 `"${(job.hospital || '').replace(/"/g, '""')}"`,
                 `"${(job.city || '').replace(/"/g, '""')}"`,
                 `"${(job.location || '').replace(/"/g, '""')}"`,
+                `"${(job.areaOfPractice || '').replace(/"/g, '""')}"`,
+                `"${(job.position || '').replace(/"/g, '""')}"`,
+                `"${(job.salary || '').replace(/"/g, '""')}"`,
                 `"${(job.link || '').replace(/"/g, '""')}"`,
                 `"${(job.description || '').replace(/"/g, '""')}"`
             ].join(','))
@@ -236,11 +249,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const jobsToSend = jobs.map(job => ({
             job_title: job.title,
             job_id: job.jobId || '',
+            department_id: job.jobId || '',
             hospital: job.hospital,
             parent_client: "United Veterinary Care",
             city: job.city,
             state: job.state,
             location: job.location,
+            area_of_practice: job.areaOfPractice || '',
+            position: job.position || '',
+            salary: job.salary || '',
+            job_type: job.jobType || '',
+            url: job.link,
             link: job.link,
             description: job.description || ''
         }));
@@ -427,6 +446,149 @@ document.addEventListener('DOMContentLoaded', () => {
                     setTimeout(() => processNextJob(), 1500);
                 }
             });
+        } else if (message.action === 'detailsFetched') {
+            const detailsList = Array.isArray(message.details) ? message.details : [message.details];
+            
+            chrome.storage.local.get(['scrapedJobs'], (data) => {
+                const jobs = data.scrapedJobs || [];
+                const originalJobIndex = message.jobIndex;
+                const originalJob = jobs[originalJobIndex];
+
+                if (originalJob && detailsList.length > 0) {
+                    const isMultiPlaceholder = originalJob.location && (
+                        originalJob.location.toLowerCase().includes('location') || 
+                        originalJob.location.includes('...')
+                    );
+
+                    if (isMultiPlaceholder && detailsList.length > 1) {
+                        // Split into multiple records
+                        const firstDetails = detailsList[0];
+                        originalJob.areaOfPractice = firstDetails.areaOfPractice || originalJob.areaOfPractice || '';
+                        originalJob.position = firstDetails.position || originalJob.position || '';
+                        originalJob.salary = firstDetails.salary || originalJob.salary || '';
+                        originalJob.jobId = `${originalJob.jobId}-1`;
+                        if (firstDetails.hospitalName) originalJob.hospital = firstDetails.hospitalName;
+                        if (firstDetails.city) originalJob.city = firstDetails.city;
+                        if (firstDetails.state) originalJob.state = firstDetails.state;
+                        if (firstDetails.location) originalJob.location = firstDetails.location;
+
+                        for (let i = 1; i < detailsList.length; i++) {
+                            const extraLoc = detailsList[i];
+                            const newJob = { 
+                                ...originalJob,
+                                jobId: `${originalJob.jobId.split('-')[0]}-${i + 1}`,
+                                city: extraLoc.city,
+                                state: extraLoc.state,
+                                location: extraLoc.location || `${extraLoc.city}, ${extraLoc.state}`
+                            };
+                            jobs.push(newJob);
+                        }
+                    } else {
+                        // Just update the single record
+                        const details = detailsList[0];
+                        originalJob.areaOfPractice = details.areaOfPractice || originalJob.areaOfPractice || '';
+                        originalJob.position = details.position || originalJob.position || '';
+                        originalJob.salary = details.salary || originalJob.salary || '';
+                        if (details.hospitalName) originalJob.hospital = details.hospitalName;
+                        if (details.city) originalJob.city = details.city;
+                        if (details.state) originalJob.state = details.state;
+                        if (details.location && !isMultiPlaceholder) originalJob.location = details.location;
+                    }
+
+                    chrome.storage.local.set({ scrapedJobs: jobs }, () => {
+                        allJobs = jobs;
+                        displayRecords(allJobs);
+                        if (isFetchingDetails) {
+                            currentDetailsIndex++;
+                            setTimeout(() => processNextDetail(), 1500);
+                        }
+                    });
+                } else if (isFetchingDetails) {
+                    currentDetailsIndex++;
+                    setTimeout(() => processNextDetail(), 1500);
+                }
+            });
         }
     });
+
+    // ============ FETCH DETAILS ============
+
+    fetchDetailsBtn.addEventListener('click', async () => {
+        if (isFetchingDetails) {
+            showToast('Already fetching details. Please wait...', 'error');
+            return;
+        }
+
+        const data = await chrome.storage.local.get(['scrapedJobs']);
+        const jobs = data.scrapedJobs || [];
+
+        const jobsToFetch = jobs.map((job, index) => ({ job, index }))
+            .filter(item => {
+                const needsDetails = !item.job.areaOfPractice || !item.job.position || !item.job.salary;
+                const isMultiLocation = item.job.location && (item.job.location.toLowerCase().includes('location') || item.job.location.includes('...'));
+                return needsDetails || isMultiLocation;
+            });
+
+        if (jobsToFetch.length === 0) {
+            if (confirm('All jobs already have details. Do you want to re-fetch details for all jobs?')) {
+                detailsQueue = jobs.map((job, index) => ({ job, index }));
+            } else {
+                return;
+            }
+        } else {
+            detailsQueue = jobsToFetch;
+        }
+
+        isFetchingDetails = true;
+        currentDetailsIndex = 0;
+        fetchDetailsBtn.disabled = true;
+        fetchDetailsBtn.textContent = 'Fetching Details...';
+
+        // Show progress
+        const progressSection = document.getElementById('progressSection');
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const progressLabel = document.getElementById('progressLabel');
+        progressSection.classList.remove('hidden');
+        progressLabel.textContent = 'Fetching Details';
+        progressText.textContent = `0 / ${detailsQueue.length}`;
+        progressBar.style.width = '0%';
+
+        processNextDetail();
+    });
+
+    async function processNextDetail() {
+        if (currentDetailsIndex >= detailsQueue.length) {
+            finishDetailsFetching();
+            return;
+        }
+
+        const { job, index } = detailsQueue[currentDetailsIndex];
+
+        // Update progress
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        progressText.textContent = `${currentDetailsIndex + 1} / ${detailsQueue.length}`;
+        progressBar.style.width = `${((currentDetailsIndex + 1) / detailsQueue.length) * 100}%`;
+        fetchDetailsBtn.textContent = `Fetching... (${currentDetailsIndex + 1}/${detailsQueue.length})`;
+
+        chrome.runtime.sendMessage({
+            action: 'fetchJobDetails',
+            url: job.link,
+            jobIndex: index
+        });
+    }
+
+    function finishDetailsFetching() {
+        isFetchingDetails = false;
+        fetchDetailsBtn.disabled = false;
+        fetchDetailsBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M11,7V13L16.2,16.2L17,14.9L12.5,12.2V7H11Z"/>
+            </svg>
+            Fetch Details
+        `;
+        document.getElementById('progressSection').classList.add('hidden');
+        showToast('Details fetching completed!', 'success');
+    }
 });

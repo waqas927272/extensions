@@ -40,12 +40,17 @@ document.addEventListener('DOMContentLoaded', () => {
   const modalBody = document.getElementById('modal-body');
   const modalClose = document.getElementById('modal-close');
 
+  const fetchDetailsBtn = document.getElementById('fetch-details-btn');
+
   let jobs = [];
   let filteredJobs = [];
   let selectedIds = new Set();
   let duplicateIds = new Set();
   let isGettingDescriptions = false;
+  let isFetchingDetails = false;
   let currentJobIndex = 0;
+  let detailsQueue = [];
+  let currentDetailsIndex = 0;
 
   // Initialize
   init();
@@ -155,8 +160,12 @@ document.addEventListener('DOMContentLoaded', () => {
         </td>
         <td class="col-reqid">${escapeHtml(job.reqId)}</td>
         <td class="col-hospital">${escapeHtml(job.hospitalName)}</td>
+        <td class="col-address">${escapeHtml(job.streetAddress || 'N/A')}</td>
         <td class="col-location">${escapeHtml(job.city)}${job.state ? ', ' + escapeHtml(job.state) : ''}</td>
         <td class="col-category">${escapeHtml(job.category)}</td>
+        <td class="col-position">${escapeHtml(job.position || 'N/A')}</td>
+        <td class="col-aop">${escapeHtml(job.areaOfPractice || 'N/A')}</td>
+        <td class="col-salary">${escapeHtml(job.salary || 'N/A')}</td>
         <td class="col-description">
           ${hasDescription
             ? `<span class="description-preview" title="${escapeHtml(job.description.substring(0, 200))}">${escapeHtml(job.description.substring(0, 50))}...</span>`
@@ -448,7 +457,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const headers = ['Title', 'Job ID', 'Req ID', 'Hospital Name', 'Street Address', 'City', 'State', 'Postal Code', 'Country', 'Category', 'Job Type', 'Link', 'Description'];
+    const headers = ['Title', 'Job ID', 'Req ID', 'Hospital Name', 'Street Address', 'City', 'State', 'Postal Code', 'Country', 'Category', 'Position', 'Area of Practice', 'Salary', 'Job Type', 'Link', 'Description'];
     const rows = jobsToExport.map(job => [
       job.title,
       job.jobId || '',
@@ -460,6 +469,9 @@ document.addEventListener('DOMContentLoaded', () => {
       job.postalCode || '',
       job.country,
       job.category,
+      job.position || '',
+      job.areaOfPractice || '',
+      job.salary || '',
       job.jobType || '',
       job.link,
       (job.description || '').replace(/[\r\n]+/g, ' ')
@@ -535,6 +547,9 @@ document.addEventListener('DOMContentLoaded', () => {
       zip_code: job.postalCode || '',
       country: job.country || 'USA',
       category: job.category || '',
+      position: job.position || '',
+      area_of_practice: job.areaOfPractice || '',
+      salary: job.salary || '',
       req_id: job.reqId || '',
       link: job.link || '',
       description: job.description || ''
@@ -610,6 +625,99 @@ document.addEventListener('DOMContentLoaded', () => {
     resultMsg += `Successful: ${successCount} | Failed: ${errorCount}`;
     alert(resultMsg);
   });
+
+  // ==================== FETCH DETAILS FUNCTIONS ====================
+
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === 'detailsFetched') {
+      const details = request.details || {};
+      const jobIndex = request.jobIndex;
+
+      chrome.storage.local.get(['encoreJobs'], (result) => {
+        const allJobs = result.encoreJobs || [];
+        if (allJobs[jobIndex]) {
+          if (details.hospitalName) allJobs[jobIndex].hospitalName = details.hospitalName;
+          if (details.streetAddress) allJobs[jobIndex].streetAddress = details.streetAddress;
+          if (details.city) allJobs[jobIndex].city = details.city;
+          if (details.state) allJobs[jobIndex].state = details.state;
+          if (details.postalCode) allJobs[jobIndex].postalCode = details.postalCode;
+          if (details.jobType) allJobs[jobIndex].jobType = details.jobType;
+          if (details.salary) allJobs[jobIndex].salary = details.salary;
+          if (details.position) allJobs[jobIndex].position = details.position;
+          if (details.areaOfPractice) allJobs[jobIndex].areaOfPractice = details.areaOfPractice;
+          if (details.category) allJobs[jobIndex].category = details.category;
+          allJobs[jobIndex].detailsFetched = true;
+
+          chrome.storage.local.set({ encoreJobs: allJobs }, () => {
+            jobs = allJobs;
+            detectDuplicates();
+            filterJobs();
+            renderTable();
+            updateStats();
+
+            if (isFetchingDetails) {
+              currentDetailsIndex++;
+              progressLabel.textContent = 'Fetching details...';
+              progressDetail.textContent = `${currentDetailsIndex} / ${detailsQueue.length}`;
+              progressFill.style.width = `${Math.round((currentDetailsIndex / detailsQueue.length) * 100)}%`;
+
+              if (currentDetailsIndex < detailsQueue.length) {
+                setTimeout(() => processNextDetail(), 1500);
+              } else {
+                finishDetailsFetching();
+              }
+            }
+          });
+        }
+      });
+    }
+  });
+
+  function fetchDetails() {
+    if (isFetchingDetails) return;
+
+    const jobsToFetch = jobs.map((job, index) => ({ job, index }))
+      .filter(item => !item.job.detailsFetched);
+
+    if (jobsToFetch.length === 0) {
+      if (confirm('All jobs already have details. Re-fetch for all jobs?')) {
+        detailsQueue = jobs.map((job, index) => ({ job, index }));
+      } else return;
+    } else {
+      if (!confirm(`Fetch details for ${jobsToFetch.length} jobs by opening each job page. Continue?`)) return;
+      detailsQueue = jobsToFetch;
+    }
+
+    currentDetailsIndex = 0;
+    isFetchingDetails = true;
+    fetchDetailsBtn.disabled = true;
+    fetchDetailsBtn.textContent = 'Fetching Details...';
+
+    progressBar.classList.remove('hidden');
+    progressLabel.textContent = 'Fetching details...';
+    progressDetail.textContent = `0 / ${detailsQueue.length}`;
+    progressFill.style.width = '0%';
+
+    processNextDetail();
+  }
+
+  function processNextDetail() {
+    if (currentDetailsIndex >= detailsQueue.length) { finishDetailsFetching(); return; }
+    const { job, index } = detailsQueue[currentDetailsIndex];
+    chrome.runtime.sendMessage({ action: 'fetchJobDetails', url: job.link, jobIndex: index });
+  }
+
+  function finishDetailsFetching() {
+    isFetchingDetails = false;
+    fetchDetailsBtn.disabled = false;
+    fetchDetailsBtn.textContent = 'Fetch Details';
+    progressBar.classList.add('hidden');
+    detailsQueue = [];
+    currentDetailsIndex = 0;
+    alert('Details fetching completed!');
+  }
+
+  fetchDetailsBtn.addEventListener('click', fetchDetails);
 
   // Escape HTML
   function escapeHtml(text) {
