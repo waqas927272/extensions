@@ -6,7 +6,8 @@
       "Bash(node --check:*)",
       "Bash(python3 -c \":*)",
       "Bash(python -c \":*)",
-      "Bash(python:*)"
+      "Bash(python:*)",
+      "Bash(ls:*)"
     ]
   }
 }

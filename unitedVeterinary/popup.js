@@ -8,16 +8,21 @@ document.addEventListener('DOMContentLoaded', () => {
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         if (request.action === 'scrapingStatus') {
             const spinnerText = loadingIndicator.querySelector('span');
-            if (request.status === 'starting') {
+            if (request.status === 'starting' || request.status === 'scraping') {
                 loadingIndicator.classList.remove('hidden');
-                if (spinnerText) spinnerText.textContent = 'Scraping... Please wait.';
+                if (spinnerText) spinnerText.textContent = request.message || 'Scraping... Please wait.';
             } else if (request.status === 'in_progress') {
-                if (spinnerText) spinnerText.textContent = `Scraping page ${request.currentPage}...`;
+                loadingIndicator.classList.remove('hidden');
+                if (spinnerText) spinnerText.textContent = `Scraping page ${request.currentPage}... (${request.scrapedCount} jobs found)`;
             } else if (request.status === 'completed' || request.status === 'stopped') {
                 loadingIndicator.classList.add('hidden');
                 if (spinnerText) spinnerText.textContent = 'Scraping... Please wait.'; // Reset for next time
                 if (request.status === 'completed') {
-                    alert(`Scraping completed! Scraped ${request.scrapedCount} jobs.`);
+                    if (request.message && request.message.includes('Fetch Details')) {
+                        alert(request.message);
+                    } else {
+                        alert(`Scraping completed! Scraped ${request.scrapedCount} jobs. Click "View Records" then "Fetch Details" to get additional information.`);
+                    }
                 } else {
                     alert(`Scraping stopped. Scraped ${request.scrapedCount} jobs so far.`);
                 }

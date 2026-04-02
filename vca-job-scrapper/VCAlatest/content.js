@@ -1107,6 +1107,14 @@ function extractJobData(jobItem) {
         fullLocationText = locText;
       }
     }
+
+    // Validate: Skip multi-location placeholder text
+    if (fullLocationText &&
+        (fullLocationText.toLowerCase().includes('this job is available in') ||
+         fullLocationText.toLowerCase().includes('multiple locations'))) {
+      fullLocationText = ''; // Clear it so Fetch Details can populate it properly
+    }
+
     console.log(`Job "${title}" raw location:`, fullLocationText);
 
     // Extract Category

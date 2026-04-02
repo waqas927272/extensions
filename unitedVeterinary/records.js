@@ -22,6 +22,61 @@ document.addEventListener('DOMContentLoaded', () => {
     const getDescriptionsBtn = document.getElementById('getDescriptionsBtn');
     const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
 
+    const BASE_GAP = 1500; // 1.5 seconds between Nominatim requests
+    let lastNominatimRequest = 0;
+
+    // Nominatim API function to get street address and zip code
+    async function fetchAddressFromNominatim(hospitalName, city, state) {
+        // Ensure 1.5 second gap between requests
+        const now = Date.now();
+        const timeSinceLastRequest = now - lastNominatimRequest;
+        if (timeSinceLastRequest < BASE_GAP) {
+            await new Promise(resolve => setTimeout(resolve, BASE_GAP - timeSinceLastRequest));
+        }
+
+        try {
+            const query = `${hospitalName}, ${city}, ${state}, USA`;
+            const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=1`;
+
+            const response = await fetch(url, {
+                headers: {
+                    'User-Agent': 'UnitedVeterinaryJobScraper/1.1'
+                }
+            });
+
+            lastNominatimRequest = Date.now();
+
+            if (!response.ok) {
+                return { streetAddress: '', zipCode: '' };
+            }
+
+            const data = await response.json();
+
+            if (data && data.length > 0) {
+                const result = data[0];
+                const address = result.address || {};
+
+                // Build street address
+                let streetAddress = '';
+                if (address.house_number && address.road) {
+                    streetAddress = `${address.house_number} ${address.road}`;
+                } else if (address.road) {
+                    streetAddress = address.road;
+                }
+
+                // Get zip code
+                const zipCode = address.postcode || '';
+
+                return { streetAddress, zipCode };
+            }
+
+            return { streetAddress: '', zipCode: '' };
+        } catch (error) {
+            console.error('Nominatim API error:', error);
+            return { streetAddress: '', zipCode: '' };
+        }
+    }
+
     if (!tableBody) {
         console.error('Could not find table body!');
         return;
@@ -64,31 +119,47 @@ document.addEventListener('DOMContentLoaded', () => {
         table.style.display = 'table';
         emptyState.classList.add('hidden');
 
-        jobs.forEach(job => {
+        jobs.forEach((job, index) => {
             const row = tableBody.insertRow();
-            row.insertCell(0).textContent = job.title;
-            const jobIdCell = row.insertCell(1);
+
+            // Mark new jobs with green background
+            if (job.isNewLocation) {
+                row.style.backgroundColor = '#d1fae5';
+            }
+
+            // Serial Number
+            const serialCell = row.insertCell(0);
+            serialCell.textContent = index + 1;
+            serialCell.style.fontWeight = '600';
+            serialCell.style.color = '#475569';
+            serialCell.style.textAlign = 'center';
+
+            row.insertCell(1).textContent = job.title;
+            const jobIdCell = row.insertCell(2);
             jobIdCell.textContent = job.jobId || 'N/A';
             jobIdCell.style.fontFamily = "'Consolas', 'Monaco', monospace";
             jobIdCell.style.fontSize = '12px';
             jobIdCell.style.color = '#64748b';
-            row.insertCell(2).textContent = job.hospital;
-            row.insertCell(3).textContent = job.city;
-            row.insertCell(4).textContent = job.location;
-            
-            // New Detail Columns
-            row.insertCell(5).textContent = job.areaOfPractice || '-';
-            row.insertCell(6).textContent = job.position || '-';
-            row.insertCell(7).textContent = job.salary || '-';
+            row.insertCell(3).textContent = job.hospital;
+            row.insertCell(4).textContent = job.streetAddress || '-';
+            row.insertCell(5).textContent = job.city;
+            row.insertCell(6).textContent = job.state;
+            row.insertCell(7).textContent = job.zipCode || '-';
+            row.insertCell(8).textContent = job.location;
 
-            const linkCell = row.insertCell(8);
+            // Detail Columns
+            row.insertCell(9).textContent = job.areaOfPractice || '-';
+            row.insertCell(10).textContent = job.position || '-';
+            row.insertCell(11).textContent = job.salary || '-';
+
+            const linkCell = row.insertCell(12);
             const link = document.createElement('a');
             link.href = job.link;
             link.textContent = 'View Job';
             link.target = '_blank';
             linkCell.appendChild(link);
 
-            const descCell = row.insertCell(9);
+            const descCell = row.insertCell(13);
             if (job.description) {
                 const descDiv = document.createElement('div');
                 descDiv.className = 'description-cell';
@@ -108,10 +179,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const term = searchTerm.toLowerCase();
         const filtered = allJobs.filter(job =>
-            job.title.toLowerCase().includes(term) ||
-            job.hospital.toLowerCase().includes(term) ||
-            job.city.toLowerCase().includes(term) ||
-            job.location.toLowerCase().includes(term)
+            (job.title || '').toLowerCase().includes(term) ||
+            (job.hospital || '').toLowerCase().includes(term) ||
+            (job.city || '').toLowerCase().includes(term) ||
+            (job.state || '').toLowerCase().includes(term) ||
+            (job.location || '').toLowerCase().includes(term) ||
+            (job.streetAddress || '').toLowerCase().includes(term) ||
+            (job.zipCode || '').toLowerCase().includes(term) ||
+            (job.areaOfPractice || '').toLowerCase().includes(term) ||
+            (job.position || '').toLowerCase().includes(term)
         );
 
         displayRecords(filtered);
@@ -138,14 +214,18 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const headers = ['Job Title', 'Job ID', 'Hospital', 'City', 'Location', 'Area of Practice', 'Position', 'Salary', 'Link', 'Description'];
+        const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Street Address', 'City', 'State', 'Zip Code', 'Location', 'Area of Practice', 'Position', 'Salary', 'Link', 'Description'];
         const csvContent = [
             headers.join(','),
-            ...allJobs.map(job => [
+            ...allJobs.map((job, index) => [
+                index + 1,
                 `"${(job.title || '').replace(/"/g, '""')}"`,
                 `"${(job.jobId || '').replace(/"/g, '""')}"`,
                 `"${(job.hospital || '').replace(/"/g, '""')}"`,
+                `"${(job.streetAddress || '').replace(/"/g, '""')}"`,
                 `"${(job.city || '').replace(/"/g, '""')}"`,
+                `"${(job.state || '').replace(/"/g, '""')}"`,
+                `"${(job.zipCode || '').replace(/"/g, '""')}"`,
                 `"${(job.location || '').replace(/"/g, '""')}"`,
                 `"${(job.areaOfPractice || '').replace(/"/g, '""')}"`,
                 `"${(job.position || '').replace(/"/g, '""')}"`,
@@ -251,9 +331,11 @@ document.addEventListener('DOMContentLoaded', () => {
             job_id: job.jobId || '',
             department_id: job.jobId || '',
             hospital: job.hospital,
+            street_address: job.streetAddress || '',
             parent_client: "United Veterinary Care",
             city: job.city,
             state: job.state,
+            zip_code: job.zipCode || '',
             location: job.location,
             area_of_practice: job.areaOfPractice || '',
             position: job.position || '',
@@ -448,51 +530,74 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         } else if (message.action === 'detailsFetched') {
             const detailsList = Array.isArray(message.details) ? message.details : [message.details];
-            
-            chrome.storage.local.get(['scrapedJobs'], (data) => {
+
+            chrome.storage.local.get(['scrapedJobs'], async (data) => {
                 const jobs = data.scrapedJobs || [];
                 const originalJobIndex = message.jobIndex;
                 const originalJob = jobs[originalJobIndex];
 
                 if (originalJob && detailsList.length > 0) {
                     const isMultiPlaceholder = originalJob.location && (
-                        originalJob.location.toLowerCase().includes('location') || 
+                        originalJob.location.toLowerCase().includes('location') ||
                         originalJob.location.includes('...')
                     );
 
-                    if (isMultiPlaceholder && detailsList.length > 1) {
-                        // Split into multiple records
+                    if (detailsList.length > 1) {
+                        // Multi-location job - split into multiple records
                         const firstDetails = detailsList[0];
                         originalJob.areaOfPractice = firstDetails.areaOfPractice || originalJob.areaOfPractice || '';
                         originalJob.position = firstDetails.position || originalJob.position || '';
                         originalJob.salary = firstDetails.salary || originalJob.salary || '';
-                        originalJob.jobId = `${originalJob.jobId}-1`;
+                        originalJob.description = firstDetails.description || originalJob.description || '';
                         if (firstDetails.hospitalName) originalJob.hospital = firstDetails.hospitalName;
                         if (firstDetails.city) originalJob.city = firstDetails.city;
                         if (firstDetails.state) originalJob.state = firstDetails.state;
                         if (firstDetails.location) originalJob.location = firstDetails.location;
 
+                        // Fetch address for first location
+                        const address1 = await fetchAddressFromNominatim(originalJob.hospital, originalJob.city, originalJob.state);
+                        originalJob.streetAddress = address1.streetAddress;
+                        originalJob.zipCode = address1.zipCode;
+
+                        // Create new entries for additional locations
                         for (let i = 1; i < detailsList.length; i++) {
                             const extraLoc = detailsList[i];
-                            const newJob = { 
+                            const baseJobId = originalJob.jobId.split('-')[0];
+                            const newJob = {
                                 ...originalJob,
-                                jobId: `${originalJob.jobId.split('-')[0]}-${i + 1}`,
-                                city: extraLoc.city,
-                                state: extraLoc.state,
-                                location: extraLoc.location || `${extraLoc.city}, ${extraLoc.state}`
+                                jobId: `${baseJobId}-${i + 1}`,
+                                city: extraLoc.city || '',
+                                state: extraLoc.state || '',
+                                location: extraLoc.location || `${extraLoc.city}, ${extraLoc.state}`,
+                                areaOfPractice: extraLoc.areaOfPractice || originalJob.areaOfPractice || '',
+                                position: extraLoc.position || originalJob.position || '',
+                                salary: extraLoc.salary || originalJob.salary || '',
+                                isNewLocation: true // Mark as new
                             };
+
+                            // Fetch address for this location
+                            const addressNew = await fetchAddressFromNominatim(newJob.hospital, newJob.city, newJob.state);
+                            newJob.streetAddress = addressNew.streetAddress;
+                            newJob.zipCode = addressNew.zipCode;
+
                             jobs.push(newJob);
                         }
                     } else {
-                        // Just update the single record
+                        // Single location - just update the record
                         const details = detailsList[0];
                         originalJob.areaOfPractice = details.areaOfPractice || originalJob.areaOfPractice || '';
                         originalJob.position = details.position || originalJob.position || '';
                         originalJob.salary = details.salary || originalJob.salary || '';
+                        originalJob.description = details.description || originalJob.description || '';
                         if (details.hospitalName) originalJob.hospital = details.hospitalName;
                         if (details.city) originalJob.city = details.city;
                         if (details.state) originalJob.state = details.state;
-                        if (details.location && !isMultiPlaceholder) originalJob.location = details.location;
+                        if (details.location) originalJob.location = details.location;
+
+                        // Fetch address
+                        const address = await fetchAddressFromNominatim(originalJob.hospital, originalJob.city, originalJob.state);
+                        originalJob.streetAddress = address.streetAddress;
+                        originalJob.zipCode = address.zipCode;
                     }
 
                     chrome.storage.local.set({ scrapedJobs: jobs }, () => {

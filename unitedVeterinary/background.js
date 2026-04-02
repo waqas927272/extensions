@@ -97,21 +97,8 @@ async function scrapeAndGoToNext() {
         for (const job of scrapedJobsOnPage) {
             if (!isScraping) break;
             if (job.link && !uniqueJobLinks.has(job.link)) {
-                const isMulti = job.location && (job.location.toLowerCase().includes('location') || job.location.includes('...'));
-                if (isMulti) {
-                    console.log(`Splitting multi-location job: ${job.title}`);
-                    const detailsList = await fetchDetailsAsync(job.link);
-                    if (detailsList && detailsList.length > 0) {
-                        detailsList.forEach((details, index) => {
-                            allScrapedJobs.push({
-                                ...job, ...details,
-                                jobId: `${job.jobId}-${index + 1}`,
-                                hospital: details.hospitalName || job.hospital,
-                                location: details.location || `${details.city}, ${details.state}`
-                            });
-                        });
-                    } else { allScrapedJobs.push(job); }
-                } else { allScrapedJobs.push(job); }
+                // Just add the job without fetching details
+                allScrapedJobs.push(job);
                 uniqueJobLinks.add(job.link);
             }
         }
@@ -123,7 +110,11 @@ async function scrapeAndGoToNext() {
         const response = await chrome.tabs.sendMessage(currentTabId, { action: 'clickNextPage' }, { frameId: currentIframeFrameId });
         clickedNext = response?.clicked || false;
     } catch (e) { isScraping = false; return; }
-    if (!clickedNext) { isScraping = false; sendStatusToPopup('completed', '', allScrapedJobs.length); }
+
+    if (!clickedNext) {
+        isScraping = false;
+        sendStatusToPopup('completed', `Scraping completed! Found ${allScrapedJobs.length} jobs. Use "View Records" to see them and click "Fetch Details" to get additional information.`, allScrapedJobs.length);
+    }
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -147,36 +138,93 @@ async function handleStartScraping(sendResponse) {
     let activeTabs = await chrome.tabs.query({ active: true, currentWindow: true });
     currentTabId = activeTabs[0]?.id;
     if (!currentTabId) { sendResponse({ status: 'error', message: 'No active tab found.' }); return; }
-    isScraping = true; currentPage = 0; allScrapedJobs = []; uniqueJobLinks = new Set();
+
+    isScraping = true;
+    currentPage = 0;
+    allScrapedJobs = [];
+    uniqueJobLinks = new Set();
+
     sendStatusToPopup('scraping', 'Applying filters and searching...');
     const iframeFrameId = await findIframeAndInjectContentScript(currentTabId);
-    if (!iframeFrameId) { isScraping = false; sendStatusToPopup('error', 'Failed to find job listings iframe.'); return; }
+    if (!iframeFrameId) {
+        isScraping = false;
+        sendStatusToPopup('error', 'Failed to find job listings iframe.');
+        return;
+    }
+
     try {
-        await chrome.scripting.executeScript({
+        const result = await chrome.scripting.executeScript({
             target: { tabId: currentTabId, frameIds: [iframeFrameId] },
             func: () => {
                 const categorySelect = document.getElementById('jv-search-category');
+                const jobTypeSelect = document.getElementById('jv-search-type');
                 const searchButton = document.querySelector('.jv-search-form .jv-button-primary');
-                if (categorySelect && searchButton) {
-                    const targetCategories = ["Specialty Diplomate", "Surgeon Diplomate", "Veterinarian (ER)", "Veterinarian (Gen Practice)"];
-                    Array.from(categorySelect.options).forEach(opt => {
-                        const val = opt.value.trim();
-                        const txt = opt.text.trim();
-                        opt.selected = targetCategories.includes(val) || targetCategories.includes(txt);
-                    });
-                    categorySelect.dispatchEvent(new Event('change', { bubbles: true }));
-                    searchButton.click();
-                    return true;
+
+                if (!categorySelect || !jobTypeSelect || !searchButton) {
+                    return { success: false, message: 'Could not find filter elements' };
                 }
-                return false;
+
+                // Select Category options
+                const targetCategories = ["Specialty Diplomate", "Surgeon Diplomate", "Veterinarian (ER)", "Veterinarian (Gen Practice)"];
+                let categoryCount = 0;
+                Array.from(categorySelect.options).forEach(opt => {
+                    const val = opt.value.trim();
+                    const txt = opt.text.trim();
+                    if (targetCategories.includes(val) || targetCategories.includes(txt)) {
+                        opt.selected = true;
+                        categoryCount++;
+                    }
+                });
+                categorySelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+                // Select Job Type options
+                const targetJobTypes = ["Full-Time", "Part Time or Full Time", "Part-Time"];
+                let jobTypeCount = 0;
+                Array.from(jobTypeSelect.options).forEach(opt => {
+                    const val = opt.value.trim();
+                    const txt = opt.text.trim();
+                    if (targetJobTypes.includes(val) || targetJobTypes.includes(txt)) {
+                        opt.selected = true;
+                        jobTypeCount++;
+                    }
+                });
+                jobTypeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+
+                // Click search button
+                searchButton.click();
+
+                return {
+                    success: true,
+                    message: 'Filters applied and search initiated',
+                    categoryCount: categoryCount,
+                    jobTypeCount: jobTypeCount
+                };
             }
         });
-        setTimeout(async () => {
-            const newIframeId = await findIframeAndInjectContentScript(currentTabId);
-            if (newIframeId) scrapeAndGoToNext();
-            else { isScraping = false; sendStatusToPopup('error', 'Failed to re-initialize scraping after search.'); }
-        }, 4000);
-    } catch (e) { isScraping = false; sendStatusToPopup('error', 'Error applying filters: ' + e.message); }
+
+        const filterResult = result?.[0]?.result;
+        if (filterResult?.success) {
+            sendStatusToPopup('scraping', 'Filters applied, waiting for results to load...', 0);
+            // Wait for page to load, then wait 3 more seconds, then start scraping
+            setTimeout(async () => {
+                const newIframeId = await findIframeAndInjectContentScript(currentTabId);
+                if (newIframeId) {
+                    sendStatusToPopup('scraping', 'Starting to scrape jobs...', 0);
+                    scrapeAndGoToNext();
+                } else {
+                    isScraping = false;
+                    sendStatusToPopup('error', 'Failed to re-initialize scraping after search.');
+                }
+            }, 7000); // 4 seconds for page load + 3 seconds additional wait
+        } else {
+            isScraping = false;
+            sendStatusToPopup('error', filterResult?.message || 'Failed to apply filters');
+        }
+    } catch (e) {
+        isScraping = false;
+        sendStatusToPopup('error', 'Error applying filters: ' + e.message);
+    }
+
     sendResponse({ status: 'scrapingStarted' });
 }
 
@@ -209,8 +257,12 @@ async function handleFetchDetails(request) {
 }
 
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo) => {
-    if (tabId === currentTabId && changeInfo.status === 'complete' && isScraping) {
+    // Continue scraping on page load when in scraping mode and pagination is active
+    if (tabId === currentTabId && changeInfo.status === 'complete' && isScraping && currentPage > 0) {
         const iframeFrameId = await findIframeAndInjectContentScript(tabId);
-        if (iframeFrameId) setTimeout(scrapeAndGoToNext, 2000);
+        if (iframeFrameId) {
+            // Wait 3 seconds before scraping next page
+            setTimeout(scrapeAndGoToNext, 3000);
+        }
     }
 });

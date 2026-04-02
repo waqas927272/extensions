@@ -178,7 +178,7 @@
     }
 
     .container {
-      max-width: 1500px;
+      max-width: auto;
       margin: 0 auto;
       padding: 40px 48px;
       position: relative;
@@ -399,7 +399,7 @@
 
     table {
       width: 100%;
-      min-width: 1300px;
+      min-width: 1800px;
       border-collapse: collapse;
     }
 
@@ -418,6 +418,16 @@
       cursor: pointer;
       transition: background 0.2s ease;
       user-select: none;
+    }
+
+    th:first-child {
+      text-align: center;
+      width: 60px;
+      cursor: default;
+    }
+
+    th:first-child:hover {
+      background: transparent;
     }
 
     th:hover {
@@ -443,6 +453,11 @@
       transition: background-color 0.2s ease;
     }
 
+    td:first-child {
+      text-align: center;
+      font-weight: 600;
+    }
+
     tbody tr {
       transition: all 0.2s ease;
     }
@@ -458,6 +473,16 @@
 
     tbody tr:last-child td {
       border-bottom: none;
+    }
+
+    /* New location jobs styling */
+    tbody tr[style*="background-color: rgb(209, 250, 229)"] {
+      background-color: #d1fae5 !important;
+      border-left: 4px solid #10b981;
+    }
+
+    tbody tr[style*="background-color: rgb(209, 250, 229)"]:hover {
+      background-color: #a7f3d0 !important;
     }
 
     td a {
@@ -791,10 +816,14 @@
       <table id="jobRecordsTable">
         <thead>
           <tr>
+            <th>#</th>
             <th data-sort="title">Job Title</th>
             <th data-sort="jobId">Job ID</th>
             <th data-sort="hospital">Hospital</th>
+            <th data-sort="streetAddress">Street Address</th>
             <th data-sort="city">City</th>
+            <th data-sort="state">State</th>
+            <th data-sort="zipCode">Zip Code</th>
             <th data-sort="location">Location</th>
             <th data-sort="areaOfPractice">Area of Practice</th>
             <th data-sort="position">Position</th>

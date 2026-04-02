@@ -111,11 +111,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       },
                       {
                         area: 'Emergency Care',
-                        keywords: ['emergency veterinarian', 'er vet', 'er veterinarian', 'er dvm', 'urgent care veterinarian', 'relief emergency veterinarian', 'relief emergency vet']
+                        keywords: ['emergency veterinarian', 'er vet', 'er veterinarian', 'er dvm', 'relief emergency veterinarian', 'relief emergency vet']
                       },
                       {
                         area: 'Urgent Care',
-                        keywords: ['urgent care veterinarian', 'urgent veterinarian']
+                        keywords: ['urgent care veterinarian', 'urgent veterinarian', 'urgent care']
                       },
                       {
                         area: 'General Practice Care / Emergency Care / Urgent Care',
@@ -149,8 +149,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       { position: 'Radiation Oncologist', keywords: ['radiation oncologist', 'dacvr-ro', 'radonc'] },
                       { position: 'Medical Oncologist', keywords: ['medical oncologist', 'medonc', 'dacvim oncology'] },
                       { position: 'Criticalist', keywords: ['criticalist', 'dacvecc', 'emergency & critical care specialist', 'ecc veterinarian', 'critical care'] },
-                      { position: 'Internal Medicine Specialist', keywords: ['internal medicine specialist', 'internal medicine', 'internist', 'veterinary internist', 'saim', 'small animal internal medicine'] },
-                      { position: 'Neurologist', keywords: ['neurologist', 'neurosurgeon', 'veterinary neurologist', 'veterinary neurosurgeon'] },
+                      { position: 'Internist', keywords: ['internal medicine specialist', 'internal medicine', 'internist', 'veterinary internist', 'saim', 'small animal internal medicine'] },
+                      { position: 'Neurologist & Neurosurgeon', keywords: ['neurologist', 'neurosurgeon', 'veterinary neurologist', 'veterinary neurosurgeon'] },
                       { position: 'Cardiologist', keywords: ['cardiologist', 'veterinary cardiologist', 'small animal cardiologist'] },
                       { position: 'Dentist & Oral Surgeon', keywords: ['dentist', 'oral surgeon', 'davdc', 'dental surgeon'] },
                       { position: 'Dermatologist', keywords: ['dermatologist', 'veterinary dermatologist', 'dacvd', 'acvd'] },
@@ -178,7 +178,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       // Emergency / Urgent
                       { position: 'Relief Emergency Veterinarian', keywords: ['relief emergency veterinarian', 'relief emergency vet'] },
                       { position: 'Emergency Veterinarian', keywords: ['emergency veterinarian', 'er vet', 'er veterinarian', 'er dvm'] },
-                      { position: 'Urgent Care Veterinarian', keywords: ['urgent care veterinarian', 'urgent veterinarian'] },
+                      { position: 'Associate Veterinarian', keywords: ['urgent care veterinarian', 'urgent veterinarian', 'urgent care'] },
                       // General Practice
                       { position: 'Medical Director', keywords: ['medical director', 'veterinarian medical director'] },
                       { position: 'Relief Veterinarian', keywords: ['relief veterinarian', 'relief dvm', 'locum veterinarian'] },
@@ -475,7 +475,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     // Helper: clean a single field value (strip HTML tags and trim)
                     function cleanField(val) {
                       if (!val || typeof val !== 'string') return val;
-                      return val.replace(/<\/?[^>]+(>|$)/g, '').trim();
+                      // Strip all HTML tags - handle both complete and incomplete tags
+                      return val.replace(/<[^>]*>/g, '').replace(/<\/?[A-Za-z][^>]*$/g, '').trim();
                     }
 
                     // Helper: extract phone number from text
@@ -850,7 +851,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         // Try location-name or facility-name elements
                         const locNameEl = document.querySelector('.location-name, .facility-name, [data-ph-at-id="job-location-name"]');
                         if (locNameEl) {
-                          const locName = locNameEl.textContent.trim();
+                          const locName = cleanField(locNameEl.textContent.trim());
                           if (locName && locName.length > 3) {
                             hospitalName = locName;
                           }
@@ -876,7 +877,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         const fieldsToCheck = ['facility', 'hospitalName', 'siteName', 'branchName', 'storeName'];
                         for (const field of fieldsToCheck) {
                           if (jobData[field] && typeof jobData[field] === 'string' && jobData[field].trim().length > 2) {
-                            const fieldVal = jobData[field].trim();
+                            const fieldVal = cleanField(jobData[field]).trim();
                             // Only use if it looks like a hospital/facility name
                             if (/(?:hospital|clinic|center|care|veterinary|animal|emergency|medical|specialty|specialists?|pet|vca)/i.test(fieldVal)) {
                               hospitalName = fieldVal;
@@ -888,7 +889,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         if (!hospitalName && jobData.customField && Array.isArray(jobData.customField)) {
                           for (const cf of jobData.customField) {
                             if (cf && cf.name && /hospital|facility|location.*name|site/i.test(cf.name) && cf.value) {
-                              hospitalName = cf.value.trim();
+                              hospitalName = cleanField(cf.value).trim();
                               break;
                             }
                           }
@@ -1057,10 +1058,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                                 areaOfPractice = lookedUpArea;
                             }
                         }
+
+                        // Fallback: if still empty, check if it's a general veterinarian position
+                        if (!areaOfPractice && position) {
+                          const posLower = position.toLowerCase();
+                          if (posLower.includes('veterinarian') || posLower.includes('dvm') || posLower.includes('vmd')) {
+                            areaOfPractice = 'General Practice Care';
+                          }
+                        }
                       } catch (e) {
                           const lookedUpArea = lookupAreaOfPractice(position);
                           if (lookedUpArea) {
                               areaOfPractice = lookedUpArea;
+                          }
+                          // Fallback in catch block too
+                          if (!areaOfPractice && position) {
+                            const posLower = position.toLowerCase();
+                            if (posLower.includes('veterinarian') || posLower.includes('dvm') || posLower.includes('vmd')) {
+                              areaOfPractice = 'General Practice Care';
+                            }
                           }
                       }
 

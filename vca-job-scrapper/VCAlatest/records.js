@@ -511,8 +511,9 @@ document.addEventListener('DOMContentLoaded', function() {
               job.position = details.position || job.position || job.title || '';
               job.salary = details.salary || job.salary || '';
               job.hospitalName = details.hospitalName || job.hospitalName || '';
-              job.city = details.city || job.city || '';
-              job.state = details.state || job.state || '';
+              // For city/state, trust the details result even if empty (validation already done in background.js)
+              if (details.hasOwnProperty('city')) job.city = details.city || '';
+              if (details.hasOwnProperty('state')) job.state = details.state || '';
               job.address = details.address || job.address || '';
               job.phone = details.phone || job.phone || '';
               job.websiteUrl = details.websiteUrl || job.websiteUrl || '';
