@@ -26,8 +26,32 @@ document.addEventListener('DOMContentLoaded', () => {
     const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
     const fetchAddressesBtn = document.getElementById('fetchAddressesBtn');
 
-    const BASE_GAP = 1500; // 1.5 seconds between Nominatim requests
+    const BASE_GAP = 3000; // 3 seconds between Nominatim requests (increased for better results)
     let lastNominatimRequest = 0;
+
+    // State abbreviation to full name mapping
+    const stateAbbreviations = {
+        'AL': 'Alabama', 'AK': 'Alaska', 'AZ': 'Arizona', 'AR': 'Arkansas', 'CA': 'California',
+        'CO': 'Colorado', 'CT': 'Connecticut', 'DE': 'Delaware', 'FL': 'Florida', 'GA': 'Georgia',
+        'HI': 'Hawaii', 'ID': 'Idaho', 'IL': 'Illinois', 'IN': 'Indiana', 'IA': 'Iowa',
+        'KS': 'Kansas', 'KY': 'Kentucky', 'LA': 'Louisiana', 'ME': 'Maine', 'MD': 'Maryland',
+        'MA': 'Massachusetts', 'MI': 'Michigan', 'MN': 'Minnesota', 'MS': 'Mississippi', 'MO': 'Missouri',
+        'MT': 'Montana', 'NE': 'Nebraska', 'NV': 'Nevada', 'NH': 'New Hampshire', 'NJ': 'New Jersey',
+        'NM': 'New Mexico', 'NY': 'New York', 'NC': 'North Carolina', 'ND': 'North Dakota', 'OH': 'Ohio',
+        'OK': 'Oklahoma', 'OR': 'Oregon', 'PA': 'Pennsylvania', 'RI': 'Rhode Island', 'SC': 'South Carolina',
+        'SD': 'South Dakota', 'TN': 'Tennessee', 'TX': 'Texas', 'UT': 'Utah', 'VT': 'Vermont',
+        'VA': 'Virginia', 'WA': 'Washington', 'WV': 'West Virginia', 'WI': 'Wisconsin', 'WY': 'Wyoming',
+        'DC': 'District of Columbia', 'PR': 'Puerto Rico'
+    };
+
+    // Convert state abbreviation to full name if needed
+    function getFullStateName(state) {
+        if (!state) return '';
+        // If it's already a full name (longer than 2 chars), return as is
+        if (state.length > 2) return state;
+        // Convert abbreviation to full name
+        return stateAbbreviations[state.toUpperCase()] || state;
+    }
 
     // ============ LOCAL DETAIL EXTRACTION (mirrors detail-extractor.js) ============
 
@@ -290,77 +314,101 @@ document.addEventListener('DOMContentLoaded', () => {
     // Nominatim API function to get street address and zip code
     // Uses hospital name and LOCATION column (not separate city/state)
     async function fetchAddressFromNominatim(hospitalName, location) {
-        // Ensure 1.5 second gap between requests
+        // Ensure proper gap between requests (3 seconds for better reliability)
         const now = Date.now();
         const timeSinceLastRequest = now - lastNominatimRequest;
         if (timeSinceLastRequest < BASE_GAP) {
             await new Promise(resolve => setTimeout(resolve, BASE_GAP - timeSinceLastRequest));
         }
 
-        try {
-            // Build query with hospital name, location (city, state), and USA
-            const query = `${hospitalName}, ${location}, USA`;
-            const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=3`;
+        // Try multiple query variations for better results
+        const queries = [
+            // Try 1: Full hospital name with location
+            `${hospitalName}, ${location}, USA`,
+            // Try 2: Just location (city, state)
+            `${location}, USA`,
+            // Try 3: Simplified hospital name (remove common suffixes) with location
+            hospitalName.replace(/\s+(Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic))$/i, '').trim() + `, ${location}, USA`
+        ];
 
-            const response = await fetch(url, {
-                headers: {
-                    'User-Agent': 'UnitedVeterinaryJobScraper/1.5'
-                }
-            });
+        for (let i = 0; i < queries.length; i++) {
+            const query = queries[i];
 
-            lastNominatimRequest = Date.now();
+            try {
+                const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=5`;
 
-            if (!response.ok) {
-                console.warn(`Nominatim API returned status ${response.status} for: ${query}`);
-                return { streetAddress: '', zipCode: '', city: '', state: '' };
-            }
-
-            const data = await response.json();
-
-            if (data && data.length > 0) {
-                // Try to find the best match - prefer results with house numbers
-                let bestResult = null;
-
-                for (const result of data) {
-                    const address = result.address || {};
-                    if (address.house_number && address.road) {
-                        bestResult = result;
-                        break;
+                const response = await fetch(url, {
+                    headers: {
+                        'User-Agent': 'UnitedVeterinaryJobScraper/1.6'
                     }
+                });
+
+                lastNominatimRequest = Date.now();
+
+                if (!response.ok) {
+                    console.warn(`Nominatim API returned status ${response.status} for: ${query}`);
+                    continue; // Try next query
                 }
 
-                // If no result with house number, use the first result
-                if (!bestResult) {
-                    bestResult = data[0];
+                const data = await response.json();
+
+                if (data && data.length > 0) {
+                    // Try to find the best match - prefer results with house numbers
+                    let bestResult = null;
+
+                    for (const result of data) {
+                        const address = result.address || {};
+                        if (address.house_number && address.road) {
+                            bestResult = result;
+                            break;
+                        }
+                    }
+
+                    // If no result with house number, use the first result
+                    if (!bestResult) {
+                        bestResult = data[0];
+                    }
+
+                    const address = bestResult.address || {};
+
+                    // Build street address - only include house number and road
+                    let streetAddress = '';
+                    if (address.house_number && address.road) {
+                        streetAddress = `${address.house_number} ${address.road}`;
+                    } else if (address.road) {
+                        streetAddress = address.road;
+                    }
+
+                    // Get zip code
+                    const zipCode = address.postcode || '';
+
+                    // Extract city from Nominatim response (prefer city, then town, then village)
+                    const city = address.city || address.town || address.village || '';
+
+                    // Extract FULL state name from Nominatim (e.g., "California" not "CA")
+                    const state = address.state || '';
+
+                    console.log(`✓ Nominatim SUCCESS (Query ${i+1}/${queries.length}): "${query}"`);
+                    console.log(`  → Street="${streetAddress}", Zip="${zipCode}", City="${city}", State="${state}"`);
+
+                    return { streetAddress, zipCode, city, state };
                 }
 
-                const address = bestResult.address || {};
-
-                // Build street address - only include house number and road
-                let streetAddress = '';
-                if (address.house_number && address.road) {
-                    streetAddress = `${address.house_number} ${address.road}`;
-                } else if (address.road) {
-                    streetAddress = address.road;
+                // If this query didn't return results, wait before trying next one
+                if (i < queries.length - 1) {
+                    console.log(`✗ No results for query ${i+1}: "${query}", trying alternative...`);
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                 }
 
-                // Get zip code
-                const zipCode = address.postcode || '';
-
-                // Extract city and state from Nominatim response
-                const city = address.city || address.town || address.village || '';
-                const state = address.state || '';
-
-                console.log(`Nominatim result for "${query}": Street="${streetAddress}", Zip="${zipCode}", City="${city}", State="${state}"`);
-                return { streetAddress, zipCode, city, state };
+            } catch (error) {
+                console.error(`Nominatim API error for "${query}":`, error);
+                continue; // Try next query
             }
-
-            console.warn(`No Nominatim results found for: ${query}`);
-            return { streetAddress: '', zipCode: '', city: '', state: '' };
-        } catch (error) {
-            console.error('Nominatim API error:', error);
-            return { streetAddress: '', zipCode: '', city: '', state: '' };
         }
+
+        // All queries failed
+        console.warn(`✗ No Nominatim results found after ${queries.length} attempts for: ${hospitalName}, ${location}`);
+        return { streetAddress: '', zipCode: '', city: '', state: '' };
     }
 
     if (!tableBody) {
@@ -1130,7 +1178,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 jobs[index].zipCode = addressData.zipCode || '';
                 // Also populate city and state from Nominatim response
                 jobs[index].city = addressData.city || jobs[index].city || '';
-                jobs[index].state = addressData.state || jobs[index].state || '';
+                // Convert to full state name if needed
+                jobs[index].state = getFullStateName(addressData.state || jobs[index].state || '');
 
                 await chrome.storage.local.set({ scrapedJobs: jobs });
 
@@ -1145,8 +1194,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Move to next address
         currentAddressIndex++;
 
-        // Continue processing with delay (already handled by fetchAddressFromNominatim)
-        setTimeout(() => processNextAddress(), 100);
+        // Continue processing - delay is handled by fetchAddressFromNominatim (3 seconds)
+        // Adding small buffer to ensure spacing
+        setTimeout(() => processNextAddress(), 500);
     }
 
     function finishAddressFetching() {
