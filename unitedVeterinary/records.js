@@ -53,6 +53,125 @@ document.addEventListener('DOMContentLoaded', () => {
         return stateAbbreviations[state.toUpperCase()] || state;
     }
 
+    // ============ TOP-LEVEL POSITION MATCHING (used by both detail extraction and save) ============
+
+    // Match position from the job listing title — this is the authoritative source for position.
+    // The listing title (e.g. "Veterinary Cardiologist") is always more specific than
+    // generic detail page content, so we use it as the primary position signal.
+    function getPositionFromTitle(title) {
+        const t = title.toLowerCase();
+
+        // === HIGHEST PRIORITY: Leadership positions ===
+        // "Group Medical Director - The Oncology Service" → Medical Director, NOT Medical Oncologist
+        if (t.includes('medical director')) return 'Medical Director';
+        if (t.includes('lead veterinarian') || t.includes('lead vet')) return 'Lead Veterinarian';
+
+        // === SPECIALTY POSITION NAMES ===
+        if (t.includes('neurologist') || t.includes('neurosurgeon') || t.includes('neurology')) return 'Neurologist & Neurosurgeon';
+        if (t.includes('dermatologist') || t.includes('dermatology')) return 'Dermatologist';
+        if (t.includes('cardiologist') || t.includes('cardiology')) return 'Cardiologist';
+        if (t.includes('oncologist') && t.includes('radiation')) return 'Radiation Oncologist';
+        if (t.includes('oncologist') || t.includes('oncology')) return 'Medical Oncologist';
+        if (t.includes('radiologist') || t.includes('diagnostic imaging') || t.includes('radiology')) return 'Radiologist';
+        if (t.includes('ophthalmologist') || t.includes('ophthalmology')) return 'Ophthalmologist';
+        if (t.includes('anesthesiologist') || t.includes('anesthesia')) return 'Anesthesiologist';
+        if (t.includes('theriogenologist') || t.includes('theriogenology')) return 'Theriogenologist';
+        if (t.includes('internist') || t.includes('internal medicine')) return 'Internal Medicine Specialist';
+        if (t.includes('criticalist') || t.match(/\becc\b/) || t.includes('emergency medicine')) return 'ECC Specialist';
+        if (t.includes('dabvp')) return 'DABVP Specialist';
+        if ((t.includes('dental') || t.includes('dentist') || t.includes('dentistry')) && !t.includes('assistant')) return 'Dental Specialist';
+        if ((t.includes('surgeon') || t.includes('surgery')) && !t.includes('neurosurgeon') && !t.includes('neurology') && !t.includes('dental') && !t.includes('dentistry')) return 'Surgeon';
+
+        // === VTS/CREDENTIALED SPECIALIST ===
+        if (t.includes('technician specialist') || (t.match(/\bvts\b/) && t.includes('specialist'))) return 'Credentialed Veterinary Technician Specialist';
+
+        // === ANIMAL TYPE & PRACTICE SCOPE ===
+        if (t.includes('equine') || t.includes('bovine') || t.includes('large animal')) return 'Equine/Bovine Veterinarian/Large Animal';
+        if (t.includes('avian') || t.includes('exotics')) return 'Avian & Exotics Veterinarian / Associate Exotics';
+
+        // === OTHER ===
+        if (t.includes('partner veterinarian')) return 'Partner Veterinarian';
+
+        return '';
+    }
+
+    // Validate that a position is allowed for the given AOP
+    function getValidatedPosition(position, aop) {
+        const validPositions = {
+            'Emergency Care': ['Associate Veterinarian'],
+            'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
+            'Specialty Care': [
+                'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
+                'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
+                'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
+                'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
+                'Radiologist', 'Surgeon'
+            ],
+            'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian'],
+        };
+
+        const aopParts = aop.split('/').map(s => s.trim());
+        for (const part of aopParts) {
+            const allowed = validPositions[part];
+            if (allowed && allowed.includes(position)) return position;
+        }
+
+        const hasKnownAOP = aopParts.some(part => validPositions[part]);
+        if (hasKnownAOP) return 'Associate Veterinarian';
+
+        const allValid = new Set(Object.values(validPositions).flat());
+        if (allValid.has(position)) return position;
+
+        return 'Associate Veterinarian';
+    }
+
+    // Determine AOP from the Jobvite category string
+    function getAOPFromCategory(category) {
+        if (!category) return '';
+        const cat = category.toLowerCase().trim();
+        if (cat.includes('gen practice')) return 'General Practice Care';
+        if (cat.includes('(er)') || cat === 'veterinarian (er)') return 'Emergency Care';
+        if (cat.includes('specialty diplomate') || cat.includes('surgeon diplomate')) return 'Specialty Care';
+        return '';
+    }
+
+    // Determine AOP from title keywords when category is not available
+    function getAOPFromTitle(title) {
+        const t = title.toLowerCase();
+
+        // Specialty indicators
+        const specialtyNames = ['oncologist', 'cardiologist', 'neurologist', 'neurosurgeon',
+            'dermatologist', 'ophthalmologist', 'anesthesiologist', 'theriogenologist',
+            'radiologist', 'internist', 'criticalist',
+            'oncology', 'cardiology', 'neurology', 'dermatology', 'ophthalmology',
+            'anesthesia', 'theriogenology', 'radiology'];
+        for (const sp of specialtyNames) {
+            if (t.includes(sp)) return 'Specialty Care';
+        }
+
+        const specialtyCerts = ['board certified', 'residency trained', 'residential trained',
+            'diplomate', 'dacvecc', 'dacvim', 'dacvr', 'dacvs', 'dacvd', 'dacvo', 'dacvaa',
+            'dact', 'davdc', 'dabvp', 'acvs', 'acvim'];
+        for (const cert of specialtyCerts) {
+            if (t.includes(cert)) return 'Specialty Care';
+        }
+
+        if (t.includes('specialist') && !t.includes('technician specialist')) return 'Specialty Care';
+        if (t.match(/\bsurgeon\b/)) return 'Specialty Care';
+
+        // Emergency
+        if (t.includes('emergency') || t.match(/\ber\b/) || t.includes('er vet') || t.includes('er dvm')) return 'Emergency Care';
+
+        // Urgent Care
+        if (t.includes('urgent care')) return 'Urgent Care';
+
+        // Equine/Bovine/Exotics
+        if (t.includes('equine') || t.includes('bovine') || t.includes('large animal') ||
+            t.includes('avian') || t.includes('exotics')) return 'General Practice Care / Emergency Care / Urgent Care';
+
+        return '';
+    }
+
     // ============ LOCAL DETAIL EXTRACTION (mirrors detail-extractor.js) ============
 
     function extractDetailsFromDescription(positionTitle, descriptionText) {
@@ -68,12 +187,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Fallback to text pattern matching
             const salaryPatterns = [
-                /(?:Pay|Salary|Compensation)[:\s]+\$([\d,]+(?:\.\d{2})?(?:\s*[-–]\s*\$[\d,]+(?:\.\d{2})?)?(?:\s*per\s*\w+)?)/i,
-                /\$[\d,]+k?\s*[-–]+\s*\$?[\d,]+k/i,
-                /\$[\d,]+(?:,\d{3})*\s*[-–]+\s*\$[\d,]+(?:,\d{3})*/i,
-                /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hourly|hour|hr|\/hr)/i,
-                /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:year|annually|annum|annual)/i,
-                /\$[\d,]+k\+?/i
+                /(?:base\s+salary\s*(?:ranges?)?)[:\s]*\$[\d,]+k?\s*[-–—]\s*\$?[\d,]+k?/i,
+                /(?:salary|compensation|pay)[:\s]*\$[\d,]+(?:\.\d{2})?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?(?:\s*(?:per\s+)?(?:year|annually|annum|annual))?/i,
+                /\$[\d,]+(?:\.\d{2})?\s*[-–—]\s*\$[\d,]+(?:\.\d{2})?/i,
+                /\$[\d,]+k?\s*[-–—]+\s*\$?[\d,]+k/i,
+                /(?:earn|earning)\s+\$[\d,]+(?:\.\d{2})?\s*(?:annually|per\s*year)?/i,
+                /\$[\d,]+(?:\.\d{2})?\s*(?:annually|per\s*year|per\s*annum)/i,
+                /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hour|hr|\/hr)/i,
             ];
             for (const pattern of salaryPatterns) {
                 const m = text.match(pattern);
@@ -82,132 +202,205 @@ document.addEventListener('DOMContentLoaded', () => {
             return '';
         }
 
+        // Extract industry/category from stored description text
+        function getIndustryCategory(text) {
+            const match = text.match(/Industry\/Category:\s*([^\n]+)/i);
+            return match ? match[1].trim() : '';
+        }
+
+        // Extract qualifications/requirements section from description
+        function extractQualificationsSection(text) {
+            const patterns = [
+                /(?:requirements?|qualifications?|what you'?ll need|what we'?re looking for|credentials?|must have|what we need)[:\s]*([\s\S]{0,800}?)(?=(?:benefits?|compensation|salary|about|our culture|location|equal|join us|why|facility|what we offer|ready to)[:\s])/i,
+                /(?:requirements?|qualifications?|what you'?ll need|what we'?re looking for|credentials?|must have|what we need)[:\s]*([\s\S]{0,500})/i
+            ];
+            for (const pattern of patterns) {
+                const match = text.match(pattern);
+                if (match) return match[1];
+            }
+            return null;
+        }
+
         // Determine Area of Practice
+        // Priority: 1) Industry/Category from JSON-LD, 2) title keywords, 3) description qualifications
         function determineAreaOfPractice(positionText, descriptionText) {
-            const combined = (positionText + ' ' + descriptionText).toLowerCase();
+            const title = positionText.toLowerCase();
+            const category = getIndustryCategory(descriptionText).toLowerCase();
 
-            // Check for specialty indicators first
-            const specialtyIndicators = ['board certified', 'residency trained', 'residential trained', 'dacv', 'diplomate'];
-            for (const indicator of specialtyIndicators) {
-                if (combined.includes(indicator)) {
-                    return 'Specialty Care';
+            // STEP 1: Use industry/category - most reliable signal
+            if (category) {
+                if (category.includes('gen practice')) return 'General Practice Care';
+                if (category === 'veterinarian (er)' || category.includes('(er)')) return 'Emergency Care';
+                if (category.includes('specialty diplomate') || category.includes('surgeon diplomate')) return 'Specialty Care';
+            }
+
+            // STEP 2: Check TITLE for clear specialty position names (COMPREHENSIVE LIST)
+            const specialtyPositionNames = [
+                'oncologist', 'cardiologist', 'neurologist', 'neurosurgeon',
+                'dermatologist', 'ophthalmologist', 'anesthesiologist', 'theriogenologist',
+                'radiologist', 'internist', 'criticalist', 'ecc specialist',
+                'oncology', 'cardiology', 'neurology', 'dermatology', 'ophthalmology',
+                'anesthesia', 'theriogenology', 'radiology'
+            ];
+            for (const sp of specialtyPositionNames) {
+                if (title.includes(sp)) return 'Specialty Care';
+            }
+
+            // Check title for board cert / diplomate / DACV* indicators
+            const specialtyCerts = ['board certified', 'residency trained', 'residential trained',
+                'diplomate', 'dacvecc', 'dacvim', 'dacvr', 'dacvs', 'dacvd', 'dacvo', 'dacvaa',
+                'dact', 'davdc', 'dabvp', 'acvs', 'acvim'];
+            for (const cert of specialtyCerts) {
+                if (title.includes(cert)) return 'Specialty Care';
+            }
+
+            // Check for specialist or surgeon keywords
+            if (title.includes('specialist') && !title.includes('technician specialist')) return 'Specialty Care';
+            if (title.match(/\bsurgeon\b/) && !title.includes('neurosurgeon')) return 'Specialty Care';
+
+            // STEP 3: Check TITLE for Emergency Care
+            if (title.includes('emergency') || title.match(/\ber\b/) || title.includes('er vet') ||
+                title.includes('er dvm') || title.includes('er veterinarian') || title.includes('ecc')) {
+                return 'Emergency Care';
+            }
+
+            // STEP 4: Check TITLE for Urgent Care
+            if (title.includes('urgent care')) return 'Urgent Care';
+
+            // STEP 5: Check TITLE for equine/bovine/large animal/avian/exotics
+            if (title.includes('equine') || title.includes('bovine') || title.includes('large animal') ||
+                title.includes('avian') || title.includes('exotics')) {
+                return 'General Practice Care / Emergency Care / Urgent Care';
+            }
+
+            // STEP 6: For generic titles, check ONLY the qualifications section
+            const qualSection = extractQualificationsSection(descriptionText);
+            if (qualSection) {
+                const qualLower = qualSection.toLowerCase();
+                for (const cert of specialtyCerts) {
+                    if (qualLower.includes(cert)) return 'Specialty Care';
                 }
             }
 
-            // Check for specialty keywords (excluding 'dentist' since dental work is common in general practice)
-            const specialtyKeywords = ['criticalist', 'oncologist', 'internist', 'neurologist', 'cardiologist',
-                                       'surgeon', 'radiologist', 'ophthalmologist', 'anesthesiologist',
-                                       'dermatologist', 'theriogenologist', 'specialist', 'dacvecc', 'dacvim',
-                                       'dacvr', 'dacvs', 'acvs', 'dacvd', 'dacvo', 'dacvaa', 'dact', 'davdc'];
-            for (const kw of specialtyKeywords) {
-                if (combined.includes(kw)) {
-                    // Additional check: if it's "surgeon" or "specialist", verify board certification/residency
-                    if ((kw === 'surgeon' || kw === 'specialist') &&
-                        !combined.includes('board certified') &&
-                        !combined.includes('residency trained') &&
-                        !combined.includes('diplomate') &&
-                        !combined.includes('dacv')) {
-                        continue; // Skip, likely general practice
-                    }
-                    return 'Specialty Care';
-                }
-            }
+            // STEP 7: Check page text for ER category
+            if (descriptionText.match(/Veterinarian \(ER\)/i)) return 'Emergency Care';
 
-            // Check for Emergency Care
-            const emergencyKeywords = ['emergency veterinarian', 'er vet', 'er veterinarian', 'er dvm', 'ecc', 'emergency & critical care'];
-            for (const kw of emergencyKeywords) {
-                if (combined.includes(kw)) {
-                    return 'Emergency Care';
-                }
-            }
-
-            // Check for Urgent Care
-            const urgentKeywords = ['urgent care', 'urgent veterinarian', 'quick care'];
-            for (const kw of urgentKeywords) {
-                if (combined.includes(kw)) {
-                    return 'Urgent Care';
-                }
-            }
-
-            // Check for Large Animal / Equine / Exotics
-            const specialAnimals = ['equine', 'bovine', 'large animal', 'avian', 'exotics'];
-            for (const kw of specialAnimals) {
-                if (combined.includes(kw)) {
-                    return 'General Practice Care / Emergency Care / Urgent Care';
-                }
-            }
-
-            // Default to General Practice
             return 'General Practice Care';
+        }
+
+        // Match position from title keywords
+        // PRIORITY ORDER: Leadership first (to avoid false matches on service names), then specialty, then generic
+        function matchPositionFromTitle(title) {
+            const t = title.toLowerCase();
+
+            // === HIGHEST PRIORITY: Leadership positions ===
+            // Must be checked FIRST — "Group Medical Director - The Oncology Service" should be
+            // Medical Director, NOT Medical Oncologist. The specialty word is the service name, not the role.
+            if (t.includes('medical director')) return 'Medical Director';
+            if (t.includes('lead veterinarian') || t.includes('lead vet')) return 'Lead Veterinarian';
+
+            // === SPECIALTY POSITION NAMES ===
+            if (t.includes('neurologist') || t.includes('neurosurgeon') || t.includes('neurology')) return 'Neurologist & Neurosurgeon';
+            if (t.includes('dermatologist') || t.includes('dermatology')) return 'Dermatologist';
+            if (t.includes('cardiologist') || t.includes('cardiology')) return 'Cardiologist';
+            if (t.includes('oncologist') && t.includes('radiation')) return 'Radiation Oncologist';
+            if (t.includes('oncologist') || t.includes('oncology')) return 'Medical Oncologist';
+            if (t.includes('radiologist') || t.includes('diagnostic imaging') || t.includes('radiology')) return 'Radiologist';
+            if (t.includes('ophthalmologist') || t.includes('ophthalmology')) return 'Ophthalmologist';
+            if (t.includes('anesthesiologist') || t.includes('anesthesia')) return 'Anesthesiologist';
+            if (t.includes('theriogenologist') || t.includes('theriogenology')) return 'Theriogenologist';
+            if (t.includes('internist') || t.includes('internal medicine')) return 'Internal Medicine Specialist';
+            if (t.includes('criticalist') || t.match(/\becc\b/) || t.includes('emergency medicine')) return 'ECC Specialist';
+            if (t.includes('dabvp')) return 'DABVP Specialist';
+            if ((t.includes('dental') || t.includes('dentist') || t.includes('dentistry')) && !t.includes('assistant')) return 'Dental Specialist';
+            // For surgeon, be specific - check it's not part of neurosurgeon (already handled)
+            if ((t.includes('surgeon') || t.includes('surgery')) && !t.includes('neurosurgeon') && !t.includes('neurology') && !t.includes('dental') && !t.includes('dentistry')) return 'Surgeon';
+
+            // === VTS/CREDENTIALED SPECIALIST (check before generic technician) ===
+            if (t.includes('technician specialist') || (t.match(/\bvts\b/) && t.includes('specialist'))) return 'Credentialed Veterinary Technician Specialist';
+
+            // === ANIMAL TYPE & PRACTICE SCOPE ===
+            if (t.includes('equine') || t.includes('bovine') || t.includes('large animal')) return 'Equine/Bovine Veterinarian/Large Animal';
+            if (t.includes('avian') || t.includes('exotics')) return 'Avian & Exotics Veterinarian / Associate Exotics';
+
+            // === GENERAL VETERINARY ROLES ===
+            if (t.includes('partner veterinarian')) return 'Partner Veterinarian';
+
+            return '';
+        }
+
+        // Match position from qualifications section
+        function matchPositionFromQualifications(descriptionText) {
+            const qualSection = extractQualificationsSection(descriptionText);
+            if (!qualSection) return '';
+            const q = qualSection.toLowerCase();
+            if (q.includes('dacvecc')) return 'ECC Specialist';
+            if (q.includes('dacvim') && q.includes('oncology')) return 'Medical Oncologist';
+            if (q.includes('dacvr') && q.includes('radiation')) return 'Radiation Oncologist';
+            if (q.includes('dacvim') && q.includes('neurology')) return 'Neurologist & Neurosurgeon';
+            if (q.includes('dacvim') && q.includes('cardiology')) return 'Cardiologist';
+            if (q.includes('dacvim')) return 'Internal Medicine Specialist';
+            if (q.includes('davdc')) return 'Dental Specialist';
+            if (q.includes('dacvd')) return 'Dermatologist';
+            if (q.includes('dacvs') || q.includes('acvs')) return 'Surgeon';
+            if (q.includes('dacvr')) return 'Radiologist';
+            if (q.includes('dacvo')) return 'Ophthalmologist';
+            if (q.includes('dacvaa')) return 'Anesthesiologist';
+            if (q.includes('dact')) return 'Theriogenologist';
+            if (q.includes('dabvp')) return 'DABVP Specialist';
+            return '';
+        }
+
+        // Validate position is allowed for given AOP per CorrectJobNames.txt
+        function validatePositionForAOP(position, aop) {
+            const validPositions = {
+                'Emergency Care': ['Associate Veterinarian'],
+                'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
+                'Specialty Care': [
+                    'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
+                    'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
+                    'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
+                    'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
+                    'Radiologist', 'Surgeon'
+                ],
+                'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian'],
+            };
+
+            // For compound AOPs like "General Practice Care / Emergency Care / Urgent Care",
+            // accept the position if it's valid in ANY of the listed AOPs
+            const aopParts = aop.split('/').map(s => s.trim());
+            for (const part of aopParts) {
+                const allowed = validPositions[part];
+                if (allowed && allowed.includes(position)) return position;
+            }
+
+            // If we found at least one known AOP but position wasn't valid in any of them, default
+            const hasKnownAOP = aopParts.some(part => validPositions[part]);
+            if (hasKnownAOP) return 'Associate Veterinarian';
+
+            // Completely unknown AOP — still validate against all known positions
+            const allValid = new Set(Object.values(validPositions).flat());
+            if (allValid.has(position)) return position;
+
+            return 'Associate Veterinarian';
         }
 
         // Determine Position
         function determinePosition(positionText, descriptionText, areaOfPractice) {
-            const combined = (positionText + ' ' + descriptionText).toLowerCase();
-
-            if (areaOfPractice === 'Specialty Care') {
-                // Specialty positions - only classify as specialist if board certified/residency trained
-                if (combined.includes('ecc') || combined.includes('criticalist') || combined.includes('emergency & critical care')) return 'ECC Specialist';
-                if (combined.includes('oncologist') && combined.includes('radiation')) return 'Radiation Oncologist';
-                if (combined.includes('oncologist')) return 'Medical Oncologist';
-                if (combined.includes('internist') || (combined.includes('internal medicine') && combined.includes('specialist'))) return 'Internal Medicine Specialist';
-                if (combined.includes('neurologist') || combined.includes('neurosurgeon')) return 'Neurologist';
-                if (combined.includes('cardiologist')) return 'Cardiologist';
-                // For dental specialist, verify they have DAVDC or board certification
-                if ((combined.includes('dental specialist') || combined.includes('davdc') || combined.includes('veterinary dental college')) &&
-                    (combined.includes('board certified') || combined.includes('residency trained') || combined.includes('diplomate'))) {
-                    return 'Dental Specialist';
-                }
-                if (combined.includes('dermatologist')) return 'Dermatologist';
-                if (combined.includes('surgeon') && !combined.includes('neurosurgeon')) return 'Surgeon';
-                if (combined.includes('radiologist') || combined.includes('diagnostic imaging')) return 'Radiologist';
-                if (combined.includes('ophthalmologist')) return 'Ophthalmologist';
-                if (combined.includes('anesthesiologist')) return 'Anesthesiologist';
-                if (combined.includes('theriogenologist')) return 'Theriogenologist';
+            let position = matchPositionFromTitle(positionText);
+            if (!position && areaOfPractice === 'Specialty Care') {
+                position = matchPositionFromQualifications(descriptionText);
             }
-
-            // Medical Director
-            if (combined.includes('medical director')) return 'Medical Director';
-
-            // Associate Veterinarian
-            if (combined.includes('associate veterinarian') || combined.includes('associate vet')) return 'Associate Veterinarian';
-
-            // Relief Veterinarian
-            if (combined.includes('relief')) return 'Relief Veterinarian';
-
-            // Equine/Bovine/Large Animal
-            if (combined.includes('equine') || combined.includes('bovine') || combined.includes('large animal')) {
-                return 'Equine/Bovine Veterinarian/Large Animal';
+            if (position) {
+                position = validatePositionForAOP(position, areaOfPractice);
             }
-
-            // Avian & Exotics
-            if (combined.includes('avian') || combined.includes('exotics')) {
-                return 'Avian & Exotics Veterinarian / Associate Exotics';
+            // Special case: if title explicitly says "Medical Director" but AOP validation
+            // downgraded it (e.g., ER category), keep it as Medical Director
+            if (position === 'Associate Veterinarian' && positionText.toLowerCase().includes('medical director')) {
+                position = 'Medical Director';
             }
-
-            // Veterinary Technician
-            if (combined.includes('technician') || combined.includes('vet tech') || combined.includes('cvt') ||
-                combined.includes('lvt') || combined.includes('rvt') || combined.includes('vts')) {
-                return 'Veterinary Technician';
-            }
-
-            // Veterinary Assistant
-            if (combined.includes('assistant') || combined.includes('vet assist')) {
-                return 'Veterinary Assistant';
-            }
-
-            // Receptionist
-            if (combined.includes('receptionist') || combined.includes('front desk') || combined.includes('csr')) {
-                return 'Receptionist';
-            }
-
-            // Externship
-            if (combined.includes('externship') || combined.includes('extern')) {
-                return 'Veterinary Externship';
-            }
-
-            // Default
-            return 'Associate Veterinarian';
+            if (!position) position = 'Associate Veterinarian';
+            return position;
         }
 
         // Extract locations from stored description (which now includes JSON-LD data)
@@ -215,19 +408,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const locations = [];
 
             // First try to extract from structured JSON-LD data in the text
+            // Format from description-scraper: "  - City, ST, Country" or "  - City, State"
             const locationsSection = text.match(/Locations:\n((?:\s*-\s*[^\n]+\n?)+)/i);
             if (locationsSection) {
                 const locationLines = locationsSection[1].split('\n');
                 for (const line of locationLines) {
-                    const match = line.match(/\s*-\s*([^,]+),\s*([A-Z][a-z\s]+)/i);
-                    if (match) {
-                        const city = match[1].trim();
-                        let state = match[2].trim();
-                        // Handle full state names by converting to abbreviation (if needed)
-                        // For now, just use first 2 chars if it's longer
+                    const trimmed = line.trim();
+                    if (!trimmed.startsWith('-')) continue;
+                    // Remove leading "- " and split by comma
+                    const parts = trimmed.replace(/^-\s*/, '').split(',').map(s => s.trim()).filter(s => s);
+                    if (parts.length >= 2) {
+                        const city = parts[0];
+                        let state = parts[1];
+                        // Try to find a 2-letter state abbreviation elsewhere in the text for this city
                         if (state.length > 2) {
-                            // Try to find state abbreviation pattern
-                            const stateAbbrev = text.match(new RegExp(`${city},\\s*([A-Z]{2})\\b`));
+                            const stateAbbrev = text.match(new RegExp(`${city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')},\\s*([A-Z]{2})\\b`));
                             if (stateAbbrev) {
                                 state = stateAbbrev[1];
                             }
@@ -244,13 +439,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 text = text.replace(/^Position at\s*/i, '');
                 const searchText = text.substring(0, 500);
 
-                // Match patterns like "City, ST" or "City, State"
+                // Match patterns like "City, ST"
                 const matches = searchText.matchAll(/\b([A-Za-z][\w\s.'()-]*[A-Za-z])\s*,\s*([A-Z]{2})\b/g);
                 for (const match of matches) {
                     let city = match[1].trim();
                     const state = match[2].trim();
 
-                    // Filter out common non-city words
                     const invalidWords = ['description', 'position', 'associate', 'veterinarian', 'hospital', 'care', 'center', 'clinic', 'location'];
                     if (!invalidWords.some(word => city.toLowerCase().includes(word)) && city.length > 1 && city.length < 50) {
                         locations.push({ city, state, location: `${city}, ${state}` });
@@ -927,30 +1121,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await chrome.storage.local.get(['scrapedJobs']);
         const jobs = data.scrapedJobs || [];
 
-        // Only process jobs that have descriptions
+        if (jobs.length === 0) {
+            showToast('No jobs found. Please scrape jobs first.', 'error');
+            return;
+        }
+
+        // Find jobs that need details (no areaOfPractice or position)
+        // Can work with job title even if no description exists
         const jobsToFetch = jobs.map((job, index) => ({ job, index }))
             .filter(item => {
-                // Must have a description to analyze
-                if (!item.job.description || item.job.description.length < 50) {
-                    return false;
-                }
-                // Check if needs details OR is multi-location
-                const needsDetails = !item.job.areaOfPractice || !item.job.position || !item.job.salary;
-                const isMultiLocation = item.job.location && (item.job.location.toLowerCase().includes('location') || item.job.location.includes('...'));
-                return needsDetails || isMultiLocation;
+                if (!item.job.link && !item.job.title) return false;
+                const needsDetails = !item.job.areaOfPractice || !item.job.position;
+                return needsDetails;
             });
 
         if (jobsToFetch.length === 0) {
-            // Check if there are jobs without descriptions
-            const jobsWithoutDesc = jobs.filter(job => !job.description || job.description.length < 50);
-            if (jobsWithoutDesc.length > 0) {
-                showToast(`Please fetch descriptions first! ${jobsWithoutDesc.length} jobs need descriptions.`, 'error');
-                return;
-            }
-
             if (confirm('All jobs already have details. Do you want to re-analyze all jobs?')) {
                 detailsQueue = jobs.map((job, index) => ({ job, index }))
-                    .filter(item => item.job.description && item.job.description.length >= 50);
+                    .filter(item => item.job.link || item.job.title);
             } else {
                 return;
             }
@@ -961,7 +1149,7 @@ document.addEventListener('DOMContentLoaded', () => {
         isFetchingDetails = true;
         currentDetailsIndex = 0;
         fetchDetailsBtn.disabled = true;
-        fetchDetailsBtn.textContent = 'Analyzing Details...';
+        fetchDetailsBtn.textContent = 'Fetching Details...';
 
         // Show progress
         const progressSection = document.getElementById('progressSection');
@@ -969,12 +1157,67 @@ document.addEventListener('DOMContentLoaded', () => {
         const progressText = document.getElementById('progressText');
         const progressLabel = document.getElementById('progressLabel');
         progressSection.classList.remove('hidden');
-        progressLabel.textContent = 'Analyzing Job Descriptions';
+        progressLabel.textContent = 'Analyzing Job Details';
         progressText.textContent = `0 / ${detailsQueue.length}`;
         progressBar.style.width = '0%';
 
         processNextDetail();
     });
+
+    // Open a job page in a background tab, inject detail-extractor.js, return results
+    function fetchDetailFromTab(url) {
+        return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+                resolve([]);
+            }, 25000);
+
+            // Add ?nl=1 for Jobvite URLs so the page loads standalone (not inside parent iframe)
+            let finalUrl = url;
+            try {
+                const urlObj = new URL(url);
+                if (urlObj.hostname.includes('jobvite.com')) {
+                    urlObj.searchParams.set('nl', '1');
+                    finalUrl = urlObj.toString();
+                }
+            } catch (e) {
+                // Use original URL if parsing fails
+            }
+
+            chrome.tabs.create({ url: finalUrl, active: false }, (tab) => {
+                if (!tab) {
+                    clearTimeout(timeout);
+                    resolve([]);
+                    return;
+                }
+
+                const tabId = tab.id;
+                const listener = (updatedTabId, info) => {
+                    if (updatedTabId === tabId && info.status === 'complete') {
+                        chrome.tabs.onUpdated.removeListener(listener);
+                        // Wait for page JS to finish rendering
+                        setTimeout(() => {
+                            chrome.scripting.executeScript({
+                                target: { tabId: tabId },
+                                files: ['detail-extractor.js']
+                            }).then((results) => {
+                                clearTimeout(timeout);
+                                chrome.tabs.remove(tabId).catch(() => {});
+                                const detailsList = results?.[0]?.result || [];
+                                resolve(detailsList);
+                            }).catch((err) => {
+                                console.warn('Error injecting detail-extractor:', err);
+                                clearTimeout(timeout);
+                                chrome.tabs.remove(tabId).catch(() => {});
+                                resolve([]);
+                            });
+                        }, 3000);
+                    }
+                };
+
+                chrome.tabs.onUpdated.addListener(listener);
+            });
+        });
+    }
 
     async function processNextDetail() {
         if (currentDetailsIndex >= detailsQueue.length) {
@@ -991,95 +1234,145 @@ document.addEventListener('DOMContentLoaded', () => {
         progressBar.style.width = `${((currentDetailsIndex + 1) / detailsQueue.length) * 100}%`;
         fetchDetailsBtn.textContent = `Analyzing... (${currentDetailsIndex + 1}/${detailsQueue.length})`;
 
-        // Analyze the description locally (no tab opening needed)
-        analyzeJobDescription(job, index);
+        let detailsList = [];
 
-        // Move to next detail after a short delay
-        currentDetailsIndex++;
-        setTimeout(() => processNextDetail(), 100);
-    }
-
-    // Analyze job description and extract details
-    function analyzeJobDescription(job, jobIndex) {
-        // Use the description that's already been fetched
-        const description = job.description || '';
-        const positionTitle = job.title || '';
-
-        if (!description || description.length < 50) {
-            console.warn(`Job ${jobIndex} has no description to analyze`);
-            return;
+        // Try to fetch details from tab if link exists
+        if (job.link) {
+            detailsList = await fetchDetailFromTab(job.link);
         }
 
-        // Extract details using the same logic as detail-extractor.js
-        const extractedDetails = extractDetailsFromDescription(positionTitle, description);
+        // If tab-based extraction failed or no link, use local analysis with job title + description
+        if (detailsList.length === 0) {
+            const positionTitle = job.title || '';
+            const description = job.description || '';
 
-        // Get jobs array
-        chrome.storage.local.get(['scrapedJobs'], (data) => {
-            const jobs = data.scrapedJobs || [];
-            const originalJob = jobs[jobIndex];
+            // Even with minimal info (just title), we can extract details
+            if (positionTitle) {
+                const extracted = extractDetailsFromDescription(positionTitle, description);
+                detailsList = [{
+                    areaOfPractice: extracted.areaOfPractice,
+                    position: extracted.position,
+                    salary: extracted.salary,
+                    hospitalName: extracted.hospitalName,
+                    description: description,
+                    city: extracted.locations[0]?.city || '',
+                    state: extracted.locations[0]?.state || '',
+                    location: extracted.locations[0]?.location || ''
+                }];
+            }
+        }
 
-            if (!originalJob) return;
+        // Save extracted details to storage
+        if (detailsList.length > 0) {
+            await saveDetailResults(detailsList, index);
+        }
 
-            // Check if this is a multi-location job
-            if (extractedDetails.locations.length > 1) {
-                // Multi-location: Update original job and create new jobs below it
-                const firstLocation = extractedDetails.locations[0];
+        // Move to next job
+        currentDetailsIndex++;
+        setTimeout(() => processNextDetail(), 500);
+    }
 
-                // Update original job with first location
-                originalJob.areaOfPractice = extractedDetails.areaOfPractice || originalJob.areaOfPractice || '';
-                originalJob.position = extractedDetails.position || originalJob.position || '';
-                originalJob.salary = extractedDetails.salary || originalJob.salary || '';
-                originalJob.city = firstLocation.city || originalJob.city;
-                originalJob.state = firstLocation.state || originalJob.state;
-                originalJob.location = firstLocation.location || originalJob.location;
-                originalJob.hospital = extractedDetails.hospitalName || originalJob.hospital;
-                originalJob.isNewLocation = true; // Mark as green
+    // Save detail extraction results to chrome storage
+    function saveDetailResults(detailsList, jobIndex) {
+        return new Promise((resolve) => {
+            chrome.storage.local.get(['scrapedJobs'], (data) => {
+                const jobs = data.scrapedJobs || [];
+                const originalJob = jobs[jobIndex];
 
-                // Create new jobs for additional locations - insert right after the original
-                const newJobs = [];
-                for (let i = 1; i < extractedDetails.locations.length; i++) {
-                    const loc = extractedDetails.locations[i];
-                    const baseJobId = originalJob.jobId.split('-')[0];
-                    const newJob = {
-                        ...originalJob,
-                        jobId: `${baseJobId}-${i + 1}`,
-                        // DO NOT populate city and state for new records
-                        city: '',
-                        state: '',
-                        // Only populate location in format {city}, {state}
-                        location: loc.location || `${loc.city}, ${loc.state}`,
-                        streetAddress: '', // Will be fetched separately
-                        zipCode: '', // Will be fetched separately
-                        isNewLocation: true // Mark as green
-                    };
-                    newJobs.push(newJob);
+                if (!originalJob) {
+                    resolve();
+                    return;
                 }
 
-                // Insert new jobs right after the original job
-                jobs.splice(jobIndex + 1, 0, ...newJobs);
+                const firstDetail = detailsList[0];
 
-            } else if (extractedDetails.locations.length === 1) {
-                // Single location: Just update the job
-                const location = extractedDetails.locations[0];
-                originalJob.areaOfPractice = extractedDetails.areaOfPractice || originalJob.areaOfPractice || '';
-                originalJob.position = extractedDetails.position || originalJob.position || '';
-                originalJob.salary = extractedDetails.salary || originalJob.salary || '';
-                originalJob.city = location.city || originalJob.city;
-                originalJob.state = location.state || originalJob.state;
-                originalJob.location = location.location || originalJob.location;
-                originalJob.hospital = extractedDetails.hospitalName || originalJob.hospital;
-            } else {
-                // No location found, just update details
-                originalJob.areaOfPractice = extractedDetails.areaOfPractice || originalJob.areaOfPractice || '';
-                originalJob.position = extractedDetails.position || originalJob.position || '';
-                originalJob.salary = extractedDetails.salary || originalJob.salary || '';
-                originalJob.hospital = extractedDetails.hospitalName || originalJob.hospital;
-            }
+                // --- POSITION: Always determine from the LISTING title (originalJob.title) ---
+                // The listing title (e.g. "Veterinary Cardiologist") is the most reliable source.
+                // The detail extractor provides AOP (from Jobvite category) which we combine with
+                // the listing title to get the correct position.
+                const listingTitle = originalJob.title || '';
+                const detailAOP = firstDetail.areaOfPractice || '';
 
-            // Save updated jobs
-            chrome.storage.local.set({ scrapedJobs: jobs }, () => {
-                allJobs = jobs;
-                displayRecords(allJobs);
+                // Step 1: Determine AOP — prefer detail extractor's AOP (from page category), fall back to title
+                let finalAOP = detailAOP || getAOPFromTitle(listingTitle) || 'General Practice Care';
+
+                // Step 2: Match position from listing title
+                let finalPosition = getPositionFromTitle(listingTitle);
+
+                // Step 3: If listing title had no match but AOP is Specialty, try qualifications from description
+                if (!finalPosition && finalAOP === 'Specialty Care') {
+                    const desc = (firstDetail.description || originalJob.description || '').toLowerCase();
+                    if (desc.includes('dacvecc')) finalPosition = 'ECC Specialist';
+                    else if (desc.includes('dacvim') && desc.includes('oncology')) finalPosition = 'Medical Oncologist';
+                    else if (desc.includes('dacvr') && desc.includes('radiation')) finalPosition = 'Radiation Oncologist';
+                    else if (desc.includes('dacvim') && desc.includes('neurology')) finalPosition = 'Neurologist & Neurosurgeon';
+                    else if (desc.includes('dacvim') && desc.includes('cardiology')) finalPosition = 'Cardiologist';
+                    else if (desc.includes('dacvim')) finalPosition = 'Internal Medicine Specialist';
+                    else if (desc.includes('davdc')) finalPosition = 'Dental Specialist';
+                    else if (desc.includes('dacvd')) finalPosition = 'Dermatologist';
+                    else if (desc.includes('dacvs') || desc.includes('acvs')) finalPosition = 'Surgeon';
+                    else if (desc.includes('dacvr')) finalPosition = 'Radiologist';
+                    else if (desc.includes('dacvo')) finalPosition = 'Ophthalmologist';
+                    else if (desc.includes('dacvaa')) finalPosition = 'Anesthesiologist';
+                    else if (desc.includes('dact')) finalPosition = 'Theriogenologist';
+                    else if (desc.includes('dabvp')) finalPosition = 'DABVP Specialist';
+                }
+
+                // Step 4: Validate position against AOP
+                if (finalPosition) {
+                    finalPosition = getValidatedPosition(finalPosition, finalAOP);
+                }
+
+                // Step 5: Medical Director override — if title says "Medical Director", keep it
+                if ((!finalPosition || finalPosition === 'Associate Veterinarian') && listingTitle.toLowerCase().includes('medical director')) {
+                    finalPosition = 'Medical Director';
+                }
+
+                // Step 6: Default
+                if (!finalPosition) {
+                    finalPosition = 'Associate Veterinarian';
+                }
+
+                // Update original job with extracted details
+                originalJob.areaOfPractice = finalAOP;
+                originalJob.position = finalPosition;
+                originalJob.salary = firstDetail.salary || originalJob.salary || '';
+                originalJob.hospital = firstDetail.hospitalName || originalJob.hospital || '';
+                if (firstDetail.city) originalJob.city = firstDetail.city;
+                if (firstDetail.state) originalJob.state = firstDetail.state;
+                if (firstDetail.location) originalJob.location = firstDetail.location;
+                // Update description if we got a better one
+                if (firstDetail.description && firstDetail.description.length > (originalJob.description || '').length) {
+                    originalJob.description = firstDetail.description;
+                }
+
+                // Handle multi-location jobs
+                if (detailsList.length > 1) {
+                    originalJob.isNewLocation = true;
+                    const newJobs = [];
+                    for (let i = 1; i < detailsList.length; i++) {
+                        const loc = detailsList[i];
+                        const baseJobId = originalJob.jobId.split('-')[0];
+                        const newJob = {
+                            ...originalJob,
+                            jobId: `${baseJobId}-${i + 1}`,
+                            city: '',
+                            state: '',
+                            location: loc.location || `${loc.city}, ${loc.state}`,
+                            streetAddress: '',
+                            zipCode: '',
+                            isNewLocation: true
+                        };
+                        newJobs.push(newJob);
+                    }
+                    jobs.splice(jobIndex + 1, 0, ...newJobs);
+                }
+
+                chrome.storage.local.set({ scrapedJobs: jobs }, () => {
+                    allJobs = jobs;
+                    displayRecords(allJobs);
+                    resolve();
+                });
             });
         });
     }
@@ -1094,7 +1387,7 @@ document.addEventListener('DOMContentLoaded', () => {
             Fetch Details
         `;
         document.getElementById('progressSection').classList.add('hidden');
-        showToast(`Details analysis completed! Processed ${detailsQueue.length} jobs.`, 'success');
+        showToast(`Details fetched! Processed ${detailsQueue.length} jobs.`, 'success');
     }
 
     // ============ FETCH ADDRESSES ============

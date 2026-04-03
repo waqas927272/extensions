@@ -4,7 +4,14 @@
       "Bash(dir /b *.css)",
       "Bash(dir:*)",
       "Bash(del \"\\\\?\\\\C:\\\\wamp64\\\\www\\\\extensions\\\\innovetive\\\\nul\")",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(ls -la /c/wamp64/www/extensions/unitedVeterinary/*.csv)",
+      "Bash(sort -t_ -k4 -r)",
+      "Bash(python:*)",
+      "Bash(node -c \"C:/wamp64/www/extensions/unitedVeterinary/detail-extractor.js\")",
+      "Bash(node --check \"C:/wamp64/www/extensions/unitedVeterinary/detail-extractor.js\")",
+      "Bash(node -c \"C:/wamp64/www/extensions/unitedVeterinary/records.js\")",
+      "Bash(node --check \"C:/wamp64/www/extensions/unitedVeterinary/records.js\")"
     ]
   }
 }
