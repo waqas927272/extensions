@@ -47,10 +47,32 @@ document.addEventListener('DOMContentLoaded', () => {
     // Convert state abbreviation to full name if needed
     function getFullStateName(state) {
         if (!state) return '';
-        // If it's already a full name (longer than 2 chars), return as is
         if (state.length > 2) return state;
-        // Convert abbreviation to full name
         return stateAbbreviations[state.toUpperCase()] || state;
+    }
+
+    // Convert full state name to abbreviation (e.g., "California" → "CA")
+    const stateToAbbrev = Object.fromEntries(
+        Object.entries(stateAbbreviations).map(([abbr, name]) => [name.toLowerCase(), abbr])
+    );
+    function getStateAbbrev(state) {
+        if (!state) return '';
+        if (state.length <= 2) return state.toUpperCase();
+        return stateToAbbrev[state.toLowerCase()] || state;
+    }
+
+    // Build full address: "Street, City, ST Zip, United States"
+    function buildFullAddress(streetAddress, city, state, zipCode) {
+        const stAbbrev = getStateAbbrev(state);
+        const parts = [];
+        if (streetAddress) parts.push(streetAddress);
+        if (city) parts.push(city);
+        // "ST Zip" or just "ST"
+        if (stAbbrev && zipCode) parts.push(`${stAbbrev} ${zipCode}`);
+        else if (stAbbrev) parts.push(stAbbrev);
+        else if (zipCode) parts.push(zipCode);
+        parts.push('United States');
+        return parts.join(', ');
     }
 
     // ============ TOP-LEVEL POSITION MATCHING (used by both detail extraction and save) ============
@@ -222,19 +244,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Determine Area of Practice
-        // Priority: 1) Industry/Category from JSON-LD, 2) title keywords, 3) description qualifications
+        // Priority: 1) Title specialty keywords (most specific), 2) Industry/Category, 3) other title keywords, 4) description qualifications
         function determineAreaOfPractice(positionText, descriptionText) {
             const title = positionText.toLowerCase();
             const category = getIndustryCategory(descriptionText).toLowerCase();
 
-            // STEP 1: Use industry/category - most reliable signal
-            if (category) {
-                if (category.includes('gen practice')) return 'General Practice Care';
-                if (category === 'veterinarian (er)' || category.includes('(er)')) return 'Emergency Care';
-                if (category.includes('specialty diplomate') || category.includes('surgeon diplomate')) return 'Specialty Care';
-            }
-
-            // STEP 2: Check TITLE for clear specialty position names (COMPREHENSIVE LIST)
+            // STEP 1: Check TITLE for clear specialty position names FIRST
+            // Title is more specific than page category — a "Veterinary Radiologist" listed
+            // under a generic category like "Gen Practice" is still Specialty Care
             const specialtyPositionNames = [
                 'oncologist', 'cardiologist', 'neurologist', 'neurosurgeon',
                 'dermatologist', 'ophthalmologist', 'anesthesiologist', 'theriogenologist',
@@ -257,6 +274,13 @@ document.addEventListener('DOMContentLoaded', () => {
             // Check for specialist or surgeon keywords
             if (title.includes('specialist') && !title.includes('technician specialist')) return 'Specialty Care';
             if (title.match(/\bsurgeon\b/) && !title.includes('neurosurgeon')) return 'Specialty Care';
+
+            // STEP 2: Use industry/category (reliable for non-specialty jobs)
+            if (category) {
+                if (category.includes('gen practice')) return 'General Practice Care';
+                if (category === 'veterinarian (er)' || category.includes('(er)')) return 'Emergency Care';
+                if (category.includes('specialty diplomate') || category.includes('surgeon diplomate')) return 'Specialty Care';
+            }
 
             // STEP 3: Check TITLE for Emergency Care
             if (title.includes('emergency') || title.match(/\ber\b/) || title.includes('er vet') ||
@@ -505,104 +529,119 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // Nominatim API function to get street address and zip code
-    // Uses hospital name and LOCATION column (not separate city/state)
-    async function fetchAddressFromNominatim(hospitalName, location) {
-        // Ensure proper gap between requests (3 seconds for better reliability)
+    // Helper: call Nominatim search API
+    async function nominatimSearch(query) {
         const now = Date.now();
-        const timeSinceLastRequest = now - lastNominatimRequest;
-        if (timeSinceLastRequest < BASE_GAP) {
-            await new Promise(resolve => setTimeout(resolve, BASE_GAP - timeSinceLastRequest));
-        }
+        const gap = now - lastNominatimRequest;
+        if (gap < BASE_GAP) await new Promise(r => setTimeout(r, BASE_GAP - gap));
 
-        // Try multiple query variations for better results
+        const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=5&countrycodes=us`;
+        const response = await fetch(url, { headers: { 'User-Agent': 'UnitedVeterinaryJobScraper/1.6' } });
+        lastNominatimRequest = Date.now();
+        if (!response.ok) return [];
+        return await response.json();
+    }
+
+    // Helper: call Nominatim reverse geocode by lat/lon — returns full street address
+    async function nominatimReverse(lat, lon) {
+        const now = Date.now();
+        const gap = now - lastNominatimRequest;
+        if (gap < BASE_GAP) await new Promise(r => setTimeout(r, BASE_GAP - gap));
+
+        const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&addressdetails=1&zoom=18`;
+        const response = await fetch(url, { headers: { 'User-Agent': 'UnitedVeterinaryJobScraper/1.6' } });
+        lastNominatimRequest = Date.now();
+        if (!response.ok) return null;
+        return await response.json();
+    }
+
+    // Extract address fields from a Nominatim result object
+    function parseNominatimResult(result) {
+        const ad = result.address || {};
+        let streetAddress = '';
+        if (ad.house_number && ad.road) streetAddress = `${ad.house_number} ${ad.road}`;
+        else if (ad.road) streetAddress = ad.road;
+        const zipCode = ad.postcode || '';
+        const city = ad.city || ad.town || ad.village || ad.hamlet || ad.county || '';
+        const state = ad.state || '';
+        return { streetAddress, zipCode, city, state };
+    }
+
+    // Check if a result has a complete address (street + zip)
+    function isCompleteAddress(parsed) {
+        return !!(parsed.streetAddress && parsed.zipCode && parsed.city);
+    }
+
+    // Nominatim API function to get full street address
+    // Strategy: forward search to find the place → reverse geocode its coordinates for full address
+    async function fetchAddressFromNominatim(hospitalName, location) {
+        const emptyResult = { streetAddress: '', zipCode: '', city: '', state: '', address: '' };
+
+        // Build query variations — most specific first
         const queries = [
-            // Try 1: Full hospital name with location
-            `${hospitalName}, ${location}, USA`,
-            // Try 2: Just location (city, state)
-            `${location}, USA`,
-            // Try 3: Simplified hospital name (remove common suffixes) with location
-            hospitalName.replace(/\s+(Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic))$/i, '').trim() + `, ${location}, USA`
+            `${hospitalName}, ${location}`,
+            `${hospitalName} veterinary, ${location}`,
+            hospitalName.replace(/\s+(Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic))$/i, '').trim() + ` veterinary, ${location}`,
         ];
 
         for (let i = 0; i < queries.length; i++) {
-            const query = queries[i];
-
             try {
-                const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=5`;
-
-                const response = await fetch(url, {
-                    headers: {
-                        'User-Agent': 'UnitedVeterinaryJobScraper/1.6'
-                    }
-                });
-
-                lastNominatimRequest = Date.now();
-
-                if (!response.ok) {
-                    console.warn(`Nominatim API returned status ${response.status} for: ${query}`);
-                    continue; // Try next query
+                const data = await nominatimSearch(queries[i]);
+                if (!data || data.length === 0) {
+                    console.log(`✗ No results for query ${i+1}: "${queries[i]}"`);
+                    continue;
                 }
 
-                const data = await response.json();
+                // Pick the best forward-search result
+                let bestResult = null;
+                // Prefer result with complete address
+                for (const r of data) {
+                    const p = parseNominatimResult(r);
+                    if (isCompleteAddress(p)) { bestResult = r; break; }
+                }
+                // Otherwise pick first with house_number
+                if (!bestResult) {
+                    for (const r of data) {
+                        if (r.address?.house_number) { bestResult = r; break; }
+                    }
+                }
+                // Otherwise first result
+                if (!bestResult) bestResult = data[0];
 
-                if (data && data.length > 0) {
-                    // Try to find the best match - prefer results with house numbers
-                    let bestResult = null;
+                let parsed = parseNominatimResult(bestResult);
 
-                    for (const result of data) {
-                        const address = result.address || {};
-                        if (address.house_number && address.road) {
-                            bestResult = result;
-                            break;
+                // If forward search didn't give a complete street address,
+                // reverse-geocode the lat/lon to get the exact address at that point
+                if (!isCompleteAddress(parsed) && bestResult.lat && bestResult.lon) {
+                    console.log(`  → Forward result incomplete, trying reverse geocode at ${bestResult.lat},${bestResult.lon}...`);
+                    const reverseResult = await nominatimReverse(bestResult.lat, bestResult.lon);
+                    if (reverseResult) {
+                        const revParsed = parseNominatimResult(reverseResult);
+                        // Use reverse result if it's more complete
+                        if (revParsed.streetAddress && (!parsed.streetAddress || revParsed.zipCode)) {
+                            parsed = revParsed;
+                        } else {
+                            // At least grab the missing zip from reverse
+                            if (!parsed.zipCode && revParsed.zipCode) parsed.zipCode = revParsed.zipCode;
+                            if (!parsed.streetAddress && revParsed.streetAddress) parsed.streetAddress = revParsed.streetAddress;
+                            if (!parsed.city && revParsed.city) parsed.city = revParsed.city;
+                            if (!parsed.state && revParsed.state) parsed.state = revParsed.state;
                         }
                     }
-
-                    // If no result with house number, use the first result
-                    if (!bestResult) {
-                        bestResult = data[0];
-                    }
-
-                    const address = bestResult.address || {};
-
-                    // Build street address - only include house number and road
-                    let streetAddress = '';
-                    if (address.house_number && address.road) {
-                        streetAddress = `${address.house_number} ${address.road}`;
-                    } else if (address.road) {
-                        streetAddress = address.road;
-                    }
-
-                    // Get zip code
-                    const zipCode = address.postcode || '';
-
-                    // Extract city from Nominatim response (prefer city, then town, then village)
-                    const city = address.city || address.town || address.village || '';
-
-                    // Extract FULL state name from Nominatim (e.g., "California" not "CA")
-                    const state = address.state || '';
-
-                    console.log(`✓ Nominatim SUCCESS (Query ${i+1}/${queries.length}): "${query}"`);
-                    console.log(`  → Street="${streetAddress}", Zip="${zipCode}", City="${city}", State="${state}"`);
-
-                    return { streetAddress, zipCode, city, state };
                 }
 
-                // If this query didn't return results, wait before trying next one
-                if (i < queries.length - 1) {
-                    console.log(`✗ No results for query ${i+1}: "${query}", trying alternative...`);
-                    await new Promise(resolve => setTimeout(resolve, 1000));
-                }
+                const address = buildFullAddress(parsed.streetAddress, parsed.city, parsed.state, parsed.zipCode);
+                console.log(`✓ Nominatim SUCCESS (Query ${i+1}): "${queries[i]}"`);
+                console.log(`  → Address="${address}"`);
+                return { ...parsed, address };
 
             } catch (error) {
-                console.error(`Nominatim API error for "${query}":`, error);
-                continue; // Try next query
+                console.error(`Nominatim error for "${queries[i]}":`, error);
             }
         }
 
-        // All queries failed
-        console.warn(`✗ No Nominatim results found after ${queries.length} attempts for: ${hospitalName}, ${location}`);
-        return { streetAddress: '', zipCode: '', city: '', state: '' };
+        console.warn(`✗ No results for: ${hospitalName}, ${location}`);
+        return emptyResult;
     }
 
     if (!tableBody) {
@@ -669,25 +708,24 @@ document.addEventListener('DOMContentLoaded', () => {
             jobIdCell.style.fontSize = '12px';
             jobIdCell.style.color = '#64748b';
             row.insertCell(3).textContent = job.hospital;
-            row.insertCell(4).textContent = job.streetAddress || '-';
+            row.insertCell(4).textContent = job.address || '-';
             row.insertCell(5).textContent = job.city;
             row.insertCell(6).textContent = job.state;
-            row.insertCell(7).textContent = job.zipCode || '-';
-            row.insertCell(8).textContent = job.location;
+            row.insertCell(7).textContent = job.location;
 
             // Detail Columns
-            row.insertCell(9).textContent = job.areaOfPractice || '-';
-            row.insertCell(10).textContent = job.position || '-';
-            row.insertCell(11).textContent = job.salary || '-';
+            row.insertCell(8).textContent = job.areaOfPractice || '-';
+            row.insertCell(9).textContent = job.position || '-';
+            row.insertCell(10).textContent = job.salary || '-';
 
-            const linkCell = row.insertCell(12);
+            const linkCell = row.insertCell(11);
             const link = document.createElement('a');
             link.href = job.link;
             link.textContent = 'View Job';
             link.target = '_blank';
             linkCell.appendChild(link);
 
-            const descCell = row.insertCell(13);
+            const descCell = row.insertCell(12);
             if (job.description) {
                 const descDiv = document.createElement('div');
                 descDiv.className = 'description-cell';
@@ -712,8 +750,7 @@ document.addEventListener('DOMContentLoaded', () => {
             (job.city || '').toLowerCase().includes(term) ||
             (job.state || '').toLowerCase().includes(term) ||
             (job.location || '').toLowerCase().includes(term) ||
-            (job.streetAddress || '').toLowerCase().includes(term) ||
-            (job.zipCode || '').toLowerCase().includes(term) ||
+            (job.address || '').toLowerCase().includes(term) ||
             (job.areaOfPractice || '').toLowerCase().includes(term) ||
             (job.position || '').toLowerCase().includes(term)
         );
@@ -742,7 +779,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Street Address', 'City', 'State', 'Zip Code', 'Location', 'Area of Practice', 'Position', 'Salary', 'Link', 'Description'];
+        const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Address', 'City', 'State', 'Location', 'Area of Practice', 'Position', 'Salary', 'Link', 'Description'];
         const csvContent = [
             headers.join(','),
             ...allJobs.map((job, index) => [
@@ -750,10 +787,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 `"${(job.title || '').replace(/"/g, '""')}"`,
                 `"${(job.jobId || '').replace(/"/g, '""')}"`,
                 `"${(job.hospital || '').replace(/"/g, '""')}"`,
-                `"${(job.streetAddress || '').replace(/"/g, '""')}"`,
+                `"${(job.address || '').replace(/"/g, '""')}"`,
                 `"${(job.city || '').replace(/"/g, '""')}"`,
                 `"${(job.state || '').replace(/"/g, '""')}"`,
-                `"${(job.zipCode || '').replace(/"/g, '""')}"`,
                 `"${(job.location || '').replace(/"/g, '""')}"`,
                 `"${(job.areaOfPractice || '').replace(/"/g, '""')}"`,
                 `"${(job.position || '').replace(/"/g, '""')}"`,
@@ -843,20 +879,21 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // Clear addresses only (city, state, street address, zip code)
+    // Clear addresses only (address, city, state, street address, zip code)
     const clearAddressesBtn = document.getElementById('clearAddresses');
     clearAddressesBtn.addEventListener('click', () => {
-        if (confirm('Are you sure you want to clear all address data? This will remove City, State, Street Address, and Zip Code from all jobs (Location column will be kept).')) {
+        if (confirm('Are you sure you want to clear all address data? This will remove Address, City, State from all jobs (Location column will be kept).')) {
             chrome.storage.local.get(['scrapedJobs'], (data) => {
                 const jobs = data.scrapedJobs || [];
                 let clearedCount = 0;
 
                 jobs.forEach(job => {
-                    if (job.city || job.state || job.streetAddress || job.zipCode) {
+                    if (job.city || job.state || job.streetAddress || job.zipCode || job.address) {
                         job.city = '';
                         job.state = '';
                         job.streetAddress = '';
                         job.zipCode = '';
+                        job.address = '';
                         clearedCount++;
                     }
                 });
@@ -910,11 +947,10 @@ document.addEventListener('DOMContentLoaded', () => {
             job_id: job.jobId || '',
             department_id: job.jobId || '',
             hospital: job.hospital,
-            street_address: job.streetAddress || '',
+            address: job.address || '',
             parent_client: "United Veterinary Care",
             city: job.city,
             state: job.state,
-            zip_code: job.zipCode || '',
             location: job.location,
             area_of_practice: job.areaOfPractice || '',
             position: job.position || '',
@@ -1264,7 +1300,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Save extracted details to storage
         if (detailsList.length > 0) {
-            await saveDetailResults(detailsList, index);
+            const insertedCount = await saveDetailResults(detailsList, index);
+
+            // If new location records were inserted, shift indices for remaining queue items
+            if (insertedCount > 0) {
+                for (let q = currentDetailsIndex + 1; q < detailsQueue.length; q++) {
+                    if (detailsQueue[q].index > index) {
+                        detailsQueue[q].index += insertedCount;
+                    }
+                }
+            }
         }
 
         // Move to next job
@@ -1273,6 +1318,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Save detail extraction results to chrome storage
+    // Returns the number of new location records inserted (0 if single location)
     function saveDetailResults(detailsList, jobIndex) {
         return new Promise((resolve) => {
             chrome.storage.local.get(['scrapedJobs'], (data) => {
@@ -1280,11 +1326,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const originalJob = jobs[jobIndex];
 
                 if (!originalJob) {
-                    resolve();
+                    resolve(0);
                     return;
                 }
 
                 const firstDetail = detailsList[0];
+                let insertedCount = 0;
 
                 // --- POSITION: Always determine from the LISTING title (originalJob.title) ---
                 // The listing title (e.g. "Veterinary Cardiologist") is the most reliable source.
@@ -1293,8 +1340,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const listingTitle = originalJob.title || '';
                 const detailAOP = firstDetail.areaOfPractice || '';
 
-                // Step 1: Determine AOP — prefer detail extractor's AOP (from page category), fall back to title
-                let finalAOP = detailAOP || getAOPFromTitle(listingTitle) || 'General Practice Care';
+                // Step 1: Determine AOP — title-based specialty detection takes priority
+                // If the listing title clearly names a specialty (e.g. "Veterinary Radiologist"),
+                // trust that over a generic page category like "Gen Practice"
+                const titleAOP = getAOPFromTitle(listingTitle);
+                let finalAOP = (titleAOP === 'Specialty Care' ? titleAOP : detailAOP) || titleAOP || 'General Practice Care';
 
                 // Step 2: Match position from listing title
                 let finalPosition = getPositionFromTitle(listingTitle);
@@ -1341,37 +1391,74 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (firstDetail.city) originalJob.city = firstDetail.city;
                 if (firstDetail.state) originalJob.state = firstDetail.state;
                 if (firstDetail.location) originalJob.location = firstDetail.location;
+                if (firstDetail.streetAddress) originalJob.streetAddress = firstDetail.streetAddress;
+                if (firstDetail.zipCode) originalJob.zipCode = firstDetail.zipCode;
+                // Build full address: "Street, City, ST Zip, United States"
+                originalJob.address = buildFullAddress(
+                    firstDetail.streetAddress || originalJob.streetAddress || '',
+                    firstDetail.city || originalJob.city || '',
+                    firstDetail.state || originalJob.state || '',
+                    firstDetail.zipCode || originalJob.zipCode || ''
+                );
                 // Update description if we got a better one
                 if (firstDetail.description && firstDetail.description.length > (originalJob.description || '').length) {
                     originalJob.description = firstDetail.description;
                 }
 
-                // Handle multi-location jobs
+                // Handle multi-location jobs — create extra records for each additional location
                 if (detailsList.length > 1) {
-                    originalJob.isNewLocation = true;
+                    // Remove any previously created location duplicates for this job
+                    const baseJobId = originalJob.jobId.replace(/-loc\d+$/, '');
+                    for (let i = jobs.length - 1; i >= 0; i--) {
+                        if (i !== jobIndex && jobs[i].jobId && jobs[i].jobId.startsWith(baseJobId + '-loc')) {
+                            jobs.splice(i, 1);
+                            if (i < jobIndex) jobIndex--;
+                        }
+                    }
+
+                    // Update original job with first location
+                    originalJob.city = detailsList[0].city || originalJob.city || '';
+                    originalJob.state = detailsList[0].state || originalJob.state || '';
+                    originalJob.location = detailsList[0].location || `${originalJob.city}, ${originalJob.state}`;
+                    originalJob.streetAddress = detailsList[0].streetAddress || originalJob.streetAddress || '';
+                    originalJob.zipCode = detailsList[0].zipCode || originalJob.zipCode || '';
+
+                    // Build full address for original job
+                    originalJob.address = buildFullAddress(
+                        originalJob.streetAddress || '', originalJob.city || '',
+                        originalJob.state || '', originalJob.zipCode || ''
+                    );
+
+                    // Create new records for additional locations
                     const newJobs = [];
                     for (let i = 1; i < detailsList.length; i++) {
                         const loc = detailsList[i];
-                        const baseJobId = originalJob.jobId.split('-')[0];
+                        // Build full address for this location
+                        const locAddress = buildFullAddress(
+                            loc.streetAddress || '', loc.city || '',
+                            loc.state || '', loc.zipCode || ''
+                        );
                         const newJob = {
                             ...originalJob,
-                            jobId: `${baseJobId}-${i + 1}`,
-                            city: '',
-                            state: '',
+                            jobId: `${baseJobId}-loc${i + 1}`,
+                            city: loc.city || '',
+                            state: loc.state || '',
                             location: loc.location || `${loc.city}, ${loc.state}`,
-                            streetAddress: '',
-                            zipCode: '',
+                            streetAddress: loc.streetAddress || '',
+                            zipCode: loc.zipCode || '',
+                            address: locAddress,
                             isNewLocation: true
                         };
                         newJobs.push(newJob);
                     }
                     jobs.splice(jobIndex + 1, 0, ...newJobs);
+                    insertedCount = newJobs.length;
                 }
 
                 chrome.storage.local.set({ scrapedJobs: jobs }, () => {
                     allJobs = jobs;
                     displayRecords(allJobs);
-                    resolve();
+                    resolve(insertedCount);
                 });
             });
         });
@@ -1404,9 +1491,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Find jobs that need addresses (using LOCATION column)
         const jobsNeedingAddresses = jobs.map((job, index) => ({ job, index }))
             .filter(item => {
-                // Jobs that don't have street address or zip code
+                // Jobs that don't have address
                 return item.job.hospital && item.job.location &&
-                    (!item.job.streetAddress || !item.job.zipCode);
+                    !item.job.address;
             });
 
         if (jobsNeedingAddresses.length === 0) {
@@ -1473,6 +1560,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 jobs[index].city = addressData.city || jobs[index].city || '';
                 // Convert to full state name if needed
                 jobs[index].state = getFullStateName(addressData.state || jobs[index].state || '');
+
+                // Build full address: "Street, City, ST Zip, United States"
+                jobs[index].address = buildFullAddress(
+                    jobs[index].streetAddress || '', jobs[index].city || '',
+                    jobs[index].state || '', jobs[index].zipCode || ''
+                );
 
                 await chrome.storage.local.set({ scrapedJobs: jobs });
 
