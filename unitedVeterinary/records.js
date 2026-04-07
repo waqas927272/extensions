@@ -1311,16 +1311,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (positionTitle) {
             const extracted = extractDetailsFromDescription(positionTitle, description);
-            detailsList = [{
-                areaOfPractice: extracted.areaOfPractice,
-                position: extracted.position,
-                salary: extracted.salary,
-                hospitalName: extracted.hospitalName,
-                description: description,
-                city: extracted.locations[0]?.city || '',
-                state: extracted.locations[0]?.state || '',
-                location: extracted.locations[0]?.location || ''
-            }];
+
+            // Build detailsList with ALL locations for multi-location jobs
+            if (extracted.locations && extracted.locations.length > 0) {
+                detailsList = extracted.locations.map(loc => ({
+                    areaOfPractice: extracted.areaOfPractice,
+                    position: extracted.position,
+                    salary: extracted.salary,
+                    hospitalName: extracted.hospitalName,
+                    description: description,
+                    city: loc.city || '',
+                    state: loc.state || '',
+                    location: loc.location || ''
+                }));
+            } else {
+                // No locations found — still create one entry with details
+                detailsList = [{
+                    areaOfPractice: extracted.areaOfPractice,
+                    position: extracted.position,
+                    salary: extracted.salary,
+                    hospitalName: extracted.hospitalName,
+                    description: description,
+                    city: '',
+                    state: '',
+                    location: ''
+                }];
+            }
         }
 
         // Save extracted details to storage
@@ -1422,7 +1438,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             location: loc.location || `${loc.city}, ${loc.state}`,
                             streetAddress: '',
                             zipCode: '',
-                            isNewLocation: true
+                            isNewLocation: true,
+                            sourceLink: originalJob.link || ''
                         };
                         newJobs.push(newJob);
                     }
