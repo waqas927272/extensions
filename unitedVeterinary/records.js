@@ -1594,12 +1594,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (zipFromFull) jobs[index].zipCode = zipFromFull[1];
                 }
 
-                // Build full address: "Street, City, ST Zip, United States"
-                jobs[index].address = buildFullAddress(
-                    jobs[index].streetAddress || '', jobs[index].city || '',
-                    jobs[index].state || '', jobs[index].zipCode || ''
-                );
-
                 await chrome.storage.local.set({ scrapedJobs: jobs });
 
                 // Update display
@@ -1614,7 +1608,6 @@ document.addEventListener('DOMContentLoaded', () => {
         currentAddressIndex++;
 
         // Continue processing — small delay between Google Maps tab requests
-        // The main wait time is built into fetchAddressFromGoogleMaps (5s render wait + tab lifecycle)
         setTimeout(() => processNextAddress(), 1000);
     }
 
