@@ -11,7 +11,8 @@
       "Bash(node -c \"C:/wamp64/www/extensions/unitedVeterinary/detail-extractor.js\")",
       "Bash(node --check \"C:/wamp64/www/extensions/unitedVeterinary/detail-extractor.js\")",
       "Bash(node -c \"C:/wamp64/www/extensions/unitedVeterinary/records.js\")",
-      "Bash(node --check \"C:/wamp64/www/extensions/unitedVeterinary/records.js\")"
+      "Bash(node --check \"C:/wamp64/www/extensions/unitedVeterinary/records.js\")",
+      "Bash(grep -r \"Pay Range\\\\|pay range\\\\|\\\\$[0-9]\" /c/wamp64/www/extensions/unitedVeterinary/jobDetail --include=\"*.html\")"
     ]
   }
 }
