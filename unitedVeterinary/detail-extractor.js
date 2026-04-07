@@ -189,13 +189,11 @@
 
     // ===== Determine Area of Practice =====
     function determineAreaOfPractice(title, category, descriptionText) {
-        // STEP 1: Use category from page (most reliable — directly from jobvite)
-        const aopFromCategory = categoryToAOP(category);
-        if (aopFromCategory) return aopFromCategory;
-
         const titleLower = title.toLowerCase();
 
-        // STEP 2: Check title for clear specialty position names
+        // STEP 1: Check title for clear specialty position names FIRST
+        // Title is more specific than page category — a "Veterinary Radiologist" listed
+        // under a generic category like "Gen Practice" is still Specialty Care
         const specialtyNames = ['oncologist', 'cardiologist', 'neurologist', 'neurosurgeon',
             'dermatologist', 'ophthalmologist', 'anesthesiologist', 'theriogenologist',
             'radiologist', 'internist', 'criticalist',
@@ -215,6 +213,10 @@
 
         if (titleLower.includes('specialist') && !titleLower.includes('technician specialist')) return 'Specialty Care';
         if (titleLower.match(/\bsurgeon\b/)) return 'Specialty Care';
+
+        // STEP 2: Use category from page (reliable for non-specialty jobs)
+        const aopFromCategory = categoryToAOP(category);
+        if (aopFromCategory) return aopFromCategory;
 
         // STEP 3: Emergency from title
         if (titleLower.includes('emergency') || titleLower.match(/\ber\b/) ||
@@ -449,8 +451,10 @@
                 if (loc.address) {
                     const city = loc.address.addressLocality || '';
                     const state = loc.address.addressRegion || '';
+                    const streetAddress = loc.address.streetAddress || '';
+                    const zipCode = loc.address.postalCode || '';
                     if (city && state) {
-                        locations.push({ city, state, location: `${city}, ${state}` });
+                        locations.push({ city, state, streetAddress, zipCode, location: `${city}, ${state}` });
                     }
                 }
             }
@@ -461,6 +465,8 @@
             locations.push({
                 city: domData.city,
                 state: domData.state || '',
+                streetAddress: '',
+                zipCode: '',
                 location: domData.state ? `${domData.city}, ${domData.state}` : domData.city
             });
         }
@@ -478,7 +484,7 @@
                         const state = match[2].trim();
                         const bad = ['description', 'position', 'associate', 'veterinarian', 'hospital', 'care'];
                         if (!bad.some(w => city.toLowerCase().includes(w)) && city.length > 1 && city.length < 50) {
-                            locations.push({ city, state, location: `${city}, ${state}` });
+                            locations.push({ city, state, streetAddress: '', zipCode: '', location: `${city}, ${state}` });
                         }
                     }
                 }
@@ -491,7 +497,7 @@
             multiLoc.forEach(el => {
                 const parts = el.innerText.trim().split(',').map(s => s.trim());
                 if (parts.length >= 2) {
-                    locations.push({ city: parts[0], state: parts[1], location: el.innerText.trim() });
+                    locations.push({ city: parts[0], state: parts[1], streetAddress: '', zipCode: '', location: el.innerText.trim() });
                 }
             });
         }
@@ -545,13 +551,15 @@
     };
 
     if (locations.length === 0) {
-        return [{ ...baseDetails, city: '', state: '', location: '' }];
+        return [{ ...baseDetails, city: '', state: '', streetAddress: '', zipCode: '', location: '' }];
     }
 
     return locations.map(loc => ({
         ...baseDetails,
         city: loc.city,
         state: loc.state,
+        streetAddress: loc.streetAddress || '',
+        zipCode: loc.zipCode || '',
         location: loc.location
     }));
 })();
