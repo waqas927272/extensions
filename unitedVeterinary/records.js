@@ -1294,7 +1294,8 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const { job, index } = detailsQueue[currentDetailsIndex];
+        const queueItem = detailsQueue[currentDetailsIndex];
+        const jobId = queueItem.job.jobId;
 
         // Update progress
         const progressBar = document.getElementById('progressBar');
@@ -1303,6 +1304,20 @@ document.addEventListener('DOMContentLoaded', () => {
         progressBar.style.width = `${((currentDetailsIndex + 1) / detailsQueue.length) * 100}%`;
         fetchDetailsBtn.textContent = `Analyzing... (${currentDetailsIndex + 1}/${detailsQueue.length})`;
 
+        // Re-read jobs from storage to get the current index
+        // (indices shift when multi-location rows are inserted)
+        const data = await chrome.storage.local.get(['scrapedJobs']);
+        const currentJobs = data.scrapedJobs || [];
+        const currentIndex = currentJobs.findIndex(j => j.jobId === jobId);
+
+        if (currentIndex === -1) {
+            // Job no longer found (shouldn't happen), skip it
+            currentDetailsIndex++;
+            setTimeout(() => processNextDetail(), 50);
+            return;
+        }
+
+        const job = currentJobs[currentIndex];
         let detailsList = [];
 
         // Extract details locally from job title + already-fetched description
@@ -1341,7 +1356,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Save extracted details to storage
         if (detailsList.length > 0) {
-            await saveDetailResults(detailsList, index);
+            await saveDetailResults(detailsList, currentIndex);
         }
 
         // Move to next job — no delay needed since we're analyzing locally
