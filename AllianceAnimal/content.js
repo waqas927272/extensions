@@ -31,7 +31,10 @@ if (!window.geminiJobScraperInitialized) {
           const jobTypeEl = row.querySelector('th:nth-child(4)');
 
           if (hospitalNameEl && jobTitleEl && locationEl) {
-            const hospitalName = hospitalNameEl.innerText.trim();
+            let hospitalName = hospitalNameEl.innerText.trim();
+            // Hospital name often contains " - City, ST" suffix (e.g. "Mitchell Village Animal Hospital - Morehead City, NC")
+            // Strip it to get just the hospital name
+            hospitalName = hospitalName.replace(/\s*[-–—]\s*[A-Za-z\s.'-]+,\s*[A-Z]{2}\s*$/, '').trim();
             const jobTitle = jobTitleEl.innerText.trim();
             const link = jobTitleEl.href;
             const locationText = locationEl.innerText.trim();

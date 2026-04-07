@@ -28,5 +28,11 @@
   },
   "background": {
     "service_worker": "background.js"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["google-maps-scraper.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

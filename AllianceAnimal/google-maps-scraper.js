@@ -1,0 +1,283 @@
+// google-maps-scraper.js
+// Injected into a Google Maps search page to extract business address data.
+//
+// Strategy:
+// 1. Check if Google Maps auto-navigated to a single place (address button visible)
+// 2. If search results list is shown, find the result matching the hospital name
+//    by reading aria-label on a.hfpxzc elements, click the best match
+// 3. Wait for place detail panel to load, then extract address from the address button
+// 4. Parse the full address into street, city, state, zip components
+//
+// Uses polling — checks every 500ms for up to 15 seconds total.
+(async () => {
+    try {
+        const MAX_WAIT = 15000;   // 15 seconds max total
+        const POLL = 500;         // Check every 500ms
+        const startTime = Date.now();
+
+        // Helper: wait ms
+        const wait = (ms) => new Promise(r => setTimeout(r, ms));
+
+        // ============================================================
+        // PHASE 1: Wait for Google Maps to load something meaningful
+        // Either a single place detail OR a search results list
+        // ============================================================
+        let addressData = null;
+
+        while (Date.now() - startTime < MAX_WAIT) {
+            // Check if we're on a single place page (address button exists)
+            addressData = tryExtractFromPlaceDetail();
+            if (addressData) return addressData;
+
+            // Check if search results list has loaded
+            const resultLinks = document.querySelectorAll('a.hfpxzc');
+            if (resultLinks.length > 0) {
+                // Results list is loaded — go to Phase 2
+                break;
+            }
+
+            await wait(POLL);
+        }
+
+        // If we already got address data from place detail, return it
+        if (addressData) return addressData;
+
+        // ============================================================
+        // PHASE 2: Search results list is showing
+        // Find the best matching result by comparing aria-label to hospital name
+        // The hospital name is embedded in the search URL query
+        // ============================================================
+        const hospitalName = getHospitalNameFromUrl();
+        const resultLinks = document.querySelectorAll('a.hfpxzc');
+
+        if (resultLinks.length === 0) {
+            // No results and no place detail — nothing we can do
+            return emptyResult();
+        }
+
+        // Find best matching result
+        const bestMatch = findBestMatch(resultLinks, hospitalName);
+        if (!bestMatch) {
+            // No match found — try extracting from the first result anyway
+            // as Google Maps usually puts the most relevant result first
+            console.log('No exact match found, trying first result');
+        }
+
+        const targetLink = bestMatch || resultLinks[0];
+        console.log(`Clicking result: "${targetLink.getAttribute('aria-label')}"`);
+
+        // Click the matching result to open place details
+        targetLink.click();
+
+        // ============================================================
+        // PHASE 3: Wait for place detail panel to load after clicking
+        // Look for the address button to appear
+        // ============================================================
+        const remainingTime = MAX_WAIT - (Date.now() - startTime);
+        const phase3End = Date.now() + Math.max(remainingTime, 5000); // At least 5s more
+
+        while (Date.now() < phase3End) {
+            await wait(POLL);
+
+            addressData = tryExtractFromPlaceDetail();
+            if (addressData) return addressData;
+        }
+
+        // Last resort: try extracting from whatever is on the page now
+        return tryExtractFromPageBody() || emptyResult();
+
+    } catch (e) {
+        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', error: e.message };
+    }
+
+    // ===== Extract hospital name from the Google Maps URL query =====
+    // URL format: https://www.google.com/maps/search/Hospital+Name+City+State
+    function getHospitalNameFromUrl() {
+        const url = window.location.href;
+        const searchMatch = url.match(/\/maps\/search\/([^?#]+)/);
+        if (searchMatch) {
+            return decodeURIComponent(searchMatch[1]).replace(/\+/g, ' ').trim();
+        }
+        return '';
+    }
+
+    // ===== Find the search result that best matches the hospital name =====
+    // Compares aria-label text against the hospital name using word overlap
+    function findBestMatch(links, searchQuery) {
+        if (!searchQuery || links.length === 0) return null;
+
+        // Normalize for comparison: lowercase, remove special chars
+        const normalize = (str) => str.toLowerCase()
+            .replace(/&/g, 'and')
+            .replace(/[^a-z0-9\s]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        const queryNorm = normalize(searchQuery);
+        const queryWords = queryNorm.split(' ').filter(w => w.length > 2); // Skip short words
+
+        let bestLink = null;
+        let bestScore = 0;
+
+        for (const link of links) {
+            const label = (link.getAttribute('aria-label') || '').replace(/·.*$/, '').trim();
+            const labelNorm = normalize(label);
+
+            // Count how many query words appear in the label
+            let matchCount = 0;
+            for (const word of queryWords) {
+                if (labelNorm.includes(word)) {
+                    matchCount++;
+                }
+            }
+
+            // Score = percentage of query words that matched
+            const score = queryWords.length > 0 ? matchCount / queryWords.length : 0;
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestLink = link;
+            }
+        }
+
+        // Require at least 50% word overlap to consider it a match
+        return bestScore >= 0.5 ? bestLink : null;
+    }
+
+    // ===== Try to extract address from place detail panel =====
+    // This works when Google Maps shows a single place view with the address button
+    function tryExtractFromPlaceDetail() {
+        // Method 1: Address button (most reliable)
+        const addressButton = document.querySelector('button[data-item-id="address"]');
+        if (addressButton) {
+            const ariaLabel = addressButton.getAttribute('aria-label') || '';
+            const textContent = addressButton.textContent.trim();
+            let fullAddress = ariaLabel.replace(/^Address:\s*/i, '').trim() || textContent;
+            if (fullAddress && /\d/.test(fullAddress)) {
+                const result = { fullAddress };
+                Object.assign(result, parseAddress(fullAddress));
+                if (result.streetAddress) return result;
+            }
+        }
+
+        // Method 2: Side panel text elements with address pattern
+        const infoSelectors = [
+            '[data-item-id="address"] .Io6YTe',
+            '[data-item-id="address"] .rogA2c',
+            '.Io6YTe.fontBodyMedium',
+            '.LrzXr',
+        ];
+        for (const selector of infoSelectors) {
+            const elements = document.querySelectorAll(selector);
+            for (const el of elements) {
+                const text = el.textContent.trim();
+                if (/\b[A-Z]{2}\s+\d{5}/.test(text) && /\d+\s+\w/.test(text)) {
+                    const result = { fullAddress: text };
+                    Object.assign(result, parseAddress(text));
+                    if (result.streetAddress) return result;
+                }
+            }
+        }
+
+        // Method 3: aria-label with full US address pattern
+        const allAria = document.querySelectorAll('[aria-label]');
+        for (const el of allAria) {
+            const label = el.getAttribute('aria-label') || '';
+            if (/\d+\s+[\w\s]+,\s*[\w\s]+,\s*[A-Z]{2}\s+\d{5}/.test(label)) {
+                const clean = label.replace(/^Address:\s*/i, '').trim();
+                const result = { fullAddress: clean };
+                Object.assign(result, parseAddress(clean));
+                if (result.streetAddress) return result;
+            }
+        }
+
+        return null;
+    }
+
+    // ===== Try to extract address from page body text =====
+    function tryExtractFromPageBody() {
+        const bodyText = document.body.innerText || '';
+        const regex = /(\d+\s+[\w\s.'-]+(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|NE|NW|SE|SW)[\w\s.,#-]*,\s*[\w\s.'-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i;
+        const match = bodyText.match(regex);
+        if (match) {
+            const result = { fullAddress: match[1].trim() };
+            Object.assign(result, parseAddress(result.fullAddress));
+            if (result.streetAddress) return result;
+        }
+        return null;
+    }
+
+    // ===== Empty result helper =====
+    function emptyResult() {
+        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '' };
+    }
+
+    // ===== Parse a full US address string into components =====
+    // Handles:
+    //   "4434 Frontier Trail, Austin, TX 78745"
+    //   "4434 Frontier Trail, Austin, TX 78745, United States"
+    //   "7600 N Capital of Texas Hwy Building B, Suite 100, Austin, TX 78731"
+    //   "134 Fort Evans Rd NE, Leesburg, VA 20176"
+    function parseAddress(fullAddress) {
+        const result = { streetAddress: '', zipCode: '', city: '', state: '' };
+        if (!fullAddress) return result;
+
+        // Remove trailing country
+        fullAddress = fullAddress.replace(/,?\s*(?:USA|US|United States)\s*$/i, '').trim();
+
+        // Extract zip code
+        const zipMatch = fullAddress.match(/\b(\d{5}(?:-\d{4})?)\b/);
+        if (zipMatch) result.zipCode = zipMatch[1];
+
+        // Extract state (2 uppercase letters before zip)
+        const stateMatch = fullAddress.match(/\b([A-Z]{2})\s+\d{5}/);
+        if (stateMatch) result.state = stateMatch[1];
+
+        // Split by commas
+        const parts = fullAddress.split(',').map(s => s.trim());
+
+        // Find the part with "ST 12345" — anchors the parsing
+        let stateZipIndex = -1;
+        for (let i = parts.length - 1; i >= 0; i--) {
+            if (/\b[A-Z]{2}\s+\d{5}/.test(parts[i])) {
+                stateZipIndex = i;
+                break;
+            }
+        }
+
+        if (stateZipIndex >= 1) {
+            // City = part right before state+zip
+            result.city = parts[stateZipIndex - 1].trim();
+
+            // Street = everything before city, filtering out city duplicates
+            const streetParts = parts.slice(0, stateZipIndex - 1)
+                .filter(p => p.trim().toLowerCase() !== result.city.toLowerCase());
+            result.streetAddress = streetParts.join(', ').trim();
+        } else if (parts.length >= 3) {
+            // Fallback: last=state+zip, second-to-last=city, rest=street
+            result.city = parts[parts.length - 2].trim();
+            const streetParts = parts.slice(0, parts.length - 2)
+                .filter(p => p.trim().toLowerCase() !== result.city.toLowerCase());
+            result.streetAddress = streetParts.join(', ').trim();
+
+            if (!result.state) {
+                const s = parts[parts.length - 1].match(/^([A-Z]{2})\b/);
+                if (s) result.state = s[1];
+            }
+        } else if (parts.length === 2) {
+            result.streetAddress = parts[0];
+            const csz = parts[1].match(/^([\w\s.'-]+?)\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)/);
+            if (csz) {
+                result.city = csz[1].trim();
+                result.state = csz[2];
+                result.zipCode = csz[3];
+            }
+        }
+
+        // Clean up
+        result.city = result.city.replace(/\s*\b[A-Z]{2}\s+\d{5}(?:-\d{4})?\s*$/, '').trim();
+        result.streetAddress = result.streetAddress.replace(/,\s*$/, '').trim();
+
+        return result;
+    }
+})();

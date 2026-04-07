@@ -69,6 +69,11 @@ document.addEventListener('DOMContentLoaded', () => {
   let isFetchingDetails = false;
   let detailsQueue = [];
   let currentDetailsIndex = 0;
+  let isFetchingAddresses = false;
+  let addressQueue = [];
+  let currentAddressIndex = 0;
+
+  const fetchAddressesBtn = document.getElementById('fetchAddresses');
 
   // Function to detect duplicates based on title + hospitalName + city + state
   function separateDuplicates(jobs) {
@@ -850,6 +855,147 @@ document.addEventListener('DOMContentLoaded', () => {
 
     processNextDetail();
   });
+
+  // ==================== FETCH ADDRESSES FUNCTIONALITY ====================
+  // Opens Google Maps in a background tab for each job, injects google-maps-scraper.js
+  // to extract the street address, zip code, city, and state from the place detail panel.
+
+  // Send message to background.js and get response as a Promise
+  function fetchAddressViaGoogleMaps(searchQuery, jobIndex) {
+    return new Promise((resolve) => {
+      chrome.runtime.sendMessage(
+        {
+          action: 'fetchAddressFromMaps',
+          searchQuery: searchQuery,
+          jobIndex: jobIndex
+        },
+        (response) => {
+          resolve(response || { success: false, error: 'No response from background script' });
+        }
+      );
+    });
+  }
+
+  fetchAddressesBtn.addEventListener('click', async () => {
+    if (isFetchingAddresses) return;
+
+    const data = await chrome.storage.local.get(['jobs']);
+    const jobs = data.jobs || [];
+
+    if (jobs.length === 0) {
+      alert('No records to fetch addresses for.');
+      return;
+    }
+
+    // Find jobs that need addresses (have hospitalName and city/state but missing streetAddress or postalCode)
+    const jobsNeedingAddresses = jobs.map((job, index) => ({ job, index }))
+      .filter(item => {
+        return item.job.hospitalName && (item.job.city || item.job.state) &&
+          (!item.job.streetAddress || !item.job.postalCode);
+      });
+
+    if (jobsNeedingAddresses.length === 0) {
+      if (confirm('All jobs already have addresses. Do you want to re-fetch addresses for all jobs?')) {
+        addressQueue = jobs.map((job, index) => ({ job, index }))
+          .filter(item => item.job.hospitalName && (item.job.city || item.job.state));
+      } else {
+        return;
+      }
+    } else {
+      addressQueue = jobsNeedingAddresses;
+    }
+
+    if (addressQueue.length === 0) {
+      alert('No jobs have valid hospital/location data to fetch addresses.');
+      return;
+    }
+
+    if (!confirm(`This will fetch addresses for ${addressQueue.length} jobs via Google Maps. Continue?`)) {
+      return;
+    }
+
+    isFetchingAddresses = true;
+    currentAddressIndex = 0;
+    fetchAddressesBtn.disabled = true;
+    fetchAddressesBtn.textContent = 'Fetching Addresses...';
+
+    progressSection.classList.remove('hidden');
+    progressBar.style.width = '0%';
+    progressText.textContent = `0 / ${addressQueue.length}`;
+
+    processNextAddress();
+  });
+
+  async function processNextAddress() {
+    if (currentAddressIndex >= addressQueue.length) {
+      finishAddressFetching();
+      return;
+    }
+
+    const { job, index } = addressQueue[currentAddressIndex];
+
+    // Update progress
+    progressText.textContent = `${currentAddressIndex + 1} / ${addressQueue.length}`;
+    progressBar.style.width = `${((currentAddressIndex + 1) / addressQueue.length) * 100}%`;
+    fetchAddressesBtn.textContent = `Fetching... (${currentAddressIndex + 1}/${addressQueue.length})`;
+
+    try {
+      // Build search query: "HospitalName, City, State"
+      // Always include city and state for accurate Google Maps results
+      const searchQuery = [job.hospitalName, job.city, job.state].filter(Boolean).join(', ');
+      console.log(`Fetching address for: "${searchQuery}"`);
+
+      const response = await fetchAddressViaGoogleMaps(searchQuery, index);
+
+      if (response.success && response.addressData) {
+        const addressData = response.addressData;
+
+        // Update job with new address data
+        const data = await chrome.storage.local.get(['jobs']);
+        const jobs = data.jobs || [];
+
+        if (jobs[index]) {
+          // Save the complete address (e.g. "5280 Valentine Rd Ste 120, Ventura, CA 93003, United States")
+          jobs[index].streetAddress = addressData.fullAddress || addressData.streetAddress || jobs[index].streetAddress || '';
+          jobs[index].postalCode = addressData.zipCode || jobs[index].postalCode || '';
+          if (addressData.city) {
+            jobs[index].city = addressData.city;
+          }
+          if (addressData.state) {
+            jobs[index].state = addressData.state;
+          }
+
+          await chrome.storage.local.set({ jobs: jobs });
+
+          // Update display
+          storedJobs = jobs;
+          displayRecords(searchInput.value);
+
+          console.log(`✓ Address saved for job ${index + 1}: "${jobs[index].streetAddress}"`);
+        }
+      } else {
+        console.warn(`✗ No address found for job ${index + 1}: ${response.error || 'unknown error'}`);
+      }
+    } catch (error) {
+      console.error('Error fetching address:', error);
+    }
+
+    // Move to next address
+    currentAddressIndex++;
+
+    // Small delay before next Google Maps tab
+    setTimeout(() => processNextAddress(), 1500);
+  }
+
+  function finishAddressFetching() {
+    isFetchingAddresses = false;
+    fetchAddressesBtn.disabled = false;
+    fetchAddressesBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg> Fetch Addresses';
+    progressSection.classList.add('hidden');
+    alert(`Address fetching completed! Fetched ${addressQueue.length} addresses.`);
+    addressQueue = [];
+    currentAddressIndex = 0;
+  }
 
   // ==================== RESULTS MODAL FUNCTIONS ====================
 
