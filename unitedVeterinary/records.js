@@ -52,26 +52,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const stateToAbbrev = Object.fromEntries(
         Object.entries(stateAbbreviations).map(([abbr, name]) => [name.toLowerCase(), abbr])
     );
-    function getStateAbbrev(state) {
-        if (!state) return '';
-        if (state.length <= 2) return state.toUpperCase();
-        return stateToAbbrev[state.toLowerCase()] || state;
-    }
-
-    // Build full address: "Street, City, ST Zip, United States"
-    function buildFullAddress(streetAddress, city, state, zipCode) {
-        const stAbbrev = getStateAbbrev(state);
-        const parts = [];
-        if (streetAddress) parts.push(streetAddress);
-        if (city) parts.push(city);
-        // "ST Zip" or just "ST"
-        if (stAbbrev && zipCode) parts.push(`${stAbbrev} ${zipCode}`);
-        else if (stAbbrev) parts.push(stAbbrev);
-        else if (zipCode) parts.push(zipCode);
-        parts.push('United States');
-        return parts.join(', ');
-    }
-
     // ============ TOP-LEVEL POSITION MATCHING (used by both detail extraction and save) ============
 
     // Match position from the job listing title — this is the authoritative source for position.
@@ -692,24 +672,25 @@ document.addEventListener('DOMContentLoaded', () => {
             jobIdCell.style.fontSize = '12px';
             jobIdCell.style.color = '#64748b';
             row.insertCell(3).textContent = job.hospital;
-            row.insertCell(4).textContent = job.address || '-';
-            row.insertCell(5).textContent = job.city;
-            row.insertCell(6).textContent = job.state;
-            row.insertCell(7).textContent = job.location;
+            row.insertCell(4).textContent = job.streetAddress || '-';
+            row.insertCell(5).textContent = job.city || '-';
+            row.insertCell(6).textContent = job.state || '-';
+            row.insertCell(7).textContent = job.zipCode || '-';
+            row.insertCell(8).textContent = job.location;
 
             // Detail Columns
-            row.insertCell(8).textContent = job.areaOfPractice || '-';
-            row.insertCell(9).textContent = job.position || '-';
-            row.insertCell(10).textContent = job.salary || '-';
+            row.insertCell(9).textContent = job.areaOfPractice || '-';
+            row.insertCell(10).textContent = job.position || '-';
+            row.insertCell(11).textContent = job.salary || '-';
 
-            const linkCell = row.insertCell(11);
+            const linkCell = row.insertCell(12);
             const link = document.createElement('a');
             link.href = job.link;
             link.textContent = 'View Job';
             link.target = '_blank';
             linkCell.appendChild(link);
 
-            const descCell = row.insertCell(12);
+            const descCell = row.insertCell(13);
             if (job.description) {
                 const descDiv = document.createElement('div');
                 descDiv.className = 'description-cell';
@@ -734,7 +715,8 @@ document.addEventListener('DOMContentLoaded', () => {
             (job.city || '').toLowerCase().includes(term) ||
             (job.state || '').toLowerCase().includes(term) ||
             (job.location || '').toLowerCase().includes(term) ||
-            (job.address || '').toLowerCase().includes(term) ||
+            (job.streetAddress || '').toLowerCase().includes(term) ||
+            (job.zipCode || '').toLowerCase().includes(term) ||
             (job.areaOfPractice || '').toLowerCase().includes(term) ||
             (job.position || '').toLowerCase().includes(term)
         );
@@ -763,7 +745,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Address', 'City', 'State', 'Location', 'Area of Practice', 'Position', 'Salary', 'Link', 'Description'];
+        const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Street Address', 'City', 'State', 'Zip Code', 'Location', 'Area of Practice', 'Position', 'Salary', 'Link', 'Description'];
         const csvContent = [
             headers.join(','),
             ...allJobs.map((job, index) => [
@@ -771,9 +753,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 `"${(job.title || '').replace(/"/g, '""')}"`,
                 `"${(job.jobId || '').replace(/"/g, '""')}"`,
                 `"${(job.hospital || '').replace(/"/g, '""')}"`,
-                `"${(job.address || '').replace(/"/g, '""')}"`,
+                `"${(job.streetAddress || '').replace(/"/g, '""')}"`,
                 `"${(job.city || '').replace(/"/g, '""')}"`,
                 `"${(job.state || '').replace(/"/g, '""')}"`,
+                `"${(job.zipCode || '').replace(/"/g, '""')}"`,
                 `"${(job.location || '').replace(/"/g, '""')}"`,
                 `"${(job.areaOfPractice || '').replace(/"/g, '""')}"`,
                 `"${(job.position || '').replace(/"/g, '""')}"`,
@@ -911,12 +894,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 let clearedCount = 0;
 
                 jobs.forEach(job => {
-                    if (job.city || job.state || job.streetAddress || job.zipCode || job.address) {
+                    if (job.city || job.state || job.streetAddress || job.zipCode) {
                         job.city = '';
                         job.state = '';
                         job.streetAddress = '';
                         job.zipCode = '';
-                        job.address = '';
                         clearedCount++;
                     }
                 });
@@ -970,7 +952,8 @@ document.addEventListener('DOMContentLoaded', () => {
             job_id: job.jobId || '',
             department_id: job.jobId || '',
             hospital: job.hospital,
-            address: job.address || '',
+            address: job.streetAddress || '',
+            zip_code: job.zipCode || '',
             parent_client: "United Veterinary Care",
             city: job.city,
             state: job.state,
@@ -1377,13 +1360,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (firstDetail.location) originalJob.location = firstDetail.location;
                 if (firstDetail.streetAddress) originalJob.streetAddress = firstDetail.streetAddress;
                 if (firstDetail.zipCode) originalJob.zipCode = firstDetail.zipCode;
-                // Build full address: "Street, City, ST Zip, United States"
-                originalJob.address = buildFullAddress(
-                    firstDetail.streetAddress || originalJob.streetAddress || '',
-                    firstDetail.city || originalJob.city || '',
-                    firstDetail.state || originalJob.state || '',
-                    firstDetail.zipCode || originalJob.zipCode || ''
-                );
                 // Update description if we got a better one
                 if (firstDetail.description && firstDetail.description.length > (originalJob.description || '').length) {
                     originalJob.description = firstDetail.description;
@@ -1485,9 +1461,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Find jobs that need addresses (using LOCATION column)
         const jobsNeedingAddresses = jobs.map((job, index) => ({ job, index }))
             .filter(item => {
-                // Jobs that don't have address
+                // Jobs that don't have street address or zip code yet
                 return item.job.hospital && item.job.location &&
-                    !item.job.address;
+                    (!item.job.streetAddress || !item.job.zipCode);
             });
 
         if (jobsNeedingAddresses.length === 0) {
