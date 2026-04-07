@@ -21,29 +21,18 @@ function scrapeCurrentPage() {
         jobId = rawJobId ? 'UVC-' + rawJobId : '';
       }
 
-      let city = 'N/A';
-      let state = 'N/A';
-      let country = 'USA';
-      let location = 'N/A';
+      // During initial scraping, only fill the location field
+      // City and State will remain empty and be filled later via "Fetch Addresses" button
+      let city = '';
+      let state = '';
+      let location = '';
 
       if (locationElement && locationElement.innerText) {
         const locationText = locationElement.innerText.trim();
         location = locationText;
-        const parts = locationText.split(',').map(s => s.trim()).filter(s => s);
-
-        if (parts.length >= 2) {
-          city = parts.slice(0, -1).join(', '); // Handle cases like "Washington, D.C."
-          state = parts[parts.length - 1];
-        } else if (parts.length === 1) {
-          if (parts[0].length > 2) {
-            city = parts[0];
-          } else {
-            state = parts[0];
-          }
-        }
       }
 
-      scrapedJobs.push({ title, jobId, hospital, city, state, country, link, location });
+      scrapedJobs.push({ title, jobId, hospital, city, state, link, location });
     });
     return scrapedJobs;
 }

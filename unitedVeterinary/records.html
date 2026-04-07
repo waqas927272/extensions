@@ -391,11 +391,34 @@
     .table-container {
       background: white;
       border-radius: 24px;
-      overflow-x: auto;
       box-shadow:
         0 4px 24px rgba(0, 0, 0, 0.06),
         0 1px 2px rgba(0, 0, 0, 0.04);
       border: 1px solid rgba(249, 161, 27, 0.1);
+    }
+
+    /* Wrapper handles horizontal scroll — sticky bottom keeps scrollbar visible on screen */
+    .table-scroll-wrapper {
+      overflow-x: auto;
+      max-height: calc(100vh - 100px);
+      overflow-y: auto;
+    }
+
+    /* Make the horizontal scrollbar stick to the bottom of the viewport */
+    .table-scroll-wrapper::-webkit-scrollbar {
+      height: 14px;
+    }
+    .table-scroll-wrapper::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 7px;
+    }
+    .table-scroll-wrapper::-webkit-scrollbar-thumb {
+      background: linear-gradient(135deg, #F9A11B 0%, #e8920f 100%);
+      border-radius: 7px;
+      border: 2px solid #f1f5f9;
+    }
+    .table-scroll-wrapper::-webkit-scrollbar-thumb:hover {
+      background: #e8920f;
     }
 
     table {
@@ -732,7 +755,7 @@
 </head>
 <body>
   <div class="header">
-    <span class="version-tag">v1.6</span>
+    <span class="version-tag">v1.7</span>
     <div class="header-content">
       <div class="header-left">
         <div class="logo-icon">
@@ -800,6 +823,12 @@
           </svg>
           Export CSV
         </button>
+        <button class="btn btn-danger" id="clearDetailsBtn">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M7,15H17V13H7V15M7,11H17V9H7V11Z"/>
+          </svg>
+          Clear Details
+        </button>
         <button class="btn btn-danger" id="clearDescriptions">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
             <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M13,13V18H11V13H13M13,9H11V11H13V9Z"/>
@@ -832,6 +861,7 @@
     </div>
 
     <div class="table-container">
+      <div class="table-scroll-wrapper">
       <table id="jobRecordsTable">
         <thead>
           <tr>
@@ -855,6 +885,7 @@
           <!-- Scraped data will be inserted here by records.js -->
         </tbody>
       </table>
+      </div><!-- end table-scroll-wrapper -->
       <div id="emptyState" class="empty-state hidden">
         <div class="empty-state-icon">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
