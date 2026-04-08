@@ -790,17 +790,18 @@ document.addEventListener('DOMContentLoaded', () => {
             jobIdCell.style.fontSize = '12px';
             jobIdCell.style.color = '#64748b';
             row.insertCell(3).textContent = job.hospital;
-            row.insertCell(4).textContent = job.streetAddress || '-';
-            row.insertCell(5).textContent = job.city;
-            row.insertCell(6).textContent = job.state;
-            row.insertCell(7).textContent = job.county || '-';
-            row.insertCell(8).textContent = job.zipCode || '-';
+            row.insertCell(4).textContent = 'United Veterinary Care (Parent Client)';
+            row.insertCell(5).textContent = job.streetAddress || '-';
+            row.insertCell(6).textContent = job.city;
+            row.insertCell(7).textContent = job.state;
+            row.insertCell(8).textContent = job.county || '-';
+            row.insertCell(9).textContent = job.zipCode || '-';
 
             // Phone column
-            row.insertCell(9).textContent = job.phone || '-';
+            row.insertCell(10).textContent = job.phone || '-';
 
             // Website column — show as clickable link if available
-            const websiteCell = row.insertCell(10);
+            const websiteCell = row.insertCell(11);
             if (job.website) {
                 const websiteLink = document.createElement('a');
                 websiteLink.href = job.website;
@@ -812,21 +813,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 websiteCell.textContent = '-';
             }
 
-            row.insertCell(11).textContent = job.location;
+            row.insertCell(12).textContent = job.location;
 
             // Detail Columns
-            row.insertCell(12).textContent = job.areaOfPractice || '-';
-            row.insertCell(13).textContent = job.position || '-';
-            row.insertCell(14).textContent = job.salary || '-';
+            row.insertCell(13).textContent = job.areaOfPractice || '-';
+            row.insertCell(14).textContent = job.position || '-';
+            row.insertCell(15).textContent = job.salary || '-';
 
-            const linkCell = row.insertCell(15);
+            const linkCell = row.insertCell(16);
             const link = document.createElement('a');
             link.href = job.link;
             link.textContent = 'View Job';
             link.target = '_blank';
             linkCell.appendChild(link);
 
-            const descCell = row.insertCell(16);
+            const descCell = row.insertCell(17);
             if (job.description) {
                 const descDiv = document.createElement('div');
                 descDiv.className = 'description-cell';
@@ -884,7 +885,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Street Address', 'City', 'State', 'County', 'Zip Code', 'Phone', 'Website', 'Location', 'Area of Practice', 'Position', 'Salary', 'Link', 'Description'];
+        const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Aggregator', 'Street Address', 'City', 'State', 'County', 'Zip Code', 'Phone', 'Website', 'Location', 'Area of Practice', 'Position', 'Salary', 'Link', 'Description'];
         const csvContent = [
             headers.join(','),
             ...allJobs.map((job, index) => [
@@ -892,6 +893,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 `"${(job.title || '').replace(/"/g, '""')}"`,
                 `"${(job.jobId || '').replace(/"/g, '""')}"`,
                 `"${(job.hospital || '').replace(/"/g, '""')}"`,
+                `"United Veterinary Care (Parent Client)"`,
                 `"${(job.streetAddress || '').replace(/"/g, '""')}"`,
                 `"${(job.city || '').replace(/"/g, '""')}"`,
                 `"${(job.state || '').replace(/"/g, '""')}"`,
@@ -1084,6 +1086,7 @@ document.addEventListener('DOMContentLoaded', () => {
             job_id: job.jobId || '',
             department_id: job.jobId || '',
             hospital: job.hospital,
+            aggregator: "United Veterinary Care (Parent Client)",
             street_address: job.streetAddress || '',
             parent_client: "United Veterinary Care",
             city: job.city,
