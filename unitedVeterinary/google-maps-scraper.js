@@ -87,7 +87,7 @@
         return tryExtractFromPageBody() || emptyResult();
 
     } catch (e) {
-        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', error: e.message };
+        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: e.message };
     }
 
     // ===== Extract hospital name from the Google Maps URL query =====
@@ -144,6 +144,50 @@
         return bestScore >= 0.5 ? bestLink : null;
     }
 
+    // ===== Extract website URL from place detail panel =====
+    function tryExtractWebsite() {
+        // Method 1: data-item-id="authority" is the website link
+        const websiteLink = document.querySelector('a[data-item-id="authority"]');
+        if (websiteLink) {
+            const href = websiteLink.getAttribute('href') || '';
+            if (href) return href;
+            const ariaLabel = websiteLink.getAttribute('aria-label') || '';
+            const cleaned = ariaLabel.replace(/^Website:\s*/i, '').trim();
+            if (cleaned) return cleaned;
+        }
+        // Method 2: button with data-tooltip="Open website"
+        const websiteBtn = document.querySelector('button[data-tooltip="Open website"]');
+        if (websiteBtn) {
+            const ariaLabel = websiteBtn.getAttribute('aria-label') || '';
+            const cleaned = ariaLabel.replace(/^Website:\s*/i, '').trim();
+            if (cleaned) return cleaned;
+        }
+        return '';
+    }
+
+    // ===== Extract phone number from place detail panel =====
+    function tryExtractPhone() {
+        // Method 1: button with data-item-id starting with "phone:"
+        const phoneBtn = document.querySelector('button[data-item-id^="phone:"]');
+        if (phoneBtn) {
+            // data-item-id="phone:tel:+1-555-123-4567" or similar
+            const dataId = phoneBtn.getAttribute('data-item-id') || '';
+            const phoneFromId = dataId.replace(/^phone:tel:/, '').replace(/^phone:/, '').trim();
+            if (phoneFromId) return phoneFromId;
+            // Fallback: aria-label
+            const ariaLabel = phoneBtn.getAttribute('aria-label') || '';
+            const cleaned = ariaLabel.replace(/^Phone:\s*/i, '').trim();
+            if (cleaned) return cleaned;
+        }
+        // Method 2: look for tel: links
+        const telLinks = document.querySelectorAll('a[href^="tel:"]');
+        for (const link of telLinks) {
+            const phone = link.getAttribute('href').replace('tel:', '').trim();
+            if (phone) return phone;
+        }
+        return '';
+    }
+
     // ===== Try to extract address from place detail panel =====
     // This works when Google Maps shows a single place view with the address button
     function tryExtractFromPlaceDetail() {
@@ -156,6 +200,9 @@
             if (fullAddress && /\d/.test(fullAddress)) {
                 const result = { fullAddress };
                 Object.assign(result, parseAddress(fullAddress));
+                // Also extract website and phone while we're on the detail panel
+                result.website = tryExtractWebsite();
+                result.phone = tryExtractPhone();
                 if (result.streetAddress) return result;
             }
         }
@@ -174,6 +221,8 @@
                 if (/\b[A-Z]{2}\s+\d{5}/.test(text) && /\d+\s+\w/.test(text)) {
                     const result = { fullAddress: text };
                     Object.assign(result, parseAddress(text));
+                    result.website = tryExtractWebsite();
+                    result.phone = tryExtractPhone();
                     if (result.streetAddress) return result;
                 }
             }
@@ -187,6 +236,8 @@
                 const clean = label.replace(/^Address:\s*/i, '').trim();
                 const result = { fullAddress: clean };
                 Object.assign(result, parseAddress(clean));
+                result.website = tryExtractWebsite();
+                result.phone = tryExtractPhone();
                 if (result.streetAddress) return result;
             }
         }
@@ -202,6 +253,8 @@
         if (match) {
             const result = { fullAddress: match[1].trim() };
             Object.assign(result, parseAddress(result.fullAddress));
+            result.website = tryExtractWebsite();
+            result.phone = tryExtractPhone();
             if (result.streetAddress) return result;
         }
         return null;
@@ -209,7 +262,7 @@
 
     // ===== Empty result helper =====
     function emptyResult() {
-        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '' };
+        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
     }
 
     // ===== Parse a full US address string into components =====

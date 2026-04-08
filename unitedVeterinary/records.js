@@ -564,13 +564,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Safety timeout — 30 seconds max
                 const timeout = setTimeout(() => {
                     console.warn(`✗ Google Maps timeout for: "${queryLabel}"`);
-                    resolve({ streetAddress: '', zipCode: '', city: '', state: '' });
+                    resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
                 }, 30000);
 
                 chrome.tabs.create({ url: url, active: false }, (tab) => {
                     if (!tab) {
                         clearTimeout(timeout);
-                        resolve({ streetAddress: '', zipCode: '', city: '', state: '' });
+                        resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
                         return;
                     }
 
@@ -596,13 +596,15 @@ document.addEventListener('DOMContentLoaded', () => {
                                         zipCode: data.zipCode || '',
                                         city: data.city || '',
                                         state: data.state || '',
-                                        fullAddress: data.fullAddress || ''
+                                        fullAddress: data.fullAddress || '',
+                                        website: data.website || '',
+                                        phone: data.phone || ''
                                     });
                                 }).catch((err) => {
                                     console.error(`Google Maps script error for "${queryLabel}":`, err);
                                     clearTimeout(timeout);
                                     chrome.tabs.remove(tabId).catch(() => {});
-                                    resolve({ streetAddress: '', zipCode: '', city: '', state: '' });
+                                    resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
                                 });
                             }, 2000);
                         }
@@ -635,6 +637,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.streetAddress || data.zipCode) {
             console.log(`✓ SUCCESS: "${searchQuery}"`);
             console.log(`  → Street="${data.streetAddress}", City="${data.city}", State="${data.state}", Zip="${data.zipCode}"`);
+            if (data.website) console.log(`  → Website="${data.website}"`);
+            if (data.phone) console.log(`  → Phone="${data.phone}"`);
         } else {
             console.warn(`✗ No address found for: "${searchQuery}"`);
         }
@@ -644,7 +648,9 @@ document.addEventListener('DOMContentLoaded', () => {
             zipCode: data.zipCode || '',
             city: data.city || '',
             state: data.state || '',
-            fullAddress: data.fullAddress || ''
+            fullAddress: data.fullAddress || '',
+            website: data.website || '',
+            phone: data.phone || ''
         };
     }
 
@@ -716,21 +722,38 @@ document.addEventListener('DOMContentLoaded', () => {
             row.insertCell(5).textContent = job.city;
             row.insertCell(6).textContent = job.state;
             row.insertCell(7).textContent = job.zipCode || '-';
-            row.insertCell(8).textContent = job.location;
+
+            // Phone column
+            row.insertCell(8).textContent = job.phone || '-';
+
+            // Website column — show as clickable link if available
+            const websiteCell = row.insertCell(9);
+            if (job.website) {
+                const websiteLink = document.createElement('a');
+                websiteLink.href = job.website;
+                websiteLink.textContent = 'Visit';
+                websiteLink.target = '_blank';
+                websiteLink.style.color = '#2563eb';
+                websiteCell.appendChild(websiteLink);
+            } else {
+                websiteCell.textContent = '-';
+            }
+
+            row.insertCell(10).textContent = job.location;
 
             // Detail Columns
-            row.insertCell(9).textContent = job.areaOfPractice || '-';
-            row.insertCell(10).textContent = job.position || '-';
-            row.insertCell(11).textContent = job.salary || '-';
+            row.insertCell(11).textContent = job.areaOfPractice || '-';
+            row.insertCell(12).textContent = job.position || '-';
+            row.insertCell(13).textContent = job.salary || '-';
 
-            const linkCell = row.insertCell(12);
+            const linkCell = row.insertCell(14);
             const link = document.createElement('a');
             link.href = job.link;
             link.textContent = 'View Job';
             link.target = '_blank';
             linkCell.appendChild(link);
 
-            const descCell = row.insertCell(13);
+            const descCell = row.insertCell(15);
             if (job.description) {
                 const descDiv = document.createElement('div');
                 descDiv.className = 'description-cell';
@@ -757,6 +780,8 @@ document.addEventListener('DOMContentLoaded', () => {
             (job.location || '').toLowerCase().includes(term) ||
             (job.streetAddress || '').toLowerCase().includes(term) ||
             (job.zipCode || '').toLowerCase().includes(term) ||
+            (job.phone || '').toLowerCase().includes(term) ||
+            (job.website || '').toLowerCase().includes(term) ||
             (job.areaOfPractice || '').toLowerCase().includes(term) ||
             (job.position || '').toLowerCase().includes(term)
         );
@@ -785,7 +810,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Street Address', 'City', 'State', 'Zip Code', 'Location', 'Area of Practice', 'Position', 'Salary', 'Link', 'Description'];
+        const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Street Address', 'City', 'State', 'Zip Code', 'Phone', 'Website', 'Location', 'Area of Practice', 'Position', 'Salary', 'Link', 'Description'];
         const csvContent = [
             headers.join(','),
             ...allJobs.map((job, index) => [
@@ -797,6 +822,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 `"${(job.city || '').replace(/"/g, '""')}"`,
                 `"${(job.state || '').replace(/"/g, '""')}"`,
                 `"${(job.zipCode || '').replace(/"/g, '""')}"`,
+                `"${(job.phone || '').replace(/"/g, '""')}"`,
+                `"${(job.website || '').replace(/"/g, '""')}"`,
                 `"${(job.location || '').replace(/"/g, '""')}"`,
                 `"${(job.areaOfPractice || '').replace(/"/g, '""')}"`,
                 `"${(job.position || '').replace(/"/g, '""')}"`,
@@ -921,11 +948,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 let clearedCount = 0;
 
                 jobs.forEach(job => {
-                    if (job.city || job.state || job.streetAddress || job.zipCode) {
+                    if (job.city || job.state || job.streetAddress || job.zipCode || job.website || job.phone) {
                         job.city = '';
                         job.state = '';
                         job.streetAddress = '';
                         job.zipCode = '';
+                        job.website = '';
+                        job.phone = '';
                         clearedCount++;
                     }
                 });
@@ -984,6 +1013,8 @@ document.addEventListener('DOMContentLoaded', () => {
             city: job.city,
             state: job.state,
             zip_code: job.zipCode || '',
+            phone: job.phone || '',
+            website: job.website || '',
             location: job.location,
             area_of_practice: job.areaOfPractice || '',
             position: job.position || '',
@@ -1604,6 +1635,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!jobs[index].zipCode && addressData.fullAddress) {
                     const zipFromFull = addressData.fullAddress.match(/\b(\d{5}(?:-\d{4})?)\b/);
                     if (zipFromFull) jobs[index].zipCode = zipFromFull[1];
+                }
+
+                // Website and phone from Google Maps
+                if (addressData.website) {
+                    jobs[index].website = addressData.website;
+                }
+                if (addressData.phone) {
+                    jobs[index].phone = addressData.phone;
                 }
 
                 await chrome.storage.local.set({ scrapedJobs: jobs });
