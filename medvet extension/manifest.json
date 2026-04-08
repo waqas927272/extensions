@@ -1,14 +1,15 @@
 {
   "manifest_version": 3,
   "name": "Job Scraper",
-  "version": "1.0",
+  "version": "1.1",
   "description": "Scrapes job listings from the current page.",
   "permissions": [
     "activeTab",
     "scripting",
     "storage",
     "offscreen",
-    "tabs"
+    "tabs",
+    "webNavigation"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -18,5 +19,11 @@
   },
   "background": {
     "service_worker": "background.js"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["google-maps-scraper.js", "detail-extractor.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }

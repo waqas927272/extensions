@@ -99,101 +99,82 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === 'scrapeJobDescription') {
     const { tabId, jobIndex, jobLink } = request;
 
-    // Wait for the tab to finish loading, then inject script
+    // Wait for the tab to finish loading, then inject detail-extractor.js
+    // detail-extractor.js returns [{areaOfPractice, position, salary, hospitalName, description, city, state, location}]
     chrome.tabs.onUpdated.addListener(function listener(updatedTabId, info) {
       if (updatedTabId === tabId && info.status === 'complete') {
         chrome.tabs.onUpdated.removeListener(listener);
 
-        // Inject script to extract description and hospital name
         chrome.scripting.executeScript({
           target: { tabId: tabId },
-          func: () => {
-            let description = '';
-            let hospitalName = '';
-
-            // 1. Try JSON-LD (JobPosting schema)
-            const scriptLdJson = document.querySelectorAll('script[type="application/ld+json"]');
-            for (const script of scriptLdJson) {
-              try {
-                const json = JSON.parse(script.textContent);
-                if (json['@type'] === 'JobPosting') {
-                  if (json.description) {
-                    // Strip HTML tags from description
-                    const div = document.createElement('div');
-                    div.innerHTML = json.description;
-                    description = div.textContent.trim();
-                  }
-                  if (json.hiringOrganization && json.hiringOrganization.name) {
-                    hospitalName = json.hiringOrganization.name;
-                  }
-                }
-              } catch (e) {}
-            }
-
-            // 2. Fallback to DOM selectors for description
-            if (!description) {
-              const descSelectors = [
-                'div.job-description',
-                'div.description',
-                'div#job-details',
-                'div.details',
-                '[itemprop="description"]',
-                '.job-content',
-                'article',
-                'main'
-              ];
-
-              for (const selector of descSelectors) {
-                const el = document.querySelector(selector);
-                if (el && el.innerText.trim().length > 100) {
-                  description = el.innerText.trim();
-                  break;
-                }
-              }
-            }
-
-            // 3. Fallback for hospital name
-            if (!hospitalName) {
-              const hospitalSelectors = [
-                '.company-name',
-                '.hospital-name',
-                '.job-company-name',
-                '[itemprop="hiringOrganization"]',
-                'meta[property="og:site_name"]'
-              ];
-              for (const selector of hospitalSelectors) {
-                const el = document.querySelector(selector);
-                if (el) {
-                  hospitalName = el.content || el.textContent.trim();
-                  if (hospitalName) break;
-                }
-              }
-            }
-
-            return { description, hospitalName };
-          }
+          files: ['detail-extractor.js']
         }).then((results) => {
-          const extractedData = results[0]?.result || {};
+          const detailsList = results[0]?.result;
+          const firstDetail = Array.isArray(detailsList) && detailsList.length > 0 ? detailsList[0] : null;
 
-          // Save extracted data to the job record
           chrome.storage.local.get({ records: [] }, (result) => {
             const records = result.records || [];
-            if (records[jobIndex]) {
-              if (extractedData.description) {
-                records[jobIndex].description = extractedData.description;
-              }
-              if (extractedData.hospitalName) {
-                records[jobIndex].hospitalName = extractedData.hospitalName;
+            if (records[jobIndex] && firstDetail) {
+              const record = records[jobIndex];
+
+              // Description
+              if (firstDetail.description) {
+                record.description = firstDetail.description;
               }
 
+              // Hospital name — prefer specific "MedVet [City]" over plain "MedVet"
+              if (firstDetail.hospitalName && firstDetail.hospitalName !== 'MedVet') {
+                record.hospitalName = firstDetail.hospitalName;
+              } else if (!record.hospitalName || record.hospitalName === 'MedVet') {
+                const city = firstDetail.city || record.city || '';
+                const skipLocs = ['nationwide', 'remote', 'national', 'multiple', 'united states', ''];
+                if (city && !skipLocs.includes(city.toLowerCase())) {
+                  record.hospitalName = 'MedVet ' + city;
+                } else {
+                  record.hospitalName = record.hospitalName || 'MedVet';
+                }
+              }
+
+              // Area of Practice
+              if (firstDetail.areaOfPractice) {
+                record.areaOfPractice = firstDetail.areaOfPractice;
+              }
+
+              // Position — derived by detail-extractor.js with full keyword matching
+              if (firstDetail.position) {
+                record.position = firstDetail.position;
+              }
+
+              // Update job title to match the resolved position name
+              if (record.position) {
+                record.title = record.position;
+              }
+
+              // Salary
+              if (firstDetail.salary) {
+                record.salary = firstDetail.salary;
+              }
+
+              // City / State — fill in if missing from listing
+              if (firstDetail.city && !record.city) record.city = firstDetail.city;
+              if (firstDetail.state && !record.state) record.state = firstDetail.state;
+
               chrome.storage.local.set({ records: records }, () => {
-                console.log(`Details saved for job ${jobIndex + 1}`);
+                console.log(`Details saved for job ${jobIndex + 1}: ${record.title} → ${record.position} (${record.areaOfPractice})`);
                 chrome.tabs.remove(tabId);
                 chrome.runtime.sendMessage({
                   action: 'descriptionSaved',
                   jobIndex: jobIndex,
                   success: true
                 });
+              });
+            } else {
+              // Nothing extracted — close tab and report failure
+              chrome.tabs.remove(tabId).catch(() => {});
+              chrome.runtime.sendMessage({
+                action: 'descriptionSaved',
+                jobIndex: jobIndex,
+                success: false
               });
             }
           });
@@ -214,14 +195,55 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       try {
         const webhookUrl = request.url;
-        const records = request.records;
+        const rawRecords = request.records || [];
+        const syncId = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+
+        // Map to the same field structure used by records.js
+        const mappedRecords = rawRecords.map(record => {
+          const city = record.city || '';
+          const state = record.state || '';
+          const location = city && state ? `${city}, ${state}` : (city || state || '');
+          return {
+            job_title:        record.title || '',
+            job_id:           record.jobId || '',
+            department_id:    record.jobId || '',
+            hospital:         record.hospitalName || '',
+            aggregator:       'MedVet (Parent Client)',
+            street_address:   record.streetAddress || '',
+            parent_client:    'MedVet',
+            city:             city,
+            state:            state,
+            zip_code:         record.zipCode || '',
+            county:           record.county || '',
+            phone:            record.phone || '',
+            website:          record.website || '',
+            location:         location,
+            area_of_practice: record.areaOfPractice || '',
+            position:         record.position || '',
+            salary:           record.salary || '',
+            job_type:         record.jobType || '',
+            url:              record.link || '',
+            link:             record.link || '',
+            description:      record.description || ''
+          };
+        });
+
+        const payload = {
+          source: 'MedVet Job Scraper',
+          parentClientName: 'MedVet',
+          syncId: syncId,
+          timestamp: new Date().toISOString(),
+          batchNumber: 1,
+          totalBatches: 1,
+          batchSize: mappedRecords.length,
+          totalRecords: mappedRecords.length,
+          data: mappedRecords
+        };
 
         const response = await fetch(webhookUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ data: records, parentClientName: "MedVet" })
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
         });
 
         if (response.ok) {
