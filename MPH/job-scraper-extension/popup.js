@@ -27,32 +27,49 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    const SUPPORTED_URLS = [
+        'missionpethealth.avature.net/careersmarketplace/SearchJobs',
+        'missionpethealth.avature.net/agency/OpenPositions'
+    ];
+
+    function isSupportedPage(url) {
+        return SUPPORTED_URLS.some(pattern => url.includes(pattern));
+    }
+
     scrapeBtn.addEventListener('click', async () => {
-        scrapeBtn.disabled = true;
-        scrapeBtn.innerHTML = `
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-            </svg>
-            Scraping...
-        `;
-        stopBtn.style.display = 'block';
-        status.className = 'status-message info';
-        status.textContent = 'Initializing scraper...';
         results.innerHTML = '';
 
         try {
             const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            const tabUrl = tab.url || '';
+
+            // Validate the user is on a supported page
+            if (!isSupportedPage(tabUrl)) {
+                status.className = 'status-message error';
+                status.textContent = 'Please navigate to the MPH Careers Marketplace (SearchJobs) or Agency Portal (OpenPositions) first.';
+                return;
+            }
+
+            scrapeBtn.disabled = true;
+            scrapeBtn.innerHTML = `
+                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                Scraping...
+            `;
+            stopBtn.style.display = 'block';
+            status.className = 'status-message info';
+            status.textContent = 'Initializing scraper...';
 
             await chrome.storage.local.set({
                 scraping: true,
                 scrapingComplete: false,
                 scrapedJobs: [],
-                scrapedJobIds: [], // Used for deduplication across pages for Avature
+                scrapedJobIds: [],
                 scrapingStatus: 'Starting scraper...'
             });
 
-            await chrome.tabs.reload(tab.id); // Original Avature logic
-
+            await chrome.tabs.reload(tab.id);
             checkScrapingStatus();
 
         } catch (error) {
