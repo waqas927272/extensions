@@ -302,6 +302,7 @@ body {
   margin-left: var(--sidebar-width);
   padding: 24px;
   min-height: 100vh;
+  overflow-x: hidden; /* prevent page-level horizontal scroll bleeding over sidebar */
 }
 
 .main-header {
@@ -398,7 +399,7 @@ body {
 .table-wrapper {
   background: white;
   border-radius: 10px;
-  overflow: hidden;
+  overflow-x: auto; /* horizontal scroll stays inside this container */
   box-shadow: 0 2px 8px rgba(0,0,0,0.06);
 }
 
@@ -418,6 +419,7 @@ body {
   letter-spacing: 0.5px;
   position: sticky;
   top: 0;
+  z-index: 2; /* stay above cells when scrolling vertically */
   border-bottom: 2px solid var(--primary-lighter);
 }
 
@@ -449,8 +451,11 @@ body {
 .col-status { width: 90px; }
 .col-title { min-width: 200px; }
 .col-reqid { width: 100px; }
-.col-hospital { min-width: 160px; }
-.col-location { min-width: 120px; }
+.col-hospital { min-width: 150px; }
+.col-street  { min-width: 180px; font-size: 12px; }
+.col-city    { min-width: 100px; }
+.col-state   { width: 60px; text-align: center; }
+.col-zip     { width: 70px; text-align: center; }
 .col-category { width: 110px; }
 .col-type { width: 90px; }
 .col-description { width: 140px; }
@@ -741,10 +746,6 @@ input[type="checkbox"] {
 
   .filter-select {
     width: 100%;
-  }
-
-  .table-wrapper {
-    overflow-x: auto;
   }
 
   #jobs-table {

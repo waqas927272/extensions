@@ -31,7 +31,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["greenhouse-description-scraper.js", "detail-extractor.js"],
+      "resources": ["greenhouse-description-scraper.js", "detail-extractor.js", "google-maps-scraper.js"],
       "matches": ["<all_urls>"]
     }
   ]
