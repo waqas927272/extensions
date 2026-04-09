@@ -44,8 +44,10 @@
         <div class="sidebar-buttons">
           <button id="get-descriptions-btn" class="btn btn-block btn-secondary">Get Descriptions</button>
           <button id="fetch-details-btn" class="btn btn-block btn-info">Fetch Details</button>
+          <button id="fetch-addresses-btn" class="btn btn-block btn-info">Fetch Addresses</button>
           <button id="export-csv-btn" class="btn btn-block btn-primary">Export CSV</button>
           <button id="delete-selected-btn" class="btn btn-block btn-danger">Delete Selected</button>
+          <button id="debug-salary-btn" class="btn btn-block" style="background:rgba(255,200,0,0.25);color:#ffe;font-size:11px;">⚙ Debug Missing Salary</button>
         </div>
       </div>
 
@@ -91,6 +93,7 @@
             <option value="duplicates">Duplicates Only</option>
             <option value="unique">Unique Only</option>
             <option value="no-description">Missing Description</option>
+            <option value="no-address">Missing Address</option>
           </select>
         </div>
       </div>
@@ -114,7 +117,10 @@
               <th class="col-title">Job Title</th>
               <th class="col-reqid">Req ID</th>
               <th class="col-hospital">Hospital</th>
-              <th class="col-location">Location</th>
+              <th class="col-street">Street Address</th>
+              <th class="col-city">City</th>
+              <th class="col-state">State</th>
+              <th class="col-zip">Zip</th>
               <th class="col-category">Category</th>
               <th class="col-practice">Area of Practice</th>
               <th class="col-position">Position</th>

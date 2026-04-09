@@ -21,7 +21,10 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://missionpethealth.avature.net/careersmarketplace/SearchJobs*"],
+      "matches": [
+        "https://missionpethealth.avature.net/careersmarketplace/SearchJobs*",
+        "https://missionpethealth.avature.net/agency/OpenPositions*"
+      ],
       "js": ["content.js"]
     }
   ],

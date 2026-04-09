@@ -1,215 +1,186 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Job Records - Mission Pet Health Scraper</title>
-    <link rel="stylesheet" href="results.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MPH Job Scraper - Results</title>
+  <link rel="stylesheet" href="results.css">
 </head>
 <body>
-    <div class="container">
-        <header>
-            <div class="header-content">
-                <div class="header-title">
-                    <svg class="header-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                    </svg>
-                    <div>
-                        <h1>Job Records</h1>
-                        <p class="header-subtitle">Mission Pet Health - Scraped Positions</p>
-                    </div>
-                </div>
-            </div>
+  <div class="app-layout">
 
-            <div class="stats-dashboard" id="statsDashboard" style="display: none;">
-                <div class="stat-card">
-                    <div class="stat-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-value" id="totalJobsStat">0</div>
-                        <div class="stat-label">Total Jobs</div>
-                    </div>
-                </div>
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h1>MPH</h1>
+        <p>Job Scraper</p>
+      </div>
 
-                <div class="stat-card">
-                    <div class="stat-icon stat-icon-success">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-value" id="withDescStat">0</div>
-                        <div class="stat-label">With Descriptions</div>
-                    </div>
-                </div>
-
-                <div class="stat-card">
-                    <div class="stat-icon stat-icon-warning">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-value" id="withoutDescStat">0</div>
-                        <div class="stat-label">Missing Descriptions</div>
-                    </div>
-                </div>
-
-                <div class="stat-card">
-                    <div class="stat-icon stat-icon-info">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-                        </svg>
-                    </div>
-                    <div class="stat-content">
-                        <div class="stat-value" id="uniqueLocationsStat">0</div>
-                        <div class="stat-label">Unique Locations</div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="actions-bar">
-                <div class="action-group">
-                    <button id="fetchDetailsBtn" class="btn btn-primary" style="background: #0891b2;">
-                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                        </svg>
-                        Fetch Details
-                    </button>
-                    <button id="getDescriptionsBtn" class="btn btn-primary">
-                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                        </svg>
-                        Get Descriptions
-                    </button>
-                    <button id="exportCSV" class="btn btn-secondary">
-                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                        </svg>
-                        Export CSV
-                    </button>
-                    <button id="exportJSON" class="btn btn-secondary">
-                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
-                        </svg>
-                        Export JSON
-                    </button>
-                    <button id="clearData" class="btn btn-danger">
-                        <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                        </svg>
-                        Clear Data
-                    </button>
-                </div>
-            </div>
-
-            <div class="webhook-section">
-                <div class="webhook-input-group">
-                    <svg class="webhook-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
-                    </svg>
-                    <input type="url" id="webhookUrl" placeholder="Enter webhook URL to send data...">
-                    <button id="sendWebhookBtn" class="btn btn-webhook">Send to Webhook</button>
-                </div>
-                <div id="webhookStatus" class="webhook-status"></div>
-            </div>
-
-            <div class="progress-section hidden" id="progressSection">
-                <div class="progress-info">
-                    <span class="progress-label" id="progressLabel">Progress</span>
-                    <span class="progress-text" id="progressText">0 / 0</span>
-                </div>
-                <div class="progress-bar-container">
-                    <div class="progress-bar" id="progressBar"></div>
-                </div>
-            </div>
-        </header>
-
-        <div class="controls-section">
-            <div class="search-filter-bar">
-                <div class="search-box">
-                    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-                    </svg>
-                    <input type="text" id="searchInput" placeholder="Search jobs, locations, cities, states...">
-                    <button id="clearSearch" class="clear-btn" style="display: none;">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                        </svg>
-                    </button>
-                </div>
-
-                <div class="filter-group">
-                    <select id="stateFilter" class="filter-select">
-                        <option value="">All States</option>
-                    </select>
-                    <select id="descriptionFilter" class="filter-select">
-                        <option value="">All Jobs</option>
-                        <option value="with">With Description</option>
-                        <option value="without">Without Description</option>
-                    </select>
-                </div>
-            </div>
+      <div class="stats-cards">
+        <div class="stat-card">
+          <span class="stat-number" id="total-count">0</span>
+          <span class="stat-label">Total Jobs</span>
         </div>
-
-        <div class="table-container">
-            <table id="jobsTable">
-                <thead>
-                    <tr>
-                        <th class="th-number">#</th>
-                        <th class="sortable" data-sort="jobTitle">
-                            Job Title
-                            <span class="sort-indicator"></span>
-                        </th>
-                        <th class="th-jobid">Job ID</th>
-                        <th class="sortable" data-sort="location">
-                            Location
-                            <span class="sort-indicator"></span>
-                        </th>
-                        <th class="sortable" data-sort="city">
-                            City
-                            <span class="sort-indicator"></span>
-                        </th>
-                        <th class="sortable" data-sort="state">
-                            State
-                            <span class="sort-indicator"></span>
-                        </th>
-                        <th>Hospital</th>
-                        <th>Position</th>
-                        <th>Area of Practice</th>
-                        <th>Salary</th>
-                        <th>Job Type</th>
-                        <th class="th-link">Link</th>
-                        <th class="th-description">Job Description</th>
-                    </tr>
-                </thead>
-                <tbody id="jobsTableBody">
-                    <!-- Jobs will be inserted here -->
-                </tbody>
-            </table>
+        <div class="stat-card selected">
+          <span class="stat-number" id="selected-count">0</span>
+          <span class="stat-label">Selected</span>
         </div>
+        <div class="stat-card warning">
+          <span class="stat-number" id="duplicate-count">0</span>
+          <span class="stat-label">Duplicates</span>
+        </div>
+        <div class="stat-card info">
+          <span class="stat-number" id="with-desc-count">0</span>
+          <span class="stat-label">With Descriptions</span>
+        </div>
+      </div>
 
-        <div id="noData" class="no-data" style="display: none;">
-            <svg class="no-data-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"/>
+      <div class="sidebar-section">
+        <h3>Selection</h3>
+        <div class="sidebar-buttons">
+          <button id="select-all-btn" class="btn btn-block">Select All</button>
+          <button id="deselect-all-btn" class="btn btn-block">Deselect All</button>
+          <button id="select-duplicates-btn" class="btn btn-block btn-warning">Select Duplicates</button>
+        </div>
+      </div>
+
+      <div class="sidebar-section">
+        <h3>Actions</h3>
+        <div class="sidebar-buttons">
+          <button id="getDescriptionsBtn" class="btn btn-block btn-secondary">Get Descriptions</button>
+          <button id="fetchDetailsBtn" class="btn btn-block btn-info">Fetch Details</button>
+          <button id="exportCSV" class="btn btn-block btn-primary">Export CSV</button>
+          <button id="exportJSON" class="btn btn-block btn-primary">Export JSON</button>
+          <button id="delete-selected-btn" class="btn btn-block btn-danger">Delete Selected</button>
+          <button id="clearData" class="btn btn-block btn-danger">Clear All Data</button>
+          <button id="debug-salary-btn" class="btn btn-block" style="background:rgba(255,200,0,0.2);color:#ffe;font-size:11px;">⚙ Debug Missing Salary</button>
+        </div>
+      </div>
+
+      <div class="sidebar-section webhook-section">
+        <div class="section-header" id="toggle-webhook">
+          <h3>Webhook</h3>
+          <span class="toggle-icon">+</span>
+        </div>
+        <div id="webhook-config" class="webhook-config hidden">
+          <div class="form-group">
+            <label for="webhook-url-input">URL</label>
+            <input type="url" id="webhook-url-input" placeholder="https://..." class="input-field">
+          </div>
+          <div class="form-group">
+            <label for="parent-client-input">Parent Client</label>
+            <input type="text" id="parent-client-input" value="Mission Pet Health" class="input-field">
+          </div>
+          <div class="webhook-actions">
+            <button id="save-webhook-btn" class="btn btn-sm">Save</button>
+            <button id="send-webhook-btn" class="btn btn-sm btn-success">Send</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="sidebar-footer">
+        <p>MPH Scraper v1.0</p>
+      </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="main-header">
+        <div class="header-title">
+          <h2>Scraped Jobs</h2>
+          <span class="subtitle">Mission Pet Health</span>
+        </div>
+        <div class="header-controls">
+          <div class="search-box">
+            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
             </svg>
-            <h2>No Jobs Found</h2>
-            <p>Please scrape jobs first using the extension popup.</p>
+            <input type="text" id="searchInput" placeholder="Search jobs, locations, cities..." class="search-input">
+            <button id="clearSearch" class="clear-btn" style="display:none;">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          <select id="stateFilter" class="filter-select">
+            <option value="">All States</option>
+          </select>
+          <select id="statusFilter" class="filter-select">
+            <option value="all">All Jobs</option>
+            <option value="duplicates">Duplicates Only</option>
+            <option value="unique">Unique Only</option>
+            <option value="with-description">With Description</option>
+            <option value="no-description">Missing Description</option>
+          </select>
         </div>
+      </div>
 
-        <div id="noResults" class="no-data" style="display: none;">
-            <svg class="no-data-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
-            </svg>
-            <h2>No Results Found</h2>
-            <p>Try adjusting your search or filters.</p>
+      <div id="progressSection" class="progress-section hidden">
+        <div class="progress-info">
+          <span id="progressLabel" class="progress-label">Processing...</span>
+          <span id="progressText" class="progress-detail"></span>
         </div>
+        <div class="progress-track">
+          <div id="progressBar" class="progress-fill"></div>
+        </div>
+      </div>
+
+      <div class="table-wrapper">
+        <table id="jobsTable">
+          <thead>
+            <tr>
+              <th class="col-checkbox"><input type="checkbox" id="select-all-checkbox"></th>
+              <th class="col-status">Status</th>
+              <th class="col-num">#</th>
+              <th class="sortable" data-sort="jobTitle">Job Title <span class="sort-indicator"></span></th>
+              <th class="col-jobid">Job ID</th>
+              <th class="sortable" data-sort="location">Location <span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort="city">City <span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort="state">State <span class="sort-indicator"></span></th>
+              <th>Hospital</th>
+              <th>Position</th>
+              <th>Area of Practice</th>
+              <th>Salary</th>
+              <th>Job Type</th>
+              <th class="col-link">Link</th>
+              <th class="col-description">Description</th>
+              <th class="col-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="jobsTableBody"></tbody>
+        </table>
+      </div>
+
+      <div id="noData" class="no-data hidden">
+        <div class="no-data-content">
+          <div class="no-data-icon">&#128196;</div>
+          <h3>No Jobs Found</h3>
+          <p>Navigate to missionpethealth.avature.net and scrape some jobs first.</p>
+        </div>
+      </div>
+
+      <div id="noResults" class="no-data hidden">
+        <div class="no-data-content">
+          <div class="no-data-icon">&#128269;</div>
+          <h3>No Results</h3>
+          <p>Try adjusting your search or filters.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Job Details Modal -->
+  <div id="modal" class="modal hidden">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="modal-title">Job Details</h2>
+        <button id="modal-close" class="modal-close">&times;</button>
+      </div>
+      <div id="modal-body" class="modal-body"></div>
     </div>
+  </div>
 
-    <script src="results.js"></script>
+  <script src="results.js"></script>
 </body>
 </html>
