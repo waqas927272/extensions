@@ -26,6 +26,57 @@ document.addEventListener('DOMContentLoaded', () => {
     const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
     const fetchAddressesBtn = document.getElementById('fetchAddressesBtn');
 
+    // ============ WEBHOOK URL DYNAMIC CONFIGURATION ============
+
+    // Load saved webhook URL from Chrome storage or auto-detect
+    async function loadWebhookUrl() {
+        try {
+            const result = await chrome.storage.local.get(['webhookUrl']);
+
+            if (result.webhookUrl) {
+                // Use saved URL
+                webhookUrlInput.value = result.webhookUrl;
+            } else {
+                // Auto-detect environment and set default
+                const defaultUrl = autoDetectWebhookUrl();
+                webhookUrlInput.value = defaultUrl;
+                // Save the auto-detected URL
+                await chrome.storage.local.set({ webhookUrl: defaultUrl });
+            }
+        } catch (error) {
+            console.error('Error loading webhook URL:', error);
+            webhookUrlInput.value = autoDetectWebhookUrl();
+        }
+    }
+
+    // Auto-detect webhook URL based on environment
+    function autoDetectWebhookUrl() {
+        // Check if running on localhost (common development patterns)
+        const isLocalhost = window.location.hostname === 'localhost' ||
+                           window.location.hostname === '127.0.0.1' ||
+                           window.location.hostname === '';
+
+        if (isLocalhost) {
+            // Development environment - use localhost without double slash
+            return 'http:/localhost/zoho-api/api/webhook-receiver.php';
+        } else {
+            // Production environment - try to detect the domain
+            // User will need to update this for their production URL
+            return 'https://yourdomain.com/zoho-api/api/webhook-receiver.php';
+        }
+    }
+
+    // Save webhook URL to Chrome storage when it changes
+    webhookUrlInput.addEventListener('change', async () => {
+        const url = webhookUrlInput.value.trim();
+        if (url) {
+            await chrome.storage.local.set({ webhookUrl: url });
+            showToast('Webhook URL saved!', 'success');
+        }
+    });
+
+    // Initialize webhook URL on page load
+    loadWebhookUrl();
 
     // State abbreviation to full name mapping
     const stateAbbreviations = {
@@ -1073,6 +1124,9 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // Save webhook URL to Chrome storage for future use
+        await chrome.storage.local.set({ webhookUrl: webhookUrl });
+
         const result = await chrome.storage.local.get(['scrapedJobs']);
         const jobs = result.scrapedJobs || [];
 
@@ -1088,7 +1142,7 @@ document.addEventListener('DOMContentLoaded', () => {
             hospital: job.hospital,
             aggregator: "United Veterinary Care (Parent Client)",
             street_address: job.streetAddress || '',
-            parent_client: "United Veterinary Care",
+            parent_client: "United Veterinary Care (Parent Client)",
             city: job.city,
             state: job.state,
             zip_code: job.zipCode || '',
@@ -1135,7 +1189,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const payload = {
                 source: 'United Veterinary Job Scraper',
-                parentClientName: 'United Veterinary Care',
+                parentClientName: 'United Veterinary Care (Parent Client)',
                 syncId: syncId,
                 timestamp: new Date().toISOString(),
                 batchNumber: batchNumber,
@@ -1153,9 +1207,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
 
                 if (!response.ok) {
-                    throw new Error(`Status ${response.status}`);
+                    const errorText = await response.text();
+                    console.error(`Batch ${batchNumber} failed with status ${response.status}:`, errorText);
+                    throw new Error(`Status ${response.status}: ${errorText.substring(0, 100)}`);
                 }
 
+                const result = await response.json();
+                console.log(`Batch ${batchNumber} success:`, result);
                 successCount++;
             } catch (error) {
                 console.error(`Batch ${batchNumber} error:`, error);
