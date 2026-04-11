@@ -267,50 +267,16 @@
     const salary = normalizeSalary(extractSalary(bodyText), bodyText);
 
     // ── STEP 4b: Extract job type ──
-    // VIPVet pages use these patterns:
-    //   "Schedule Needs: Full-Time, 30-40 hours per week"
-    //   "Schedule Needs: Relief - Day, Overnight..."
-    //   "City, STATE | Full-Time Specialty Role"  (in the header bold line)
-    //   Generic "Full-Time" / "Part-Time" anywhere in body
+    // Rules:
+    //   - "Part Time" only if part-time is mentioned AND full-time is NOT mentioned
+    //   - "Full Time" if full-time is mentioned, both are mentioned, or neither is mentioned
     function extractJobType(text) {
-        if (!text) return '';
+        const t = (text || '').toLowerCase();
+        const hasPart = /part[\s\-]?time/.test(t);
+        const hasFull = /full[\s\-]?time/.test(t);
 
-        // Priority 1: explicit "Schedule Needs:" or "Schedule:" line
-        const schedMatch = text.match(/Schedule\s*(?:Needs|Type)?\s*[:\-]\s*([A-Za-z][A-Za-z\s\-\/]*?)(?:\s*,|\s*\n|$)/im);
-        if (schedMatch) {
-            const sched = schedMatch[1].trim().toLowerCase();
-            if (sched.includes('full'))   return 'Full-Time';
-            if (sched.includes('part'))   return 'Part-Time';
-            if (sched.includes('relief')) return 'Relief';
-            if (sched.includes('prn') || sched.includes('per diem')) return 'PRN/Per Diem';
-            if (sched.includes('contract')) return 'Contract';
-            if (sched.includes('intern')) return 'Internship';
-            if (sched.includes('extern')) return 'Externship';
-        }
-
-        // Priority 2: pipe-separated type in the header line (first 400 chars)
-        //   e.g. "Redlands, CA | Full-Time Specialty Role"
-        const headerText = text.substring(0, 400);
-        const pipeMatch = headerText.match(/\|\s*(Full[- ]?Time|Part[- ]?Time|Relief|PRN|Per\s*Diem|Contract|Internship|Externship)/i);
-        if (pipeMatch) {
-            const pt = pipeMatch[1].toLowerCase();
-            if (pt.includes('full'))     return 'Full-Time';
-            if (pt.includes('part'))     return 'Part-Time';
-            if (pt.includes('relief'))   return 'Relief';
-            if (pt.includes('prn') || pt.includes('per diem')) return 'PRN/Per Diem';
-            if (pt.includes('contract')) return 'Contract';
-            return pipeMatch[1].trim();
-        }
-
-        // Priority 3: anywhere in body
-        const t = text.toLowerCase();
-        if (t.includes('full-time') || t.includes('full time'))   return 'Full-Time';
-        if (t.includes('part-time') || t.includes('part time'))   return 'Part-Time';
-        if (/\brelief\b/.test(t) && (t.includes('shift') || t.includes('schedule') || t.includes('per hour'))) return 'Relief';
-        if (/\bprn\b/.test(t) || t.includes('per diem')) return 'PRN/Per Diem';
-        if (t.includes('contract')) return 'Contract';
-
-        return '';
+        if (hasPart && !hasFull) return 'Part Time';
+        return 'Full Time';  // full-time only, both, or neither
     }
 
     const jobType = extractJobType(bodyText);

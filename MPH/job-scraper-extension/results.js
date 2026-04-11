@@ -1,5 +1,100 @@
 // MPH Job Scraper - Results Script
 
+// ── Quick position/AOP from title alone (used immediately after initial scrape) ──
+// Mirrors the same keyword table in background.js so positions appear before Fetch Details.
+(function buildQuickMatcher() {
+  const SPECIALTY = new Set([
+    'Anesthesiologist','Cardiologist','Credentialed Veterinary Technician Specialist',
+    'DABVP Specialist','Dental Specialist','Dermatologist','ECC Specialist',
+    'Internal Medicine Specialist','Medical Oncologist','Neurologist & Neurosurgeon',
+    'Ophthalmologist','Radiation Oncologist','Radiologist','Surgeon','Theriogenologist'
+  ]);
+
+  function matchKeywords(t, d) {
+    d = d || '';
+    if (/associate veterinarian|associate vet\b/.test(t))    return 'Associate Veterinarian';
+    if (/medical lead veterinarian|medical lead vet\b/.test(t)) return 'Lead Veterinarian';
+    if (/medical director|medical lead/.test(t))              return 'Medical Director';
+    if (/lead veterinarian|lead vet\b/.test(t))              return 'Lead Veterinarian';
+    if (/criticalist|dacvecc|\becc specialist\b/.test(t) || /\becc\b/.test(t) ||
+        (t.includes('emergency') && t.includes('critical care'))) return 'ECC Specialist';
+
+    const isTech = /\b(technician|technologist|vet\s+tech|lvt|cvt|rdvt|nurse)\b/.test(t) && !/technician specialist|\bvts\b/.test(t);
+    if (isTech) {
+      if (/anesthes/.test(t)||/anesthes/.test(d))                return 'Anesthesiologist';
+      if (/dental|dentist/.test(t)||/dental|dentist/.test(d))    return 'Dental Specialist';
+      if (/criticalist|critical care|\becc\b/.test(t))           return 'ECC Specialist';
+      if (/radiation.*oncol|oncol.*radiation/.test(t))           return 'Radiation Oncologist';
+      if (/oncol/.test(t)&&!/radiation/.test(t))                 return 'Medical Oncologist';
+      if (/cardiolog/.test(t)||/cardiolog/.test(d))              return 'Cardiologist';
+      if (/neurolog|neurosurg/.test(t))                          return 'Neurologist & Neurosurgeon';
+      if (/dermatolog/.test(t))                                  return 'Dermatologist';
+      if (/ophthalmolog/.test(t))                                return 'Ophthalmologist';
+      if (/surgery|surgical|surgeon/.test(t)&&!/neurosurg/.test(t)) return 'Surgeon';
+      if (/radiolog|diagnostic imaging/.test(t))                 return 'Radiologist';
+      if (/internal medicine/.test(t))                           return 'Internal Medicine Specialist';
+      return 'Credentialed Veterinary Technician Specialist';
+    }
+    if (/technician specialist|\bvts\b/.test(t)) return 'Credentialed Veterinary Technician Specialist';
+
+    if (/dacvim/.test(t)&&/oncol/.test(t))              return 'Medical Oncologist';
+    if (/dacvr/.test(t)&&/(radiation|-ro)/.test(t))     return 'Radiation Oncologist';
+    if (/dacvim/.test(t)&&/(neurolog|neurosurg)/.test(t)) return 'Neurologist & Neurosurgeon';
+    if (/dacvim/.test(t)&&/cardiolog/.test(t))           return 'Cardiologist';
+    if (/dacvim/.test(t))                                return 'Internal Medicine Specialist';
+    if (/davdc|avdc/.test(t))                            return 'Dental Specialist';
+    if (/dacvd/.test(t))                                 return 'Dermatologist';
+    if (/dacvs|\bacvs\b/.test(t))                        return 'Surgeon';
+    if (/dacvr/.test(t))                                 return 'Radiologist';
+    if (/dacvo/.test(t))                                 return 'Ophthalmologist';
+    if (/dacvaa|dacva/.test(t))                          return 'Anesthesiologist';
+    if (/\bdact\b/.test(t))                              return 'Theriogenologist';
+    if (/\bdabvp\b/.test(t))                             return 'DABVP Specialist';
+
+    if (/radiation oncolog/.test(t))                                         return 'Radiation Oncologist';
+    if (/oncolog/.test(t))                                                   return 'Medical Oncologist';
+    if (/cardiolog/.test(t))                                                 return 'Cardiologist';
+    if (/neurolog|neurosurg/.test(t))                                        return 'Neurologist & Neurosurgeon';
+    if (/dermatolog/.test(t))                                                return 'Dermatologist';
+    if (/ophthalmolog/.test(t))                                              return 'Ophthalmologist';
+    if (/anesthesiolog/.test(t))                                             return 'Anesthesiologist';
+    if (/theriogenolog/.test(t))                                             return 'Theriogenologist';
+    if (/internist|internal medicine/.test(t))                              return 'Internal Medicine Specialist';
+    if (/radiolog|diagnostic imaging/.test(t))                              return 'Radiologist';
+    if (/(dental|dentist|dentistry)/.test(t)&&!/assistant/.test(t))        return 'Dental Specialist';
+    if (/\bsurgeon\b/.test(t))                                              return 'Surgeon';
+    if (/(surgery|surgical)/.test(t)&&!/neurosurg|dental/.test(t))         return 'Surgeon';
+    if (/equine|bovine|large animal/.test(t)) return 'Equine/Bovine Veterinarian/Large Animal';
+    if (/\bavian\b|exotics/.test(t))          return 'Avian & Exotics Veterinarian / Associate Exotics';
+    if (/veterinarian|veterinary|\bdvm\b|relief|locum/.test(t)) return 'Associate Veterinarian';
+    return '';
+  }
+
+  window.quickPosition = function(jobTitle, dept) {
+    const t = (jobTitle||'').toLowerCase();
+    const d = (dept||'').toLowerCase();
+    if (/client service|receptionist|kennel|groomer|practice manager|hospital manager|billing|human resources|customer service|front desk|inventory|externship/.test(t)) return '';
+    return matchKeywords(t, d);
+  };
+
+  window.quickAOP = function(position, jobTitle, hospitalName) {
+    const t = (jobTitle||'').toLowerCase();
+    const h = (hospitalName||'').toLowerCase();
+    if (!position) {
+      if (/emergency/.test(t)||h.includes('emergency')) return 'Emergency Care';
+      if (/urgent care/.test(t)) return 'Urgent Care';
+      return '';
+    }
+    if (SPECIALTY.has(position)) return 'Specialty Care';
+    if (position === 'Medical Director') return 'General Practice Care';
+    if (position === 'Lead Veterinarian') return 'General Practice Care';
+    if (/emergency/.test(t)||h.includes('emergency')) return 'Emergency Care';
+    if (/urgent care/.test(t)) return 'Urgent Care';
+    if (/equine|bovine|large animal|avian|exotics/.test(t)) return 'General Practice Care / Emergency Care / Urgent Care';
+    return 'General Practice Care';
+  };
+})();
+
 let allJobs = [];
 let filteredJobs = [];
 let selectedIndexes = new Set();
@@ -31,6 +126,16 @@ async function loadJobs() {
 
         document.getElementById('noData').classList.add('hidden');
         document.querySelector('.table-wrapper').classList.remove('hidden');
+
+        // Fill in position/AOP from title for jobs that don't have them yet
+        jobs.forEach(job => {
+            if (!job.position) {
+                job.position = window.quickPosition(job.jobTitle, job.department || '');
+            }
+            if (!job.areaOfPractice) {
+                job.areaOfPractice = window.quickAOP(job.position, job.jobTitle, job.hospitalName || '');
+            }
+        });
 
         allJobs = jobs;
         filteredJobs = [...jobs];
@@ -123,10 +228,13 @@ function displayJobs(jobs) {
             <td class="col-num">${filteredIndex + 1}</td>
             <td><strong><a href="${escapeHtml(job.link)}" target="_blank">${escapeHtml(job.jobTitle)}</a></strong></td>
             <td class="col-jobid">${escapeHtml(job.jobId || 'N/A')}</td>
-            <td>${escapeHtml(job.location || '')}</td>
             <td>${escapeHtml(job.city || '')}</td>
             <td>${escapeHtml(job.state || '')}</td>
             <td>${escapeHtml(job.hospitalName || '')}</td>
+            <td>${escapeHtml(job.streetAddress || '')}</td>
+            <td>${escapeHtml(job.postalCode || '')}</td>
+            <td>${escapeHtml(job.phone || '')}</td>
+            <td>${job.website ? `<a href="${escapeHtml(job.website)}" target="_blank" style="color:#38bdf8;font-size:11px;">Visit</a>` : ''}</td>
             <td>${escapeHtml(job.position || '')}</td>
             <td>${escapeHtml(job.areaOfPractice || '')}</td>
             <td>${escapeHtml(job.salary || '')}</td>
@@ -469,6 +577,178 @@ function finishDetailsFetching() {
     alert('Details fetching completed!');
 }
 
+// ==================== FETCH ADDRESSES (Google Maps) ====================
+
+let isFetchingAddresses = false;
+let addressQueue = [];
+let currentAddressIndex = 0;
+
+document.getElementById('fetchAddressesBtn').addEventListener('click', async () => {
+    if (isFetchingAddresses) { showToast('Already fetching addresses. Please wait...'); return; }
+
+    const data = await chrome.storage.local.get(['scrapedJobs']);
+    const jobs = data.scrapedJobs || [];
+
+    let jobsNeedingAddresses = jobs.map((job, index) => ({ job, index }))
+        .filter(item => item.job.hospitalName && (!item.job.streetAddress || !item.job.postalCode));
+
+    if (jobsNeedingAddresses.length === 0) {
+        if (!confirm('All jobs already have addresses. Re-fetch all?')) return;
+        jobsNeedingAddresses = jobs.map((job, index) => ({ job, index }))
+            .filter(item => item.job.hospitalName);
+    }
+
+    if (jobsNeedingAddresses.length === 0) {
+        alert('No jobs with hospital names found. Run "Fetch Details" first.'); return;
+    }
+
+    addressQueue = jobsNeedingAddresses;
+    currentAddressIndex = 0;
+    isFetchingAddresses = true;
+
+    const btn = document.getElementById('fetchAddressesBtn');
+    btn.disabled = true;
+    btn.textContent = `Fetching Addresses... (0/${addressQueue.length})`;
+    showProgress('Fetching Street Addresses', 0, addressQueue.length);
+
+    processNextAddress();
+});
+
+async function processNextAddress() {
+    if (currentAddressIndex >= addressQueue.length) {
+        finishAddressFetching(); return;
+    }
+
+    const { job, index } = addressQueue[currentAddressIndex];
+    const btn = document.getElementById('fetchAddressesBtn');
+    btn.textContent = `Fetching... (${currentAddressIndex + 1}/${addressQueue.length})`;
+    updateProgress(currentAddressIndex + 1, addressQueue.length);
+
+    try {
+        // Build search: hospitalName + city + state
+        const searchHospital = (job.hospitalName || '').trim();
+        const searchCity  = (job.city  || '').trim();
+        const searchState = (job.state || '').trim();
+        const searchLocation = [searchCity, searchState].filter(Boolean).join(', ');
+
+        if (!searchHospital) {
+            currentAddressIndex++;
+            setTimeout(processNextAddress, 500);
+            return;
+        }
+
+        const addressData = await fetchAddressFromGoogleMaps(searchHospital, searchLocation);
+
+        // Save back into storage
+        const freshData = await chrome.storage.local.get(['scrapedJobs']);
+        const freshJobs = freshData.scrapedJobs || [];
+
+        if (freshJobs[index]) {
+            if (addressData.streetAddress) freshJobs[index].streetAddress = addressData.streetAddress;
+            if (addressData.zipCode)       freshJobs[index].postalCode    = addressData.zipCode;
+            if (addressData.city)          freshJobs[index].city          = addressData.city;
+            if (addressData.state)         freshJobs[index].state         = addressData.state;
+            if (addressData.website)       freshJobs[index].website       = addressData.website;
+            if (addressData.phone)         freshJobs[index].phone         = addressData.phone;
+
+            await chrome.storage.local.set({ scrapedJobs: freshJobs });
+            allJobs = freshJobs;
+            applyFilters();
+            updateStats();
+        }
+    } catch (err) {
+        console.error('Error fetching address:', err);
+    }
+
+    currentAddressIndex++;
+    setTimeout(processNextAddress, 1500); // pace requests
+}
+
+function finishAddressFetching() {
+    isFetchingAddresses = false;
+    const btn = document.getElementById('fetchAddressesBtn');
+    btn.disabled = false;
+    btn.textContent = '📍 Fetch Addresses';
+    hideProgress();
+    addressQueue = [];
+    currentAddressIndex = 0;
+    alert('Address fetching completed!');
+}
+
+// Open a Maps tab, inject scraper, return address data
+function fetchAddressFromGoogleMaps(hospitalName, location) {
+    const searchQuery = location ? `${hospitalName}, ${location}` : hospitalName;
+    const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
+
+    function scrapeTab(url, label) {
+        return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+                resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
+            }, 30000);
+
+            chrome.tabs.create({ url, active: false }, (tab) => {
+                if (!tab) { clearTimeout(timeout); resolve({}); return; }
+                const tabId = tab.id;
+
+                const listener = (updatedTabId, info) => {
+                    if (updatedTabId !== tabId || info.status !== 'complete') return;
+                    chrome.tabs.onUpdated.removeListener(listener);
+
+                    setTimeout(() => {
+                        chrome.scripting.executeScript({
+                            target: { tabId },
+                            files: ['google-maps-scraper.js']
+                        }).then((results) => {
+                            clearTimeout(timeout);
+                            chrome.tabs.remove(tabId).catch(() => {});
+                            const d = results?.[0]?.result || {};
+                            resolve({
+                                streetAddress: d.streetAddress || '',
+                                zipCode:       d.zipCode       || '',
+                                city:          d.city          || '',
+                                state:         d.state         || '',
+                                fullAddress:   d.fullAddress   || '',
+                                website:       d.website       || '',
+                                phone:         d.phone         || ''
+                            });
+                        }).catch(() => {
+                            clearTimeout(timeout);
+                            chrome.tabs.remove(tabId).catch(() => {});
+                            resolve({});
+                        });
+                    }, 2000);
+                };
+                chrome.tabs.onUpdated.addListener(listener);
+            });
+        });
+    }
+
+    return scrapeTab(mapsUrl, searchQuery).then(async (data) => {
+        // Retry with simplified name if first attempt failed
+        if (!data.streetAddress && !data.zipCode) {
+            const simplified = hospitalName
+                .replace(/&/g, 'and').replace(/[-–—()]/g, ' ').replace(/\s+/g, ' ').trim();
+            if (simplified !== hospitalName) {
+                const altQuery = location ? `${simplified}, ${location}` : simplified;
+                const altUrl = `https://www.google.com/maps/search/${encodeURIComponent(altQuery)}`;
+                return scrapeTab(altUrl, altQuery);
+            }
+        }
+        return data;
+    });
+}
+
+// ---- progress helpers (shared with fetch details) ----
+function showProgress(label, current, total) {
+    const sec = document.getElementById('progress-section');
+    if (sec) {
+        sec.style.display = 'block';
+        const lbl = document.getElementById('progress-label');
+        if (lbl) lbl.textContent = label;
+    }
+    updateProgress(current, total);
+}
+
 // Message listener from background.js
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'descriptionSaved') {
@@ -531,19 +811,21 @@ function exportToCSV() {
         : allJobs;
 
     const headers = [
-        'Job Title', 'Job ID', 'Location', 'City', 'State',
-        'Street Address', 'Postal Code', 'Hospital', 'Position',
-        'Area of Practice', 'Salary', 'Job Type', 'Department', 'Link', 'Description'
+        'Job Title', 'Job ID', 'City', 'State',
+        'Street Address', 'Postal Code', 'Phone', 'Website',
+        'Hospital', 'Position', 'Area of Practice', 'Salary',
+        'Job Type', 'Department', 'Link', 'Description'
     ];
 
     const rows = jobsToExport.map(job => [
         `"${escapeCSV(job.jobTitle)}"`,
         `"${escapeCSV(job.jobId)}"`,
-        `"${escapeCSV(job.location)}"`,
         `"${escapeCSV(job.city)}"`,
         `"${escapeCSV(job.state)}"`,
         `"${escapeCSV(job.streetAddress)}"`,
         `"${escapeCSV(job.postalCode)}"`,
+        `"${escapeCSV(job.phone)}"`,
+        `"${escapeCSV(job.website)}"`,
         `"${escapeCSV(job.hospitalName)}"`,
         `"${escapeCSV(job.position)}"`,
         `"${escapeCSV(job.areaOfPractice)}"`,
@@ -623,7 +905,8 @@ async function sendToWebhook() {
         state: job.state || '',
         street_address: job.streetAddress || '',
         postal_code: job.postalCode || '',
-        location: job.location || '',
+        phone: job.phone || '',
+        website: job.website || '',
         hospital: job.hospitalName || '',
         position: job.position || '',
         area_of_practice: job.areaOfPractice || '',
@@ -716,6 +999,8 @@ function showJobDetails(job) {
         <p><strong>City:</strong> ${escapeHtml(job.city || '—')}</p>
         <p><strong>State:</strong> ${escapeHtml(job.state || '—')}</p>
         <p><strong>Postal Code:</strong> ${escapeHtml(job.postalCode || '—')}</p>
+        <p><strong>Phone:</strong> ${escapeHtml(job.phone || '—')}</p>
+        <p><strong>Website:</strong> ${job.website ? `<a href="${escapeHtml(job.website)}" target="_blank" style="color:#38bdf8">${escapeHtml(job.website)}</a>` : '—'}</p>
         <p><strong>Location:</strong> ${escapeHtml(job.location || '—')}</p>
         <hr>
         <p><strong>Area of Practice:</strong> ${escapeHtml(job.areaOfPractice || 'N/A')}</p>

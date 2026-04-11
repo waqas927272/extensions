@@ -229,6 +229,15 @@ body {
   background: rgba(56,189,248,0.4);
 }
 
+.btn-maps {
+  background: rgba(52,168,83,0.35);
+  color: white;
+}
+
+.btn-maps:hover {
+  background: rgba(52,168,83,0.55);
+}
+
 /* Webhook Section */
 .webhook-section .section-header {
   display: flex;

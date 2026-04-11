@@ -16,350 +16,251 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 const result = { hospitalName: '', streetAddress: '', city: '', state: '', postalCode: '', jobType: '', salary: '', position: '', areaOfPractice: '', department: '' };
 
                 // ════════════════════════════════════════════════════════════
-                // POSITION & AOP  —  mirrors MedVet / VIPVet canonical logic
-                // Valid positions per AOP (from CorrectJobNames.txt):
-                //   Emergency Care    : Associate Veterinarian
-                //   General Practice  : Associate Veterinarian, Lead Veterinarian, Medical Director
-                //   Specialty Care    : Anesthesiologist, Cardiologist, CVTS, DABVP Specialist,
-                //                       Dental Specialist, Dermatologist, ECC Specialist,
-                //                       Internal Medicine Specialist, Medical Director,
-                //                       Medical Oncologist, Neurologist & Neurosurgeon,
-                //                       Ophthalmologist, Radiation Oncologist, Radiologist, Surgeon
-                //   Urgent Care       : Associate Veterinarian, Partner Veterinarian
+                // POSITION & AOP — keyword-driven, data-table approach
+                // Source of truth: CorrectJobNames.txt
+                //
+                // Emergency Care    → Associate Veterinarian
+                // General Practice  → Associate Veterinarian, Lead Veterinarian, Medical Director
+                // Specialty Care    → Anesthesiologist, Cardiologist, CVTS, DABVP Specialist,
+                //                     Dental Specialist, Dermatologist, ECC Specialist,
+                //                     Internal Medicine Specialist, Medical Director,
+                //                     Medical Oncologist, Neurologist & Neurosurgeon,
+                //                     Ophthalmologist, Radiation Oncologist, Radiologist, Surgeon
+                // Urgent Care       → Associate Veterinarian, Partner Veterinarian
                 // ════════════════════════════════════════════════════════════
 
+                // ── Non-clinical roles that should be skipped ─────────────
                 function isNonClinical(t) {
-                  return (
-                    t.includes('client service') || t.includes('service representative') ||
-                    t.includes('receptionist') || t.includes('kennel') ||
-                    t.includes('groomer') || t.includes('grooming') ||
-                    t.includes('practice manager') || t.includes('hospital manager') ||
-                    t.includes('office manager') || t.includes('administrator') ||
-                    t.includes('billing') || t.includes('human resources') ||
-                    t.includes('patient care coordinator') || t.includes('client care coordinator') ||
-                    t.includes('customer service') || t.includes('front desk') ||
-                    t.includes('inventory') || t.includes('housekeeper') ||
-                    t.includes('janitorial') || t.includes('externship') ||
-                    t.includes('general job application') || t.includes('join our team')
-                  );
+                  return /client service|service representative|receptionist|kennel|groomer|grooming|practice manager|hospital manager|office manager|administrator|billing|human resources|patient care coordinator|client care coordinator|customer service|front desk|inventory|housekeeper|janitorial|externship|general job application|join our team/.test(t);
                 }
 
-                // ── Step A: Match position from job title ──────────────────
-                function matchPositionFromTitle(title, dept) {
-                  const t = title.toLowerCase();
-                  const d = (dept || '').toLowerCase();
+                // ── Specialty positions set (from CorrectJobNames.txt) ─────
+                const SPECIALTY_POSITIONS = new Set([
+                  'Anesthesiologist','Cardiologist','Credentialed Veterinary Technician Specialist',
+                  'DABVP Specialist','Dental Specialist','Dermatologist','ECC Specialist',
+                  'Internal Medicine Specialist','Medical Oncologist','Neurologist & Neurosurgeon',
+                  'Ophthalmologist','Radiation Oncologist','Radiologist','Surgeon','Theriogenologist'
+                ]);
 
-                  // Technician / nurse roles
-                  const isTechRole = /\b(technician|technologist|vet\s+tech|nurse)\b/.test(t) &&
-                                     !t.includes('technician specialist') && !t.match(/\bvts\b/);
-                  if (isTechRole) {
-                    if (t.includes('anesthesia') || t.includes('anesthesiolog')) return 'Anesthesiologist';
-                    if (t.includes('dental') || t.includes('dentistry'))         return 'Dental Specialist';
-                    if (t.includes('critical care') || t.match(/\becc\b/) || t.includes('criticalist')) return 'ECC Specialist';
-                    if (t.includes('radiation oncol') || (t.includes('radiation') && t.includes('oncol'))) return 'Radiation Oncologist';
-                    if (t.includes('oncol') && !t.includes('radiation'))         return 'Medical Oncologist';
-                    if (t.includes('cardiolog'))                                 return 'Cardiologist';
-                    if (t.includes('neurolog') || t.includes('neurosurg'))       return 'Neurologist & Neurosurgeon';
-                    if (t.includes('dermatolog'))                                return 'Dermatologist';
-                    if (t.includes('ophthalmolog'))                              return 'Ophthalmologist';
-                    if ((t.includes('surgery') || t.includes('surgical') || t.includes('surgeon')) && !t.includes('neurosurg')) return 'Surgeon';
-                    if (t.includes('radiolog') || t.includes('diagnostic imaging')) return 'Radiologist';
-                    if (t.includes('internal medicine'))                         return 'Internal Medicine Specialist';
-                    if (t.includes('rehabilitation') || t.includes('emergency') || t.includes('specialist')) {
-                      return 'Credentialed Veterinary Technician Specialist';
-                    }
-                    return 'Credentialed Veterinary Technician Specialist';
-                  }
+                // ── Keyword → Position table (priority order, first match wins) ──
+                // Each entry: { pos, keywords[], regex?, exclude? }
+                function matchKeywords(t, d) {
+                  // t = title lower, d = dept lower
+                  // Returns canonical position string or ''
 
-                  // VTS
-                  if (t.includes('technician specialist') || t.match(/\bvts\b/)) {
-                    return 'Credentialed Veterinary Technician Specialist';
-                  }
+                  // 1. Explicit "Associate Veterinarian" in title — return immediately
+                  //    Prevents words like "dental" elsewhere in title from overriding.
+                  if (/associate veterinarian|associate vet\b/.test(t))    return 'Associate Veterinarian';
 
-                  // Leadership (highest priority for DVM roles)
-                  if (t.includes('medical director')) return 'Medical Director';
-                  if (t.includes('lead veterinarian') || t.includes('lead vet')) return 'Lead Veterinarian';
+                  // 2. Leadership
+                  if (/medical lead veterinarian|medical lead vet\b/.test(t)) return 'Lead Veterinarian';
+                  if (/medical director|medical lead/.test(t))              return 'Medical Director';
+                  if (/lead veterinarian|lead vet\b/.test(t))              return 'Lead Veterinarian';
+                  // "Partner Veterinarian" is not a real position — treat as Associate Vet
+                  // (partner/founding are ownership terms, not clinical titles)
 
-                  // ECC Specialist — must be before generic "emergency"
-                  if (t.includes('criticalist') || t.includes('dacvecc') ||
-                      t.match(/\becc\b/) || t.match(/\becc\s+specialist\b/) ||
+                  // 3. ECC Specialist — BEFORE generic "emergency"
+                  if (/criticalist|dacvecc|\becc specialist\b/.test(t) ||
+                      /\becc\b/.test(t) ||
                       (t.includes('emergency') && t.includes('critical care'))) return 'ECC Specialist';
 
-                  // Specialty DVM roles
-                  if (t.includes('neurologist') || t.includes('neurosurgeon') || (t.includes('neurology') && !isTechRole))   return 'Neurologist & Neurosurgeon';
-                  if (t.includes('dermatologist') || (t.includes('dermatology') && !isTechRole))                              return 'Dermatologist';
-                  if (t.includes('cardiologist') || (t.includes('cardiology') && !isTechRole))                                return 'Cardiologist';
-                  if ((t.includes('oncologist') || t.includes('oncology')) && t.includes('radiation'))                        return 'Radiation Oncologist';
-                  if (t.includes('oncologist') || (t.includes('oncology') && !isTechRole))                                    return 'Medical Oncologist';
-                  if (t.includes('radiologist') || t.includes('diagnostic imaging') || (t.includes('radiology') && !isTechRole)) return 'Radiologist';
-                  if (t.includes('ophthalmologist') || (t.includes('ophthalmology') && !isTechRole))                          return 'Ophthalmologist';
-                  if (t.includes('anesthesiologist') || (t.includes('anesthesia') && !isTechRole))                            return 'Anesthesiologist';
-                  if (t.includes('theriogenologist') || (t.includes('theriogenology') && !isTechRole))                        return 'Theriogenologist';
-                  if (t.includes('internist') || (t.includes('internal medicine') && !isTechRole))                            return 'Internal Medicine Specialist';
-                  if (t.includes('dabvp'))                                                                                     return 'DABVP Specialist';
-                  if ((t.includes('dental') || t.includes('dentist') || t.includes('dentistry')) && !t.includes('assistant')) return 'Dental Specialist';
-                  if ((t.includes('surgeon') || t.includes('surgery')) && !t.includes('neurosurgeon') && !t.includes('dental') && !isTechRole) return 'Surgeon';
+                  // 3. Technician / tech roles → map to specialist for their dept
+                  const isTech = /\b(technician|technologist|vet\s+tech|lvt|cvt|rdvt|nurse)\b/.test(t) &&
+                                 !/technician specialist|\bvts\b/.test(t);
+                  if (isTech) {
+                    if (/anesthes/.test(t) || /anesthes/.test(d))                   return 'Anesthesiologist';
+                    if (/dental|dentist/.test(t) || /dental|dentist/.test(d))       return 'Dental Specialist';
+                    if (/criticalist|critical care|\becc\b/.test(t))                return 'ECC Specialist';
+                    if (/radiation.*oncol|oncol.*radiation/.test(t))                return 'Radiation Oncologist';
+                    if (/oncol/.test(t) && !/radiation/.test(t))                    return 'Medical Oncologist';
+                    if (/cardiolog/.test(t) || /cardiolog/.test(d))                 return 'Cardiologist';
+                    if (/neurolog|neurosurg/.test(t))                               return 'Neurologist & Neurosurgeon';
+                    if (/dermatolog/.test(t))                                       return 'Dermatologist';
+                    if (/ophthalmolog/.test(t))                                     return 'Ophthalmologist';
+                    if (/surgery|surgical|surgeon/.test(t) && !/neurosurg/.test(t)) return 'Surgeon';
+                    if (/radiolog|diagnostic imaging/.test(t))                      return 'Radiologist';
+                    if (/internal medicine/.test(t))                                return 'Internal Medicine Specialist';
+                    return 'Credentialed Veterinary Technician Specialist'; // all other techs
+                  }
 
-                  // Specialty credentials in title (DACV*)
-                  if (t.includes('dacvim') && (t.includes('oncology') || t.includes('oncologist'))) return 'Medical Oncologist';
-                  if (t.includes('dacvr') && (t.includes('radiation') || t.includes('-ro')))        return 'Radiation Oncologist';
-                  if (t.includes('dacvim') && (t.includes('neurology') || t.includes('neurosurg'))) return 'Neurologist & Neurosurgeon';
-                  if (t.includes('dacvim') && t.includes('cardiology'))  return 'Cardiologist';
-                  if (t.includes('dacvim'))                               return 'Internal Medicine Specialist';
-                  if (t.includes('davdc') || t.includes('avdc'))          return 'Dental Specialist';
-                  if (t.includes('dacvd'))                                return 'Dermatologist';
-                  if (t.includes('dacvs') || t.includes('acvs'))          return 'Surgeon';
-                  if (t.includes('dacvr'))                                return 'Radiologist';
-                  if (t.includes('dacvo'))                                return 'Ophthalmologist';
-                  if (t.includes('dacvaa') || t.includes('dacva'))        return 'Anesthesiologist';
-                  if (t.includes('dact'))                                 return 'Theriogenologist';
+                  // 4. VTS
+                  if (/technician specialist|\bvts\b/.test(t)) return 'Credentialed Veterinary Technician Specialist';
 
-                  // Animal type scope
-                  if (t.includes('equine') || t.includes('bovine') || t.includes('large animal')) return 'Equine/Bovine Veterinarian/Large Animal';
-                  if (t.includes('avian') || t.includes('exotics')) return 'Avian & Exotics Veterinarian / Associate Exotics';
+                  // 5. DACV credential combinations in title (specific → general)
+                  if (/dacvim/.test(t) && /oncol/.test(t))               return 'Medical Oncologist';
+                  if (/dacvr/.test(t)  && /(radiation|-ro)/.test(t))     return 'Radiation Oncologist';
+                  if (/dacvim/.test(t) && /(neurolog|neurosurg)/.test(t))return 'Neurologist & Neurosurgeon';
+                  if (/dacvim/.test(t) && /cardiolog/.test(t))           return 'Cardiologist';
+                  if (/dacvim/.test(t))                                   return 'Internal Medicine Specialist';
+                  if (/davdc|avdc/.test(t))                               return 'Dental Specialist';
+                  if (/dacvd/.test(t))                                    return 'Dermatologist';
+                  if (/dacvs|\bacvs\b/.test(t))                           return 'Surgeon';
+                  if (/dacvr/.test(t))                                    return 'Radiologist';
+                  if (/dacvo/.test(t))                                    return 'Ophthalmologist';
+                  if (/dacvaa|dacva/.test(t))                             return 'Anesthesiologist';
+                  if (/\bdact\b/.test(t))                                 return 'Theriogenologist';
+                  if (/\bdabvp\b/.test(t))                                return 'DABVP Specialist';
 
-                  // Other named roles
-                  if (t.includes('partner veterinarian')) return 'Partner Veterinarian';
+                  // 6. Specialty keywords in title
+                  //    ► Radiation before Medical (radiation oncology ⊃ oncology)
+                  if (/radiation oncolog/.test(t))                                          return 'Radiation Oncologist';
+                  if (/oncolog/.test(t))                                                    return 'Medical Oncologist';
+                  if (/cardiolog/.test(t))                                                  return 'Cardiologist';
+                  if (/neurolog|neurosurg/.test(t))                                         return 'Neurologist & Neurosurgeon';
+                  if (/dermatolog/.test(t))                                                 return 'Dermatologist';
+                  if (/ophthalmolog/.test(t))                                               return 'Ophthalmologist';
+                  if (/anesthesiolog/.test(t))                                              return 'Anesthesiologist';
+                  if (/theriogenolog/.test(t))                                              return 'Theriogenologist';
+                  if (/internist|internal medicine/.test(t))                               return 'Internal Medicine Specialist';
+                  if (/radiolog|diagnostic imaging/.test(t))                               return 'Radiologist';
+                  //    ► Dental/Dentist/Dentistry → Dental Specialist (exclude "dental assistant")
+                  if (/(dental|dentist|dentistry)/.test(t) && !/assistant/.test(t))        return 'Dental Specialist';
+                  //    ► Surgeon/Surgery (exclude neurosurg, dental surgery)
+                  if (/\bsurgeon\b/.test(t))                                               return 'Surgeon';
+                  if (/(surgery|surgical)/.test(t) && !/neurosurg|dental/.test(t))         return 'Surgeon';
 
-                  // Non-clinical guard — these must NOT inherit a specialist position from dept
-                  if (isNonClinical(t)) return '';
+                  // 7. Equine / Large Animal / Avian
+                  if (/equine|bovine|large animal/.test(t)) return 'Equine/Bovine Veterinarian/Large Animal';
+                  if (/\bavian\b|exotics/.test(t))          return 'Avian & Exotics Veterinarian / Associate Exotics';
 
-                  // Fallback: try dept/category string
-                  const fromDept = matchPositionFromDept(d);
-                  if (fromDept) return fromDept;
+                  // 8. Generic DVM
+                  if (/veterinarian|veterinary|\bdvm\b|relief|locum/.test(t)) return 'Associate Veterinarian';
 
-                  return '';
+                  return ''; // no match
                 }
 
-                // ── Step B: Match position from Department field (= MedVet category) ──
-                function matchPositionFromDept(dept) {
-                  const d = (dept || '').toLowerCase().trim();
+                // ── Department field → position (when title gives no specialty clue) ──
+                function matchDept(d) {
                   if (!d) return '';
-
-                  if (d.includes('criticalist') || d === 'ecc' || d.includes('ecc ') || d.includes(' ecc') ||
-                      d.includes('emergency and critical care') || d.includes('emergency & critical care')) return 'ECC Specialist';
-                  if (d.includes('radiation oncol')) return 'Radiation Oncologist';
-                  if (d.includes('medical oncol'))   return 'Medical Oncologist';
-                  if (d.includes('oncol') && !d.includes('radiation')) return 'Medical Oncologist';
-                  if (d.includes('cardiolog'))        return 'Cardiologist';
-                  if (d.includes('neurolog') || d.includes('neurosurg')) return 'Neurologist & Neurosurgeon';
-                  if (d.includes('dermatolog'))       return 'Dermatologist';
-                  if (d.includes('ophthalmolog') || d.includes('ophtho')) return 'Ophthalmologist';
-                  if (d.includes('anesthesiolog') || d === 'anesthesia' || d.includes('anesthesia')) return 'Anesthesiologist';
-                  if (d.includes('theriogenolog'))    return 'Theriogenologist';
-                  if (d.includes('internal medicine') || d.includes('internist') || d.includes('saim')) return 'Internal Medicine Specialist';
-                  if (d.includes('radiolog') || d.includes('diagnostic imaging')) return 'Radiologist';
-                  if ((d.includes('surgeon') || d.includes('surgery')) && !d.includes('neurosurg')) return 'Surgeon';
-                  if (d.includes('dental') || d.includes('dentistry') || d.includes('davdc')) return 'Dental Specialist';
-                  if (d.includes('dabvp'))            return 'DABVP Specialist';
-                  if (d.includes('rehabilitation') || d.includes('rehab')) return 'Credentialed Veterinary Technician Specialist';
-
+                  if (/criticalist|\becc\b|critical care/.test(d))          return 'ECC Specialist';
+                  if (/radiation oncol/.test(d))                            return 'Radiation Oncologist';
+                  if (/oncol/.test(d) && !/radiation/.test(d))             return 'Medical Oncologist';
+                  if (/cardiolog/.test(d))                                  return 'Cardiologist';
+                  if (/neurolog|neurosurg/.test(d))                        return 'Neurologist & Neurosurgeon';
+                  if (/dermatolog/.test(d))                                 return 'Dermatologist';
+                  if (/ophthalmolog|ophtho/.test(d))                       return 'Ophthalmologist';
+                  if (/anesthesiolog|anesthesia/.test(d))                  return 'Anesthesiologist';
+                  if (/theriogenolog/.test(d))                              return 'Theriogenologist';
+                  if (/internal medicine|internist|saim/.test(d))          return 'Internal Medicine Specialist';
+                  if (/radiolog|diagnostic imaging/.test(d))               return 'Radiologist';
+                  if (/dental|dentistry|davdc/.test(d))                    return 'Dental Specialist';
+                  if (/(surgery|surgeon)/.test(d) && !/neurosurg/.test(d)) return 'Surgeon';
+                  if (/\bdabvp\b/.test(d))                                 return 'DABVP Specialist';
+                  if (/rehabilitation|rehab/.test(d))                      return 'Credentialed Veterinary Technician Specialist';
                   return '';
                 }
 
-                // ── Step C: Scan qualifications section for DACV* credentials ──
-                function matchPositionFromQualifications(bodyText) {
+                // ── Qualifications section scan for DACV* credentials ──────
+                function matchQualifications(bodyText) {
                   if (!bodyText) return '';
-                  // Try to isolate the qualifications / requirements section
                   const lower = bodyText.toLowerCase();
-                  const qStart = Math.max(
+                  const idx = Math.max(
                     lower.indexOf('qualif'), lower.indexOf('requirement'),
-                    lower.indexOf('boarded'), lower.indexOf('board certified'),
-                    lower.indexOf('diplomate'), lower.indexOf('residency')
+                    lower.indexOf('board cert'), lower.indexOf('diplomate'), lower.indexOf('residency')
                   );
-                  const q = qStart > -1 ? lower.slice(qStart, qStart + 2000) : lower;
+                  const q = idx > -1 ? lower.slice(idx, idx + 2000) : lower;
 
-                  if (q.includes('dacvecc')) return 'ECC Specialist';
-                  if (q.includes('dacvim') && q.includes('oncology')) return 'Medical Oncologist';
-                  if (q.includes('dacvr') && (q.includes('radiation') || q.includes('-ro'))) return 'Radiation Oncologist';
-                  if (q.includes('dacvim') && (q.includes('neurology') || q.includes('neurosurg'))) return 'Neurologist & Neurosurgeon';
-                  if (q.includes('dacvim') && q.includes('cardiology')) return 'Cardiologist';
-                  if (q.includes('dacvim')) return 'Internal Medicine Specialist';
-                  if (q.includes('davdc') || q.includes('avdc')) return 'Dental Specialist';
-                  if (q.includes('dacvd'))  return 'Dermatologist';
-                  if (q.includes('dacvs') || q.includes('acvs')) return 'Surgeon';
-                  if (q.includes('dacvr'))  return 'Radiologist';
-                  if (q.includes('dacvo'))  return 'Ophthalmologist';
-                  if (q.includes('dacvaa')) return 'Anesthesiologist';
-                  if (q.includes('dact'))   return 'Theriogenologist';
-                  if (q.includes('dabvp'))  return 'DABVP Specialist';
-                  if (q.includes('criticalist')) return 'ECC Specialist';
-                  if (q.includes('internal medicine')) return 'Internal Medicine Specialist';
-
-                  // Board certified / residency trained → specialty, but specialty unclear
-                  if (q.includes('board certified') || q.includes('residency trained') ||
-                      q.includes('residency-trained') || q.includes('diplomate')) {
-                    return '_SPECIALTY_FLAG_';
-                  }
+                  if (/dacvecc/.test(q))                                  return 'ECC Specialist';
+                  if (/dacvim/.test(q) && /oncol/.test(q))               return 'Medical Oncologist';
+                  if (/dacvr/.test(q)  && /(radiation|-ro)/.test(q))     return 'Radiation Oncologist';
+                  if (/dacvim/.test(q) && /(neurolog|neurosurg)/.test(q))return 'Neurologist & Neurosurgeon';
+                  if (/dacvim/.test(q) && /cardiolog/.test(q))           return 'Cardiologist';
+                  if (/dacvim/.test(q))                                   return 'Internal Medicine Specialist';
+                  if (/davdc|avdc/.test(q))                               return 'Dental Specialist';
+                  if (/dacvd/.test(q))                                    return 'Dermatologist';
+                  if (/dacvs|\bacvs\b/.test(q))                           return 'Surgeon';
+                  if (/dacvr/.test(q))                                    return 'Radiologist';
+                  if (/dacvo/.test(q))                                    return 'Ophthalmologist';
+                  if (/dacvaa/.test(q))                                   return 'Anesthesiologist';
+                  if (/\bdact\b/.test(q))                                 return 'Theriogenologist';
+                  if (/\bdabvp\b/.test(q))                                return 'DABVP Specialist';
+                  if (/criticalist/.test(q))                              return 'ECC Specialist';
+                  if (/board.certif|residency.train|diplomate/.test(q))  return '_SPECIALTY_FLAG_';
                   return '';
                 }
 
-                // ── Step D: Validate position is allowed for its AOP (CorrectJobNames.txt) ──
-                function validatePositionForAOP(position, aop) {
-                  // Special / pass-through positions
-                  if (position === 'Equine/Bovine Veterinarian/Large Animal' ||
-                      position === 'Avian & Exotics Veterinarian / Associate Exotics' ||
-                      position === '_SPECIALTY_FLAG_') return position;
+                // ── AOP from a known position + context ─────────────────────
+                function aopFromPosition(pos, t, h, d, b) {
+                  if (SPECIALTY_POSITIONS.has(pos)) return 'Specialty Care';
 
-                  const validPositions = {
-                    'Emergency Care':       ['Associate Veterinarian'],
-                    'General Practice Care':['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
-                    'Specialty Care':       ['Anesthesiologist','Cardiologist','Credentialed Veterinary Technician Specialist',
-                                             'DABVP Specialist','Dental Specialist','Dermatologist','ECC Specialist',
-                                             'Internal Medicine Specialist','Medical Director','Medical Oncologist',
-                                             'Neurologist & Neurosurgeon','Ophthalmologist','Radiation Oncologist',
-                                             'Radiologist','Surgeon'],
-                    'Urgent Care':          ['Associate Veterinarian','Partner Veterinarian']
-                  };
-
-                  const aopParts = aop.split('/').map(s => s.trim());
-                  for (const part of aopParts) {
-                    const allowed = validPositions[part];
-                    if (allowed && allowed.includes(position)) return position;
+                  if (pos === 'Medical Director') {
+                    // Specialty MD if body/dept has specialist context
+                    const specHints = ['dacvim','dacvecc','dacvr','dacvs','dacvd','dacvo','dacvaa',
+                      'dact','davdc','dabvp','board certified','residency trained','diplomate',
+                      'oncology','cardiology','neurology','dermatology','ophthalmology','anesthesia',
+                      'radiology','surgery','internal medicine','criticalist','specialist'];
+                    for (const kw of specHints) { if (b.includes(kw) || d.includes(kw)) return 'Specialty Care'; }
+                    return 'General Practice Care';
                   }
+                  if (pos === 'Lead Veterinarian') return 'General Practice Care';
 
-                  // Medical Director is valid in GP and Specialty regardless
-                  if (position === 'Medical Director') return position;
-
-                  // If we matched a known AOP but position isn't in its list → demote
-                  const hasKnownAOP = aopParts.some(part => validPositions[part]);
-                  if (hasKnownAOP) return 'Associate Veterinarian';
-
-                  // Unknown AOP — keep the position if it's a recognised canonical name
-                  const allValid = new Set(Object.values(validPositions).flat());
-                  if (allValid.has(position)) return position;
-                  return 'Associate Veterinarian';
+                  // Associate Veterinarian — context decides Emergency / Urgent / GP
+                  if (/emergency/.test(t) || /\ber\s+(vet|dvm)\b/.test(t) || h.includes('emergency')) return 'Emergency Care';
+                  if (/urgent care/.test(t) || /urgent care/.test(d) || h.includes('urgent care'))     return 'Urgent Care';
+                  if (/equine|bovine|large animal|avian|exotics/.test(t)) return 'General Practice Care / Emergency Care / Urgent Care';
+                  return 'General Practice Care';
                 }
 
-                // ── Master orchestrator ────────────────────────────────────
+                // ── Master: Determine Position ───────────────────────────────
                 function determinePosition(rawTitle, dept, bodyText) {
-                  if (isNonClinical(rawTitle.toLowerCase())) return '';
-
-                  // Step 1: match from title (+ dept as inline fallback)
-                  let position = matchPositionFromTitle(rawTitle, dept);
-
-                  // Step 2: if Specialty AOP and no title match, scan qualifications
-                  const aop = determineAOP(rawTitle, '', dept, bodyText);
-                  if (!position && aop === 'Specialty Care') {
-                    const fromQual = matchPositionFromQualifications(bodyText);
-                    if (fromQual && fromQual !== '_SPECIALTY_FLAG_') position = fromQual;
-                  }
-
-                  // Step 3: if still nothing, try dept mapping directly
-                  if (!position) position = matchPositionFromDept(dept);
-
-                  // Step 4: validate position against AOP
-                  if (position && position !== '_SPECIALTY_FLAG_' &&
-                      position !== 'Equine/Bovine Veterinarian/Large Animal' &&
-                      position !== 'Avian & Exotics Veterinarian / Associate Exotics') {
-                    position = validatePositionForAOP(position, aop);
-                  }
-
-                  // Step 5: Medical Director override
-                  if ((!position || position === 'Associate Veterinarian') &&
-                      rawTitle.toLowerCase().includes('medical director')) {
-                    position = 'Medical Director';
-                  }
-
-                  // Step 6: default for any remaining DVM/vet title
-                  if (!position || position === '_SPECIALTY_FLAG_') {
-                    const t = rawTitle.toLowerCase();
-                    if (t.includes('veterinarian') || t.includes('veterinary') ||
-                        t.includes('dvm') || t.includes('relief') || t.includes('locum')) {
-                      position = 'Associate Veterinarian';
-                    }
-                  }
-
-                  return position || '';
-                }
-
-                // ── Area of Practice ───────────────────────────────────────
-                function determineAOP(rawTitle, hospitalName, dept, bodyText) {
                   const t = rawTitle.toLowerCase();
-                  const h = (hospitalName || '').toLowerCase();
-                  const d = (dept || '').toLowerCase().trim();
+                  const d = (dept || '').toLowerCase();
                   const b = (bodyText || '').toLowerCase();
 
                   if (isNonClinical(t)) return '';
 
-                  // STEP 1: Department field (most reliable — mirrors MedVet's category)
-                  if (d) {
-                    if (d === 'emergency and critical care' || d === 'emergency & critical care' ||
-                        d === 'emergency medicine' || d === 'emergency') {
-                      // If title signals criticalist → Specialty Care
-                      if (t.includes('criticalist') || t.match(/\becc\b/) || t.includes('specialist')) return 'Specialty Care';
-                      return 'Emergency Care';
-                    }
-                    if (d.includes('criticalist') || d === 'ecc' ||
-                        d.includes('emergency and critical care specialist') ||
-                        d.includes('emergency & critical care specialist')) return 'Specialty Care';
-                    if (d.includes('urgent care')) return 'Urgent Care';
-                    if (d.includes('gen practice') || d.includes('general practice') || d.includes('general med')) return 'General Practice Care';
+                  // Step 1: keyword match from title (+ dept for tech mapping)
+                  let pos = matchKeywords(t, d);
 
-                    const specDepts = ['oncol','cardiolog','neurolog','neurosurg','dermatolog',
-                      'ophthalmolog','anesthesiolog','anesthesia','internal medicine','saim',
-                      'radiolog','diagnostic imaging','surgeon','surgery','dental','dentistry',
-                      'davdc','criticalist','critical care','dacvecc','dacvim','dacvs','dacvr',
-                      'dacvd','dacvo','dacvaa','dact','dabvp','rehabilitation','sports medicine',
-                      'specialist','specialty'];
-                    for (const kw of specDepts) {
-                      if (d.includes(kw)) return 'Specialty Care';
-                    }
+                  // Step 2: if no title match, try dept field
+                  if (!pos) pos = matchDept(d);
+
+                  // Step 3: if still nothing and specialty context, scan qualifications
+                  if (!pos) {
+                    const fromQ = matchQualifications(b);
+                    if (fromQ && fromQ !== '_SPECIALTY_FLAG_') pos = fromQ;
                   }
 
-                  // STEP 2: Title keywords
-                  if (t.includes('criticalist') || t.match(/\becc\b/) || t.includes('dacvecc') ||
-                      (t.includes('emergency') && t.includes('critical care'))) return 'Specialty Care';
+                  // Step 4: Medical Director override
+                  if (!pos && /medical director/.test(t)) pos = 'Medical Director';
 
-                  const specTitleKw = ['oncologist','cardiologist','neurologist','neurosurgeon',
-                    'dermatologist','ophthalmologist','anesthesiologist','theriogenologist',
-                    'radiologist','internist','criticalist',
-                    'oncology','cardiology','neurology','dermatology','ophthalmology',
-                    'anesthesia','theriogenology','radiology','diagnostic imaging','rehabilitation'];
-                  for (const kw of specTitleKw) {
-                    if (t.includes(kw)) return 'Specialty Care';
+                  // Step 5: generic DVM fallback
+                  if (!pos && /veterinarian|veterinary|\bdvm\b|relief|locum/.test(t)) pos = 'Associate Veterinarian';
+
+                  return pos || '';
+                }
+
+                // ── Master: Determine Area of Practice ──────────────────────
+                function determineAOP(rawTitle, hospitalName, dept, bodyText) {
+                  const t = rawTitle.toLowerCase();
+                  const h = (hospitalName || '').toLowerCase();
+                  const d = (dept || '').toLowerCase();
+                  const b = (bodyText || '').toLowerCase();
+
+                  if (isNonClinical(t)) return '';
+
+                  // Step 1: get position (title + dept + quals)
+                  const pos = matchKeywords(t, d) || matchDept(d) || matchQualifications(b);
+
+                  // Step 2: derive AOP from position
+                  if (pos && pos !== '_SPECIALTY_FLAG_') {
+                    return aopFromPosition(pos, t, h, d, b);
                   }
 
-                  const specCerts = ['board certified','residency trained','residency-trained','diplomate',
-                    'dacvecc','dacvim','dacvr','dacvs','dacvd','dacvo','dacvaa','dact','davdc','dabvp','acvs','acvim'];
-                  for (const cert of specCerts) {
-                    if (t.includes(cert)) return 'Specialty Care';
-                  }
+                  // Step 3: _SPECIALTY_FLAG_ or dept signals specialty
+                  if (pos === '_SPECIALTY_FLAG_') return 'Specialty Care';
 
-                  if (t.includes('specialist') && !t.includes('technician specialist')) return 'Specialty Care';
-                  if (t.match(/\bsurgeon\b/)) return 'Specialty Care';
+                  // Step 4: dept signals specialty without a known position
+                  const specDepts = ['oncol','cardiolog','neurolog','neurosurg','dermatolog',
+                    'ophthalmolog','anesthes','internal medicine','saim','radiolog',
+                    'diagnostic imaging','surgery','surgeon','dental','dentistry','davdc',
+                    'criticalist','critical care','dacvecc','dacvim','dacvs','dacvr','dacvd',
+                    'dacvo','dacvaa','dact','dabvp','rehabilitation','specialist','specialty'];
+                  for (const kw of specDepts) { if (d.includes(kw)) return 'Specialty Care'; }
 
-                  // Surgical keywords in title
-                  if ((t.includes('surgery') || t.includes('surgeon')) &&
-                      !t.includes('technician') && !t.includes('assistant')) return 'Specialty Care';
-
-                  // Internal medicine / dental in title
-                  if (t.includes('internal medicine') || t.includes('internist')) return 'Specialty Care';
-                  if ((t.includes('dental') || t.includes('dentist')) && !t.includes('assistant')) return 'Specialty Care';
-
-                  // Emergency Care (non-specialist)
-                  if (t.includes('emergency') || t.match(/\ber\s+vet\b/) || t.match(/\ber\s+dvm\b/) ||
-                      t.match(/\ber\b/) || t.includes('er vet') || t.includes('er dvm')) return 'Emergency Care';
-                  if (h.includes('emergency') || h.includes('critical care')) return 'Emergency Care';
-
-                  // Urgent Care
-                  if (t.includes('urgent care') || h.includes('urgent care') || d.includes('urgent care')) return 'Urgent Care';
-
-                  // Equine / Large Animal / Avian / Exotics
-                  if (t.includes('equine') || t.includes('bovine') || t.includes('large animal') ||
-                      t.includes('avian') || t.includes('exotics')) {
-                    return 'General Practice Care / Emergency Care / Urgent Care';
-                  }
-
-                  // STEP 3: Scan qualifications section
-                  const fromQual = matchPositionFromQualifications(b);
-                  if (fromQual === '_SPECIALTY_FLAG_' ||
-                      ['Anesthesiologist','Cardiologist','Dermatologist','Ophthalmologist','Radiologist',
-                       'Surgeon','Neurologist & Neurosurgeon','Internal Medicine Specialist',
-                       'Medical Oncologist','Radiation Oncologist','Dental Specialist','Theriogenologist',
-                       'DABVP Specialist','Credentialed Veterinary Technician Specialist','ECC Specialist'].includes(fromQual)) {
-                    return 'Specialty Care';
-                  }
+                  // Step 5: emergency / urgent from title
+                  if (/emergency/.test(t) || h.includes('emergency')) return 'Emergency Care';
+                  if (/urgent care/.test(t) || /urgent care/.test(d)) return 'Urgent Care';
 
                   return 'General Practice Care';
                 }
@@ -448,7 +349,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     case 'Employment Type':
                     case 'Job Type':
                     case 'Schedule':
-                      result.jobType = value;
+                      result.jobType = value; // raw; normalised below
                       break;
                     case 'Base Min.':
                     case 'Salary Min':
@@ -543,6 +444,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     if (m) { result.salary = m[0].trim(); break; }
                   }
                 }
+
+                // === Job Type normalisation ===
+                // Rules:
+                //   - "Part Time" only if PART-TIME is mentioned AND full-time is NOT mentioned
+                //   - "Full Time" if full-time is mentioned, OR both are mentioned, OR neither is mentioned
+                (function normaliseJobType() {
+                  // Start with whatever the labeled field gave us (may be empty)
+                  const rawField = (result.jobType || '').toLowerCase();
+
+                  // Also scan the full page body for explicit mentions
+                  const scan = (rawField + ' ' + bodyText).toLowerCase();
+
+                  const hasPart = /part[\s\-]?time/.test(scan);
+                  const hasFull = /full[\s\-]?time/.test(scan);
+
+                  if (hasPart && !hasFull) {
+                    result.jobType = 'Part Time';
+                  } else {
+                    // full-time only, both, or neither → Full Time
+                    result.jobType = 'Full Time';
+                  }
+                })();
 
                 // === SOURCE 4: Canonical position name + Area of Practice ===
                 result.position = determinePosition(rawJobTitle, result.department, bodyText);
