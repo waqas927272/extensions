@@ -208,11 +208,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (t.includes('specialist') && !t.includes('technician specialist')) return 'Specialty Care';
         if (t.match(/\bsurgeon\b/)) return 'Specialty Care';
 
+        // Urgent Care — check before Emergency since "urgent care" is more specific
+        if (t.includes('urgent care')) return 'Urgent Care';
+
         // Emergency
         if (t.includes('emergency') || t.match(/\ber\b/) || t.includes('er vet') || t.includes('er dvm')) return 'Emergency Care';
-
-        // Urgent Care
-        if (t.includes('urgent care')) return 'Urgent Care';
 
         // Equine/Bovine/Exotics
         if (t.includes('equine') || t.includes('bovine') || t.includes('large animal') ||
@@ -314,12 +314,17 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Determine Area of Practice
-        // Priority: 1) Industry/Category from JSON-LD, 2) title keywords, 3) description qualifications
+        // Priority: 1) Title-specific overrides (urgent care), 2) Industry/Category from JSON-LD, 3) title keywords, 4) description qualifications
         function determineAreaOfPractice(positionText, descriptionText) {
             const title = positionText.toLowerCase();
             const category = getIndustryCategory(descriptionText).toLowerCase();
 
-            // STEP 1: Use industry/category - most reliable signal
+            // STEP 0: Title-specific overrides — these are MORE specific than Jobvite categories.
+            // e.g. "Urgent Care Veterinarian" is categorized as "Veterinarian (ER)" on Jobvite,
+            // but "urgent care" in the title is a more precise signal than the broad ER bucket.
+            if (title.includes('urgent care')) return 'Urgent Care';
+
+            // STEP 1: Use industry/category - most reliable signal for broad categories
             if (category) {
                 if (category.includes('gen practice')) return 'General Practice Care';
                 if (category === 'veterinarian (er)' || category.includes('(er)')) return 'Emergency Care';
@@ -356,16 +361,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 return 'Emergency Care';
             }
 
-            // STEP 4: Check TITLE for Urgent Care
-            if (title.includes('urgent care')) return 'Urgent Care';
-
-            // STEP 5: Check TITLE for equine/bovine/large animal/avian/exotics
+            // STEP 4: Check TITLE for equine/bovine/large animal/avian/exotics
             if (title.includes('equine') || title.includes('bovine') || title.includes('large animal') ||
                 title.includes('avian') || title.includes('exotics')) {
                 return 'General Practice Care / Emergency Care / Urgent Care';
             }
 
-            // STEP 6: For generic titles, check ONLY the qualifications section
+            // STEP 5: For generic titles, check ONLY the qualifications section
             const qualSection = extractQualificationsSection(descriptionText);
             if (qualSection) {
                 const qualLower = qualSection.toLowerCase();
@@ -374,7 +376,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // STEP 7: Check page text for ER category
+            // STEP 6: Check page text for ER category
             if (descriptionText.match(/Veterinarian \(ER\)/i)) return 'Emergency Care';
 
             return 'General Practice Care';
@@ -581,19 +583,53 @@ document.addEventListener('DOMContentLoaded', () => {
             return '';
         }
 
+        // Extract job type from description
+        // Rules: "part time or full time" / "full time or part time" → Full-Time
+        //        only "part time" / "part-time" mentioned → Part-Time
+        //        nothing mentioned or only "full time" → Full-Time (default)
+        function extractJobType(text) {
+            if (!text) return 'Full-Time';
+            const lower = text.toLowerCase();
+
+            // First check the structured Employment Type field from JSON-LD
+            const empTypeMatch = lower.match(/employment type:\s*([^\n]+)/i);
+            if (empTypeMatch) {
+                const empType = empTypeMatch[1].trim().toLowerCase();
+                // "Part Time or Full Time" → Full-Time (both mentioned = full time)
+                if (empType.includes('part') && empType.includes('full')) return 'Full-Time';
+                // "Part-Time" or "Part Time" only → Part-Time
+                if (empType.includes('part')) return 'Part-Time';
+                // "Full-Time" or anything else → Full-Time
+                return 'Full-Time';
+            }
+
+            // Fallback: check the description body text
+            const hasPartTime = /\bpart[\s-]?time\b/i.test(lower);
+            const hasFullTime = /\bfull[\s-]?time\b/i.test(lower);
+
+            // Both mentioned → Full-Time
+            if (hasPartTime && hasFullTime) return 'Full-Time';
+            // Only part time mentioned → Part-Time
+            if (hasPartTime) return 'Part-Time';
+            // Only full time or nothing mentioned → Full-Time
+            return 'Full-Time';
+        }
+
         // Run all extractions
         const salary = extractSalary(descriptionText);
         const areaOfPractice = determineAreaOfPractice(positionTitle, descriptionText);
         const position = determinePosition(positionTitle, descriptionText, areaOfPractice);
         const locations = extractLocations(descriptionText);
         const hospitalName = extractHospitalName(descriptionText);
+        const jobType = extractJobType(descriptionText);
 
         return {
             salary,
             areaOfPractice,
             position,
             locations,
-            hospitalName
+            hospitalName,
+            jobType
         };
     }
 
@@ -870,15 +906,16 @@ document.addEventListener('DOMContentLoaded', () => {
             row.insertCell(13).textContent = job.areaOfPractice || '-';
             row.insertCell(14).textContent = job.position || '-';
             row.insertCell(15).textContent = job.salary || '-';
+            row.insertCell(16).textContent = job.jobType || '-';
 
-            const linkCell = row.insertCell(16);
+            const linkCell = row.insertCell(17);
             const link = document.createElement('a');
             link.href = job.link;
             link.textContent = 'View Job';
             link.target = '_blank';
             linkCell.appendChild(link);
 
-            const descCell = row.insertCell(17);
+            const descCell = row.insertCell(18);
             if (job.description) {
                 const descDiv = document.createElement('div');
                 descDiv.className = 'description-cell';
@@ -909,7 +946,8 @@ document.addEventListener('DOMContentLoaded', () => {
             (job.phone || '').toLowerCase().includes(term) ||
             (job.website || '').toLowerCase().includes(term) ||
             (job.areaOfPractice || '').toLowerCase().includes(term) ||
-            (job.position || '').toLowerCase().includes(term)
+            (job.position || '').toLowerCase().includes(term) ||
+            (job.jobType || '').toLowerCase().includes(term)
         );
 
         displayRecords(filtered);
@@ -936,7 +974,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Aggregator', 'Street Address', 'City', 'State', 'County', 'Zip Code', 'Phone', 'Website', 'Location', 'Area of Practice', 'Position', 'Salary', 'Link', 'Description'];
+        const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Aggregator', 'Street Address', 'City', 'State', 'County', 'Zip Code', 'Phone', 'Website', 'Location', 'Area of Practice', 'Position', 'Salary', 'Job Type', 'Link', 'Description'];
         const csvContent = [
             headers.join(','),
             ...allJobs.map((job, index) => [
@@ -956,6 +994,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 `"${(job.areaOfPractice || '').replace(/"/g, '""')}"`,
                 `"${(job.position || '').replace(/"/g, '""')}"`,
                 `"${(job.salary || '').replace(/"/g, '""')}"`,
+                `"${(job.jobType || '').replace(/"/g, '""')}"`,
                 `"${(job.link || '').replace(/"/g, '""')}"`,
                 `"${(job.description || '').replace(/"/g, '""')}"`
             ].join(','))
@@ -1020,16 +1059,17 @@ document.addEventListener('DOMContentLoaded', () => {
     // Clear details only (area of practice, position, salary)
     const clearDetailsBtn = document.getElementById('clearDetailsBtn');
     clearDetailsBtn.addEventListener('click', () => {
-        if (confirm('Are you sure you want to clear all job details? This will remove Area of Practice, Position, and Salary from all jobs.')) {
+        if (confirm('Are you sure you want to clear all job details? This will remove Area of Practice, Position, Salary, and Job Type from all jobs.')) {
             chrome.storage.local.get(['scrapedJobs'], (data) => {
                 const jobs = data.scrapedJobs || [];
                 let clearedCount = 0;
 
                 jobs.forEach(job => {
-                    if (job.areaOfPractice || job.position || job.salary) {
+                    if (job.areaOfPractice || job.position || job.salary || job.jobType) {
                         job.areaOfPractice = '';
                         job.position = '';
                         job.salary = '';
+                        job.jobType = '';
                         clearedCount++;
                     }
                 });
@@ -1503,6 +1543,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     position: extracted.position,
                     salary: extracted.salary,
                     hospitalName: extracted.hospitalName,
+                    jobType: extracted.jobType,
                     description: description,
                     city: loc.city || '',
                     state: loc.state || '',
@@ -1515,6 +1556,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     position: extracted.position,
                     salary: extracted.salary,
                     hospitalName: extracted.hospitalName,
+                    jobType: extracted.jobType,
                     description: description,
                     city: '',
                     state: '',
@@ -1599,6 +1641,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 originalJob.position = finalPosition;
                 originalJob.salary = firstDetail.salary || originalJob.salary || '';
                 originalJob.hospital = firstDetail.hospitalName || originalJob.hospital || '';
+                originalJob.jobType = firstDetail.jobType || originalJob.jobType || 'Full-Time';
                 if (firstDetail.city) originalJob.city = firstDetail.city;
                 if (firstDetail.state) originalJob.state = firstDetail.state;
                 if (firstDetail.location) originalJob.location = firstDetail.location;
