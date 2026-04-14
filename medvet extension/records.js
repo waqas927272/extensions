@@ -163,14 +163,17 @@ document.addEventListener('DOMContentLoaded', () => {
         row.innerHTML = `
           <td>${escapeHtml(record.title || '')}</td>
           <td class="job-id-cell">${escapeHtml(record.jobId || 'N/A')}</td>
-          <td>${escapeHtml(record.hospitalName || '-')}</td>
           <td>${escapeHtml(record.areaOfPractice || '-')}</td>
           <td>${escapeHtml(record.position || '-')}</td>
           <td>${escapeHtml(record.salary || '-')}</td>
+          <td>${escapeHtml(record.jobType || '-')}</td>
+          <td>${escapeHtml(record.hospitalName || '-')}</td>
           <td>${escapeHtml(record.city || '')}</td>
           <td>${escapeHtml(record.state || '')}</td>
           <td>${escapeHtml(record.streetAddress || '')}</td>
           <td>${escapeHtml(record.zipCode || '')}</td>
+          <td>${escapeHtml(record.phone || '')}</td>
+          <td>${record.website ? `<a href="${escapeHtml(record.website)}" target="_blank">${escapeHtml(record.website)}</a>` : ''}</td>
           <td><a href="${record.link}" target="_blank">View Job</a></td>
           <td>
               <button class="view-description-btn" data-description="${escapeHtml(record.description || '')}">View Description</button>
@@ -331,9 +334,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const records = result.records;
         if (records[recordIndex]) {
           if (addressData.streetAddress) records[recordIndex].streetAddress = addressData.streetAddress;
-          if (addressData.zipCode) records[recordIndex].zipCode = addressData.zipCode;
-          if (addressData.city && !records[recordIndex].city) records[recordIndex].city = addressData.city;
+          if (addressData.zipCode)       records[recordIndex].zipCode       = addressData.zipCode;
+          if (addressData.city && !records[recordIndex].city)   records[recordIndex].city  = addressData.city;
           if (addressData.state && !records[recordIndex].state) records[recordIndex].state = addressData.state;
+          if (addressData.phone)         records[recordIndex].phone         = addressData.phone;
+          if (addressData.website)       records[recordIndex].website       = addressData.website;
         }
         chrome.storage.local.set({ records: records }, resolve);
       });
@@ -354,7 +359,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const timeout = setTimeout(() => {
         console.warn('Fetch Details timeout for:', url);
         resolve([]);
-      }, 25000);
+      }, 40000); // 40s — generous for slow connections
 
       // Add ?nl=1 so Jobvite serves the standalone page (not inside parent iframe)
       let finalUrl = url;
@@ -374,30 +379,51 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const tabId = tab.id;
+        let alreadyResolved = false;
+
+        function injectAndResolve() {
+          if (alreadyResolved) return;
+          // Wait 3s for Angular/Jobvite page JS to finish rendering
+          setTimeout(() => {
+            chrome.scripting.executeScript({
+              target: { tabId: tabId },
+              files: ['detail-extractor.js']
+            }).then((results) => {
+              if (alreadyResolved) return;
+              alreadyResolved = true;
+              clearTimeout(timeout);
+              chrome.tabs.remove(tabId).catch(() => {});
+              const detailsList = results?.[0]?.result || [];
+              resolve(Array.isArray(detailsList) ? detailsList : [detailsList]);
+            }).catch((err) => {
+              if (alreadyResolved) return;
+              alreadyResolved = true;
+              console.warn('Error injecting detail-extractor:', err);
+              clearTimeout(timeout);
+              chrome.tabs.remove(tabId).catch(() => {});
+              resolve([]);
+            });
+          }, 3000);
+        }
+
         const listener = (updatedTabId, info) => {
           if (updatedTabId === tabId && info.status === 'complete') {
             chrome.tabs.onUpdated.removeListener(listener);
-            // Wait 3s for Angular/Jobvite page JS to finish rendering
-            setTimeout(() => {
-              chrome.scripting.executeScript({
-                target: { tabId: tabId },
-                files: ['detail-extractor.js']
-              }).then((results) => {
-                clearTimeout(timeout);
-                chrome.tabs.remove(tabId).catch(() => {});
-                const detailsList = results?.[0]?.result || [];
-                resolve(Array.isArray(detailsList) ? detailsList : [detailsList]);
-              }).catch((err) => {
-                console.warn('Error injecting detail-extractor:', err);
-                clearTimeout(timeout);
-                chrome.tabs.remove(tabId).catch(() => {});
-                resolve([]);
-              });
-            }, 3000);
+            injectAndResolve();
           }
         };
 
         chrome.tabs.onUpdated.addListener(listener);
+
+        // Race-condition fix: tab may have already reached 'complete' before
+        // the listener was registered (happens with cached/fast-loading pages).
+        chrome.tabs.get(tabId, (t) => {
+          if (chrome.runtime.lastError) return; // tab gone already
+          if (t && t.status === 'complete') {
+            chrome.tabs.onUpdated.removeListener(listener);
+            injectAndResolve();
+          }
+        });
       });
     });
   }
@@ -428,14 +454,14 @@ document.addEventListener('DOMContentLoaded', () => {
           record.position = getPositionFromTitle(listingTitle, detailAOP, firstDetail.description || record.description || '');
         }
 
-        // Update job title to match the resolved position name
-        if (record.position) {
-          record.title = record.position;
-        }
-
         // Salary
         if (firstDetail.salary) {
           record.salary = firstDetail.salary;
+        }
+
+        // Job Type
+        if (firstDetail.jobType) {
+          record.jobType = firstDetail.jobType;
         }
 
         // Hospital name — update if detail gives a more specific name
@@ -460,6 +486,9 @@ document.addEventListener('DOMContentLoaded', () => {
         if (firstDetail.description && (!record.description || record.description.trim() === '')) {
           record.description = firstDetail.description;
         }
+
+        // Mark as fetched so resume logic skips this record next time
+        record.detailsFetched = true;
 
         chrome.storage.local.set({ records }, resolve);
       });
@@ -671,10 +700,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const record = allRecords[recordIndex];
     console.log(`[${currentDetailsIndex + 1}/${detailsQueue.length}] Fetching details for: ${record.title}`);
 
-    const detailsList = await fetchDetailFromTab(record.link);
+    let detailsList = await fetchDetailFromTab(record.link);
+
+    // Auto-retry once if the first attempt returned nothing (timeout / race condition)
+    if (detailsList.length === 0) {
+      console.warn(`Retrying (once) for: ${record.title}`);
+      await new Promise(r => setTimeout(r, 4000));
+      detailsList = await fetchDetailFromTab(record.link);
+    }
 
     if (detailsList.length > 0) {
       await saveDetailResults(detailsList, recordIndex);
+    } else {
+      console.warn(`Skipped (no data after retry): ${record.title}`);
     }
 
     currentDetailsIndex++;
@@ -693,10 +731,10 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    // Queue records that don't have areaOfPractice or salary yet
+    // Queue only records that haven't been fetched yet (resume support)
     detailsQueue = allRecords
       .map((record, index) => ({ record, recordIndex: index }))
-      .filter(({ record }) => !record.areaOfPractice || !record.salary);
+      .filter(({ record }) => !record.detailsFetched);
 
     if (detailsQueue.length === 0) {
       if (!confirm('All records already have details. Re-fetch all?')) return;
@@ -824,7 +862,7 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const headers = ['Title', 'Job ID', 'Hospital Name', 'Area of Practice', 'Position', 'Salary', 'City', 'State', 'Street Address', 'Zip Code', 'Link', 'Description'];
+    const headers = ['Title', 'Job ID', 'Area of Practice', 'Position', 'Salary', 'Job Type', 'Hospital Name', 'City', 'State', 'Street Address', 'Zip Code', 'Phone', 'Website', 'Link', 'Description'];
     let csvContent = headers.join(',') + '\n';
 
     allRecords.forEach(record => {
@@ -839,14 +877,17 @@ document.addEventListener('DOMContentLoaded', () => {
       const row = [
         escapeCsvCell(record.title || ''),
         escapeCsvCell(record.jobId || 'N/A'),
-        escapeCsvCell(record.hospitalName || ''),
         escapeCsvCell(record.areaOfPractice || ''),
         escapeCsvCell(record.position || ''),
         escapeCsvCell(record.salary || ''),
+        escapeCsvCell(record.jobType || ''),
+        escapeCsvCell(record.hospitalName || ''),
         escapeCsvCell(record.city || ''),
         escapeCsvCell(record.state || ''),
         escapeCsvCell(record.streetAddress || ''),
         escapeCsvCell(record.zipCode || ''),
+        escapeCsvCell(record.phone || ''),
+        escapeCsvCell(record.website || ''),
         escapeCsvCell(record.link || ''),
         escapeCsvCell((record.description || '').replace(/[\r\n]+/g, ' '))
       ].join(',');

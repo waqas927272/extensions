@@ -114,10 +114,21 @@
 
             if (jsonLd.baseSalary?.value) {
                 const s = jsonLd.baseSalary.value;
-                const minVal = s.minValue ? String(s.minValue).trim() : '';
-                const maxVal = s.maxValue ? String(s.maxValue).trim() : '';
-                if (minVal && maxVal) {
-                    jsonLdText += `Salary Range: ${jsonLd.baseSalary.currency || '$'}${minVal} - ${maxVal} ${s.unitText || ''}\n`;
+                // Always use $ so the text-pattern matcher can find it
+                if (typeof s === 'number' && s > 0) {
+                    const unit = /hour/i.test(jsonLd.baseSalary.unitText || '') ? 'HOUR' : 'YEAR';
+                    jsonLdText += `Salary Range: $${s} ${unit}\n`;
+                } else {
+                    const minVal = s.minValue ? String(s.minValue).trim() : '';
+                    const maxVal = s.maxValue ? String(s.maxValue).trim() : '';
+                    const unit   = s.unitText || '';
+                    if (minVal && maxVal) {
+                        jsonLdText += `Salary Range: $${minVal} - $${maxVal} ${unit}\n`;
+                    } else if (minVal) {
+                        jsonLdText += `Salary Range: $${minVal} ${unit}\n`;
+                    } else if (maxVal) {
+                        jsonLdText += `Salary Range: $${maxVal} ${unit}\n`;
+                    }
                 }
             }
 
@@ -351,17 +362,8 @@
         // ── Non-clinical role guard ──
         // Admin/support titles must NOT inherit a specialist position from their department category.
         // e.g. "Client Service Representative" in the Ophthalmology dept should NOT become "Ophthalmologist".
-        const isNonClinical =
-            t.includes('client service') || t.includes('service representative') ||
-            t.includes('receptionist') || t.includes('kennel') ||
-            t.includes('groomer') || t.includes('grooming') ||
-            t.includes('practice manager') || t.includes('hospital manager') ||
-            t.includes('office manager') || t.includes('administrator') ||
-            t.includes('billing') || t.includes('human resources') ||
-            t.includes('patient care coordinator') || t.includes('client care coordinator') ||
-            t.includes('customer service') || t.includes('front desk') ||
-            t.includes('inventory') || t.includes('housekeeper') || t.includes('janitorial');
-        if (isNonClinical) return '';
+        // Return sentinel '_NON_CLINICAL_' so determinePosition can skip ALL further fallbacks.
+        if (isNonClinicalTitle(t)) return '_NON_CLINICAL_';
 
         // ── Fallback: try category string mapping ──
         // Only reached by clinical roles (DVM/tech) whose title didn't contain a specialty keyword.
@@ -369,6 +371,19 @@
         if (fromCat) return fromCat;
 
         return '';
+    }
+
+    // ===== Helper: detect admin/support titles that should never get a clinical position =====
+    function isNonClinicalTitle(tLower) {
+        return tLower.includes('client service') || tLower.includes('service representative') ||
+            tLower.includes('receptionist') || tLower.includes('kennel') ||
+            tLower.includes('groomer') || tLower.includes('grooming') ||
+            tLower.includes('practice manager') || tLower.includes('hospital manager') ||
+            tLower.includes('office manager') || tLower.includes('administrator') ||
+            tLower.includes('billing') || tLower.includes('human resources') ||
+            tLower.includes('patient care coordinator') || tLower.includes('client care coordinator') ||
+            tLower.includes('customer service') || tLower.includes('front desk') ||
+            tLower.includes('inventory') || tLower.includes('housekeeper') || tLower.includes('janitorial');
     }
 
     // ===== POSITION: Scan qualifications for DACV* credentials =====
@@ -440,6 +455,10 @@
     function determineAreaOfPractice(title, category, descriptionText) {
         const t = title.toLowerCase();
         const c = category.toLowerCase().trim();
+
+        // ── TITLE OVERRIDE: explicit "urgent care" in the job title always wins,
+        //    even if the Jobvite category is "Emergency and Critical Care". ──
+        if (t.includes('urgent care')) return 'Urgent Care';
 
         // ── STEP 1: Category from Jobvite page (most reliable) ──
         // Emergency / Critical Care (but NOT if specifically a specialist)
@@ -551,8 +570,14 @@
 
     // ===== Determine Position (combines all sources) =====
     function determinePosition(title, category, areaOfPractice, descriptionText) {
+        // Step 0: Non-clinical guard — admin/support roles get no position at all.
+        // Must run before any category fallback so a CSR in Ophthalmology dept
+        // doesn't inherit "Ophthalmologist" from the category.
+        if (isNonClinicalTitle(title.toLowerCase())) return '';
+
         // Step 1: Match from title (+ category as fallback)
         let position = matchPositionFromTitle(title, category);
+        if (position === '_NON_CLINICAL_') return ''; // sentinel safety net
 
         // Step 2: If specialty AOP and no title match, scan qualifications
         if (!position && areaOfPractice === 'Specialty Care') {
@@ -617,63 +642,119 @@
     }
 
     // ===== Extract salary =====
-    // Only saves salary when it is clearly labeled on the page.
-    // Bare dollar amounts (bonuses, CE allowances, etc.) are intentionally excluded.
     function extractSalary(jsonLd, descriptionText) {
+        const fmt = (n) => Number.isInteger(n)
+            ? '$' + n.toLocaleString('en-US')
+            : '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+        // Helper: parse a raw dollar string like "$150,000", "150k", "150000" → number
+        function parseDollar(raw) {
+            let s = raw.replace(/[$,\s]/g, '');
+            const kMatch = s.match(/^([\d.]+)[kK]$/);
+            if (kMatch) return parseFloat(kMatch[1]) * 1000;
+            return parseFloat(s) || 0;
+        }
+
         // ── Source 1: JSON-LD baseSalary (most reliable) ──
         if (jsonLd?.baseSalary?.value) {
             const s = jsonLd.baseSalary.value;
-            const minVal = s.minValue ? String(s.minValue).trim() : '';
-            const maxVal = s.maxValue ? String(s.maxValue).trim() : '';
-            // Only use if at least one value is a real number (not empty string "")
-            const minNum = parseFloat(minVal.replace(/,/g, ''));
-            const maxNum = parseFloat(maxVal.replace(/,/g, ''));
-            if (minVal && maxVal && !isNaN(minNum) && !isNaN(maxNum) && (minNum > 0 || maxNum > 0)) {
-                const isHourly = /hour/i.test(s.unitText || '');
-                const fmt = (n) => Number.isInteger(n) ? '$' + n.toLocaleString('en-US') :
-                    '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                return `${fmt(minNum)}–${fmt(maxNum)} ${isHourly ? 'per hour' : 'per year'}`;
-            } else if (minVal && !isNaN(minNum) && minNum > 0) {
-                const isHourly = /hour/i.test(s.unitText || '');
-                const fmt = (n) => Number.isInteger(n) ? '$' + n.toLocaleString('en-US') :
-                    '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                return `${fmt(minNum)}+ ${isHourly ? 'per hour' : 'per year'}`;
+            const isHourly = /hour/i.test(s.unitText || jsonLd.baseSalary.unitText || '');
+            const unit = isHourly ? 'per hour' : 'per year';
+
+            if (typeof s === 'number' && s > 0) {
+                return `${fmt(s)} ${unit}`;
             }
+            const minNum = parseFloat(String(s.minValue || '').replace(/,/g, '')) || 0;
+            const maxNum = parseFloat(String(s.maxValue || '').replace(/,/g, '')) || 0;
+            if (minNum > 0 && maxNum > 0) return `${fmt(minNum)}–${fmt(maxNum)} ${unit}`;
+            if (minNum > 0) return `${fmt(minNum)}+ ${unit}`;
+            if (maxNum > 0) return `Up to ${fmt(maxNum)} ${unit}`;
         }
 
-        // ── Source 2: Description text — LABELED patterns only ──
-        // These patterns only match when the dollar amount is explicitly preceded by
-        // "salary", "compensation", "pay", or "base salary" — never bare $X–$Y ranges
-        // which could be bonuses, allowances, or other non-salary figures.
         if (!descriptionText) return '';
 
-        const labeledPatterns = [
-            // "Base salary: $X–$Y" / "Base salary range of $X to $Y"
-            /base\s+salary\s*(?:range)?\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{1,2})?\s*[kK]?\s*[-–—]\s*\$?[\d,]+(?:\.\d{1,2})?\s*[kK]?(?:\s*(?:per\s+)?(?:year|yr|annually|annum|hour|hr))?/i,
-            /base\s+salary\s*(?:range)?\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{1,2})?\s*[kK]?\s+to\s+\$?[\d,]+(?:\.\d{1,2})?\s*[kK]?(?:\s*(?:per\s+)?(?:year|yr|annually|annum|hour|hr))?/i,
-            // "Salary range: $X–$Y" / "Pay range: $X to $Y" / "Compensation range: $X–$Y"
-            /(?:salary|pay|compensation)\s+range\s*(?:of|from|is|:)?\s*\$[\d,]+(?:\.\d{1,2})?\s*[kK]?\s*[-–—]\s*\$?[\d,]+(?:\.\d{1,2})?\s*[kK]?(?:\s*(?:per\s+)?(?:year|yr|annually|annum|hour|hr))?/i,
-            /(?:salary|pay|compensation)\s+range\s*(?:of|from|is|:)?\s*\$[\d,]+(?:\.\d{1,2})?\s*[kK]?\s+to\s+\$?[\d,]+(?:\.\d{1,2})?\s*[kK]?(?:\s*(?:per\s+)?(?:year|yr|annually|annum|hour|hr))?/i,
-            // "Salary: $X–$Y" / "Compensation: $X–$Y" / "Pay: $X–$Y"  (after the colon)
-            /(?:salary|compensation|pay)\s*:\s*\$[\d,]+(?:\.\d{1,2})?\s*[kK]?\s*[-–—]\s*\$?[\d,]+(?:\.\d{1,2})?\s*[kK]?(?:\s*(?:per\s+)?(?:year|yr|annually|annum|hour|hr))?/i,
-            /(?:salary|compensation|pay)\s*:\s*\$[\d,]+(?:\.\d{1,2})?\s*[kK]?\s+to\s+\$?[\d,]+(?:\.\d{1,2})?\s*[kK]?(?:\s*(?:per\s+)?(?:year|yr|annually|annum|hour|hr))?/i,
-            // "Starting salary of $X" / "Starting pay of $X per hour"
-            /starting\s+(?:salary|pay|compensation)\s*(?:of|at|is)?\s*\$[\d,]+(?:\.\d{1,2})?\s*[kK]?(?:\s*(?:per\s+)?(?:year|yr|annually|annum|hour|hr))?/i,
-            // "$X per hour" / "$X/hour" — only when the amount looks like a wage (5–999)
+        // ── Source 2: Text patterns — ordered from most specific to broadest ──
+        // RANGE: allows optional /hour|/hr between the two amounts (handles "$24/hour to $29/hour")
+        const RANGE  = `\\$[\\d,]+(?:\\.\\d{1,2})?\\s*[kK]?\\s*(?:\\/(?:hour|hr))?\\s*(?:-|–|—|to)\\s*\\$?[\\d,]+(?:\\.\\d{1,2})?\\s*[kK]?`;
+        const SINGLE = `\\$[\\d,]+(?:\\.\\d{1,2})?\\s*[kK]?`;
+        const UNIT   = `(?:\\s*(?:per\\s+)?(?:year|yr|annually|annum|hour|hr|\\/hr|\\/year))?`;
+
+        const patterns = [
+            // — Labeled range patterns —
+            // "Base salary range for this position is $X–$Y"
+            new RegExp(`base\\s+salary[^$]{0,60}${RANGE}${UNIT}`, 'i'),
+            // "The posted range for this position is $33-$44hr" (most common MedVet format)
+            new RegExp(`posted\\s+range[^$]{0,40}${RANGE}${UNIT}`, 'i'),
+            // "Hiring Range: $24/hour to $29/hour" / "hiring range of $18.75-38.00/hr"
+            new RegExp(`hiring\\s+range[^$]{0,30}${RANGE}${UNIT}`, 'i'),
+            // "Salary [range] / Pay range / Compensation range ... $X - $Y"
+            new RegExp(`(?:salary|pay|compensation|income)\\s*(?:range|guarantee)?[^$]{0,40}${RANGE}${UNIT}`, 'i'),
+            // "Total [target] compensation ... $X - $Y"
+            new RegExp(`total\\s+(?:target\\s+)?compensation[^$]{0,40}${RANGE}${UNIT}`, 'i'),
+            // "Expected [annual] salary [range] $X - $Y"
+            new RegExp(`expected\\s+(?:annual\\s+)?(?:salary|compensation|pay)[^$]{0,40}${RANGE}${UNIT}`, 'i'),
+            // "Starting salary/pay $X - $Y"
+            new RegExp(`starting\\s+(?:salary|pay|compensation)[^$]{0,20}${RANGE}${UNIT}`, 'i'),
+            // "Earn[ing[s]] $X - $Y"
+            new RegExp(`earn(?:ing[s]?)?\\s*(?:up\\s+to\\s+)?${RANGE}${UNIT}`, 'i'),
+            // "$X - $Y per year/annually/per hour" (bare range with explicit trailing unit)
+            new RegExp(`${RANGE}\\s*(?:per\\s+year|annually|per\\s+annum|\\/year|per\\s+hour|\\/hour|\\/hr|per\\s+hr)`, 'i'),
+
+            // — Labeled single-value patterns —
+            // "$100,000 base salary [year one]" — label comes AFTER the dollar sign
+            new RegExp(`${SINGLE}\\s+(?:base\\s+)?salary\\b`, 'i'),
+            // "Salary: $X" / "Compensation: $X" / "Pay: $X"
+            new RegExp(`(?:salary|compensation|pay|income|hiring)\\s*(?:range|guarantee)?[^$]{0,20}${SINGLE}${UNIT}`, 'i'),
+            // "Total compensation of/up to $X"
+            new RegExp(`total\\s+(?:target\\s+)?compensation[^$]{0,20}${SINGLE}${UNIT}`, 'i'),
+            // "Earn[ing] up to $X per year/hour"
+            new RegExp(`earn(?:ing[s]?)?\\s+(?:up\\s+to\\s+)?${SINGLE}\\s*(?:per\\s+year|annually|\\/year|per\\s+hour|\\/hour|\\/hr)`, 'i'),
+            // "$X per hour" (hourly wage, explicit unit)
             /\$(\d{1,3}(?:\.\d{1,2})?)\s*(?:per\s+hour|\/hour|\/hr|\s+per\s+hr)/i,
-            // "$X annually" / "$X per year" — only when amount is plausible salary (>$10k)
-            /\$([\d,]{5,}(?:\.\d{1,2})?)\s*(?:annually|per\s+year|per\s+annum|\/year)/i,
+            // "$X,000+ annually" / "$X annually"
+            /\$([\d,]{5,}(?:\.\d{1,2})?)\s*\+?\s*(?:annually|per\s+year|per\s+annum|\/year)/i,
         ];
 
-        for (const p of labeledPatterns) {
+        for (const p of patterns) {
             const m = descriptionText.match(p);
-            if (m) {
-                const raw = m[0].trim();
-                // Extra sanity check: the matched text must contain a dollar amount > $0
-                if (/\$[\d,]+/.test(raw)) {
-                    return formatSalary(raw);
-                }
+            if (!m) continue;
+            const raw = m[0].trim();
+            if (!/\$[\d,]/.test(raw)) continue;
+
+            // Extract all dollar amounts from the matched text
+            const amounts = [];
+            const re = /\$([\d,]+(?:\.\d{1,2})?)\s*([kK])?/g;
+            let am;
+            while ((am = re.exec(raw)) !== null) {
+                let n = parseFloat(am[1].replace(/,/g, ''));
+                if (am[2]) n *= 1000;
+                if (n > 0) amounts.push(n);
             }
+            // Also handle bare number after "to/-/–" (e.g. "$150,000 to 200,000")
+            const toMatch = raw.match(/(?:to|-|–|—)\s*([\d,]+(?:\.\d{1,2})?)\s*([kK])?/i);
+            if (toMatch && amounts.length === 1) {
+                let n = parseFloat(toMatch[1].replace(/,/g, ''));
+                if (toMatch[2]) n *= 1000;
+                if (n > 0) amounts.push(n);
+            }
+
+            if (amounts.length === 0) continue;
+
+            const minAmt = Math.min(...amounts);
+            const maxAmt = Math.max(...amounts);
+
+            // Hourly detection: explicit unit text OR amount clearly in hourly wage range (< $500)
+            // Nobody earns $500/year, so sub-$500 amounts with a salary keyword = hourly wages.
+            const hasHourlyText = /per\s+hour|\/hour|\/hr|\dhr\b/i.test(raw);
+            const isHourlyMatch = hasHourlyText || (maxAmt > 0 && maxAmt < 500);
+
+            // Plausibility guard: skip tiny amounts that are bonuses/allowances, not wages
+            if (isHourlyMatch && maxAmt < 7) continue;
+            if (!isHourlyMatch && maxAmt < 20000) continue;
+
+            const unit = isHourlyMatch ? 'per hour' : 'per year';
+            if (amounts.length >= 2) return `${fmt(minAmt)}–${fmt(maxAmt)} ${unit}`;
+            return `${fmt(amounts[0])} ${unit}`;
         }
 
         return '';
@@ -730,12 +811,26 @@
     const salary = extractSalary(jsonLd, fullDescription);
     const locations = extractLocations(jsonLd, domData);
 
+    // ===== Extract job type =====
+    // Rules: Part Time only if part-time is mentioned AND full-time is NOT mentioned.
+    // Full Time if full-time is mentioned, both are mentioned, or neither is mentioned.
+    function extractJobType(text) {
+        const t = (text || '').toLowerCase();
+        const hasPart = /part[\s\-]?time/.test(t);
+        const hasFull = /full[\s\-]?time/.test(t);
+        if (hasPart && !hasFull) return 'Part Time';
+        return 'Full Time';  // full-time only, both, or neither
+    }
+
+    const jobType = extractJobType(fullDescription);
+
     // Build result — one entry per location (usually one for MedVet)
     if (locations.length > 0) {
         return locations.map(loc => ({
             areaOfPractice,
             position,
             salary,
+            jobType,
             hospitalName: buildHospitalName(loc.city),
             description: fullDescription,
             city: loc.city || '',
@@ -748,6 +843,7 @@
         areaOfPractice,
         position,
         salary,
+        jobType,
         hospitalName: buildHospitalName(domData.city || ''),
         description: fullDescription,
         city: domData.city || '',

@@ -145,14 +145,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 record.position = firstDetail.position;
               }
 
-              // Update job title to match the resolved position name
-              if (record.position) {
-                record.title = record.position;
-              }
-
               // Salary
               if (firstDetail.salary) {
                 record.salary = firstDetail.salary;
+              }
+
+              // Job Type
+              if (firstDetail.jobType) {
+                record.jobType = firstDetail.jobType;
               }
 
               // City / State — fill in if missing from listing
