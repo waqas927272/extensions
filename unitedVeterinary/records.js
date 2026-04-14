@@ -741,78 +741,6 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // ============ COUNTY LOOKUP via Nominatim (OpenStreetMap) ============
-    // Uses the full street address + city + state + zip to get the county name.
-    // Nominatim rate limit: 1 req/sec — we throttle via the 1s delay in processNextAddress.
-    async function fetchCountyFromNominatim(streetAddress, city, state, zipCode) {
-        try {
-            // Build a search query from the address components we already have
-            const queryParts = [streetAddress, city, state, zipCode].filter(Boolean);
-            if (queryParts.length < 2) return ''; // Need at least city + state
-
-            const query = queryParts.join(', ');
-            const url = `https://nominatim.openstreetmap.org/search?` +
-                `q=${encodeURIComponent(query)}&format=json&addressdetails=1&limit=1&countrycodes=us`;
-
-            console.log(`🏛️ County lookup: "${query}"`);
-
-            const response = await fetch(url, {
-                headers: {
-                    'User-Agent': 'UnitedVeterinaryCareJobScraper/1.7'
-                }
-            });
-
-            if (!response.ok) {
-                console.warn(`County lookup HTTP error: ${response.status}`);
-                return '';
-            }
-
-            const results = await response.json();
-            if (results && results.length > 0 && results[0].address) {
-                const county = results[0].address.county || '';
-                // Clean up: remove " County" suffix if present for cleaner display,
-                // or keep it — let's keep the full name for clarity
-                if (county) {
-                    console.log(`  → County: "${county}"`);
-                    return county;
-                }
-            }
-
-            // Fallback: try with just city + state + zip (less specific but more reliable)
-            if (streetAddress) {
-                const fallbackQuery = [city, state, zipCode].filter(Boolean).join(', ');
-                const fallbackUrl = `https://nominatim.openstreetmap.org/search?` +
-                    `q=${encodeURIComponent(fallbackQuery)}&format=json&addressdetails=1&limit=1&countrycodes=us`;
-
-                // Wait 1 second to respect rate limit
-                await new Promise(r => setTimeout(r, 1000));
-
-                const fallbackResponse = await fetch(fallbackUrl, {
-                    headers: {
-                        'User-Agent': 'UnitedVeterinaryCareJobScraper/1.7'
-                    }
-                });
-
-                if (fallbackResponse.ok) {
-                    const fallbackResults = await fallbackResponse.json();
-                    if (fallbackResults && fallbackResults.length > 0 && fallbackResults[0].address) {
-                        const county = fallbackResults[0].address.county || '';
-                        if (county) {
-                            console.log(`  → County (fallback): "${county}"`);
-                            return county;
-                        }
-                    }
-                }
-            }
-
-            console.warn(`  → No county found for: "${query}"`);
-            return '';
-        } catch (error) {
-            console.error('County lookup error:', error);
-            return '';
-        }
-    }
-
     if (!tableBody) {
         console.error('Could not find table body!');
         return;
@@ -881,14 +809,13 @@ document.addEventListener('DOMContentLoaded', () => {
             row.insertCell(5).textContent = job.streetAddress || '-';
             row.insertCell(6).textContent = job.city;
             row.insertCell(7).textContent = job.state;
-            row.insertCell(8).textContent = job.county || '-';
-            row.insertCell(9).textContent = job.zipCode || '-';
+            row.insertCell(8).textContent = job.zipCode || '-';
 
             // Phone column
-            row.insertCell(10).textContent = job.phone || '-';
+            row.insertCell(9).textContent = job.phone || '-';
 
             // Website column — show as clickable link if available
-            const websiteCell = row.insertCell(11);
+            const websiteCell = row.insertCell(10);
             if (job.website) {
                 const websiteLink = document.createElement('a');
                 websiteLink.href = job.website;
@@ -900,22 +827,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 websiteCell.textContent = '-';
             }
 
-            row.insertCell(12).textContent = job.location;
+            row.insertCell(11).textContent = job.location;
 
             // Detail Columns
-            row.insertCell(13).textContent = job.areaOfPractice || '-';
-            row.insertCell(14).textContent = job.position || '-';
-            row.insertCell(15).textContent = job.salary || '-';
-            row.insertCell(16).textContent = job.jobType || '-';
+            row.insertCell(12).textContent = job.areaOfPractice || '-';
+            row.insertCell(13).textContent = job.position || '-';
+            row.insertCell(14).textContent = job.salary || '-';
+            row.insertCell(15).textContent = job.jobType || '-';
 
-            const linkCell = row.insertCell(17);
+            const linkCell = row.insertCell(16);
             const link = document.createElement('a');
             link.href = job.link;
             link.textContent = 'View Job';
             link.target = '_blank';
             linkCell.appendChild(link);
 
-            const descCell = row.insertCell(18);
+            const descCell = row.insertCell(17);
             if (job.description) {
                 const descDiv = document.createElement('div');
                 descDiv.className = 'description-cell';
@@ -942,7 +869,6 @@ document.addEventListener('DOMContentLoaded', () => {
             (job.location || '').toLowerCase().includes(term) ||
             (job.streetAddress || '').toLowerCase().includes(term) ||
             (job.zipCode || '').toLowerCase().includes(term) ||
-            (job.county || '').toLowerCase().includes(term) ||
             (job.phone || '').toLowerCase().includes(term) ||
             (job.website || '').toLowerCase().includes(term) ||
             (job.areaOfPractice || '').toLowerCase().includes(term) ||
@@ -974,7 +900,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Aggregator', 'Street Address', 'City', 'State', 'County', 'Zip Code', 'Phone', 'Website', 'Location', 'Area of Practice', 'Position', 'Salary', 'Job Type', 'Link', 'Description'];
+        const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Aggregator', 'Street Address', 'City', 'State', 'Zip Code', 'Phone', 'Website', 'Location', 'Area of Practice', 'Position', 'Salary', 'Job Type', 'Link', 'Description'];
         const csvContent = [
             headers.join(','),
             ...allJobs.map((job, index) => [
@@ -986,7 +912,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 `"${(job.streetAddress || '').replace(/"/g, '""')}"`,
                 `"${(job.city || '').replace(/"/g, '""')}"`,
                 `"${(job.state || '').replace(/"/g, '""')}"`,
-                `"${(job.county || '').replace(/"/g, '""')}"`,
                 `"${(job.zipCode || '').replace(/"/g, '""')}"`,
                 `"${(job.phone || '').replace(/"/g, '""')}"`,
                 `"${(job.website || '').replace(/"/g, '""')}"`,
@@ -1116,12 +1041,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 let clearedCount = 0;
 
                 jobs.forEach(job => {
-                    if (job.city || job.state || job.streetAddress || job.zipCode || job.county || job.website || job.phone) {
+                    if (job.city || job.state || job.streetAddress || job.zipCode || job.website || job.phone) {
                         job.city = '';
                         job.state = '';
                         job.streetAddress = '';
                         job.zipCode = '';
-                        job.county = '';
                         job.website = '';
                         job.phone = '';
                         clearedCount++;
@@ -1186,7 +1110,6 @@ document.addEventListener('DOMContentLoaded', () => {
             city: job.city,
             state: job.state,
             zip_code: job.zipCode || '',
-            county: job.county || '',
             phone: job.phone || '',
             website: job.website || '',
             location: job.location,
@@ -1652,14 +1575,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Handle multi-location jobs
                 if (detailsList.length > 1) {
+                    const currentHospital = originalJob.hospital || '';
+
+                    // Check if hospital name already has a city suffix (e.g. "The Oncology Service-Leesburg")
+                    // Only swap city suffixes if the pattern exists — don't add suffixes to names that don't have one
+                    const baseHospitalMatch = currentHospital.match(/^(.+?)\s*[-–]\s*([^-–]+)$/);
+                    const hasCitySuffix = !!baseHospitalMatch;
+                    const baseHospitalName = hasCitySuffix ? baseHospitalMatch[1].trim() : '';
+
+                    // Update parent job's hospital name with first location's city (only if it already had a suffix)
+                    if (hasCitySuffix) {
+                        const firstLocCity = detailsList[0].city || '';
+                        if (firstLocCity) {
+                            originalJob.hospital = `${baseHospitalName}-${firstLocCity}`;
+                        }
+                    }
+
                     originalJob.isNewLocation = true;
                     const newJobs = [];
                     for (let i = 1; i < detailsList.length; i++) {
                         const loc = detailsList[i];
                         const baseJobId = originalJob.jobId.split('-')[0];
+                        // Only build city-specific hospital name if the original had a city suffix
+                        let childHospital = currentHospital;
+                        if (hasCitySuffix) {
+                            const childCity = loc.city || '';
+                            if (childCity) {
+                                childHospital = `${baseHospitalName}-${childCity}`;
+                            }
+                        }
                         const newJob = {
                             ...originalJob,
                             jobId: `${baseJobId}-${i + 1}`,
+                            hospital: childHospital,
                             city: '',
                             state: '',
                             location: loc.location || `${loc.city}, ${loc.state}`,
@@ -1826,18 +1774,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     jobs[index].phone = addressData.phone;
                 }
 
-                // County lookup via Nominatim using the address we just got
-                const countyStreet = jobs[index].streetAddress || '';
-                const countyCity = jobs[index].city || '';
-                const countyState = jobs[index].state || '';
-                const countyZip = jobs[index].zipCode || '';
-                if (countyCity || countyZip) {
-                    const county = await fetchCountyFromNominatim(countyStreet, countyCity, countyState, countyZip);
-                    if (county) {
-                        jobs[index].county = county;
-                    }
-                }
-
                 await chrome.storage.local.set({ scrapedJobs: jobs });
 
                 // Update display
@@ -1851,7 +1787,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Move to next address
         currentAddressIndex++;
 
-        // Continue processing — delay for Google Maps tab + Nominatim rate limit
+        // Continue processing — delay for Google Maps tab loading
         setTimeout(() => processNextAddress(), 1500);
     }
 
