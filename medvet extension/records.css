@@ -341,6 +341,70 @@ th {
   color: #143c71;
 }
 
+/* ── Selection bar ── */
+.selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: #eaf4ff;
+  border-left: 4px solid #3182ce;
+  border-radius: 6px;
+  margin: 0 16px 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #2c5282;
+}
+.selection-bar.hidden { display: none; }
+
+.sel-btn {
+  padding: 4px 12px;
+  border: none;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.sel-btn-blue  { background: #3182ce; color: #fff; }
+.sel-btn-blue:hover  { background: #2b6cb0; }
+.sel-btn-green { background: #38a169; color: #fff; }
+.sel-btn-green:hover { background: #276749; }
+.sel-btn-gray  { background: #718096; color: #fff; }
+.sel-btn-gray:hover  { background: #4a5568; }
+
+/* ── Checkbox column ── */
+.col-select {
+  width: 36px;
+  text-align: center;
+  padding: 4px !important;
+}
+.col-select input[type="checkbox"],
+.row-checkbox {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: #3182ce;
+}
+
+/* ── Selected row highlight ── */
+tr.selected-row {
+  background-color: #ebf8ff !important;
+}
+tr.selected-row:hover {
+  background-color: #bee3f8 !important;
+}
+
+/* Multi-location rows — light green background */
+tr.multi-location-row {
+  background-color: #e6f4ea;
+}
+
+tr.multi-location-row:hover {
+  background-color: #d0ecda;
+  transition: background-color 0.2s ease;
+}
+
 tr:hover {
   background-color: #f7fafc;
   transition: background-color 0.2s ease;

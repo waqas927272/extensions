@@ -161,7 +161,7 @@
         return completeData.trim();
     }
 
-    // ===== State full-name → abbreviation =====
+    // ===== State maps =====
     const STATE_ABBREV = {
         'alabama':'AL','alaska':'AK','arizona':'AZ','arkansas':'AR','california':'CA',
         'colorado':'CO','connecticut':'CT','delaware':'DE','florida':'FL','georgia':'GA',
@@ -175,11 +175,34 @@
         'virginia':'VA','washington':'WA','west virginia':'WV','wisconsin':'WI','wyoming':'WY',
         'district of columbia':'DC'
     };
+    // Reverse map: abbreviation → full name
+    const STATE_FULL = {
+        'AL':'Alabama','AK':'Alaska','AZ':'Arizona','AR':'Arkansas','CA':'California',
+        'CO':'Colorado','CT':'Connecticut','DE':'Delaware','FL':'Florida','GA':'Georgia',
+        'HI':'Hawaii','ID':'Idaho','IL':'Illinois','IN':'Indiana','IA':'Iowa','KS':'Kansas',
+        'KY':'Kentucky','LA':'Louisiana','ME':'Maine','MD':'Maryland','MA':'Massachusetts',
+        'MI':'Michigan','MN':'Minnesota','MS':'Mississippi','MO':'Missouri','MT':'Montana',
+        'NE':'Nebraska','NV':'Nevada','NH':'New Hampshire','NJ':'New Jersey','NM':'New Mexico',
+        'NY':'New York','NC':'North Carolina','ND':'North Dakota','OH':'Ohio','OK':'Oklahoma',
+        'OR':'Oregon','PA':'Pennsylvania','RI':'Rhode Island','SC':'South Carolina',
+        'SD':'South Dakota','TN':'Tennessee','TX':'Texas','UT':'Utah','VT':'Vermont',
+        'VA':'Virginia','WA':'Washington','WV':'West Virginia','WI':'Wisconsin','WY':'Wyoming',
+        'DC':'District of Columbia'
+    };
+    // normalizeState: full name → abbreviation (used internally for AOP/position logic)
     function normalizeState(s) {
         if (!s) return '';
         const t = s.trim();
         if (t.length === 2) return t.toUpperCase();
         return STATE_ABBREV[t.toLowerCase()] || t;
+    }
+    // expandState: abbreviation → full name (used when saving state to records)
+    function expandState(s) {
+        if (!s) return '';
+        const t = s.trim();
+        if (t.length === 2) return STATE_FULL[t.toUpperCase()] || t;
+        // Already full name — capitalise properly
+        return STATE_FULL[normalizeState(t)] || t;
     }
 
     // ===== Extract qualifications section from description =====
@@ -769,14 +792,14 @@
             for (const loc of jobLocs) {
                 if (loc.address) {
                     const city = loc.address.addressLocality || '';
-                    const state = normalizeState(loc.address.addressRegion || '');
+                    const state = expandState(loc.address.addressRegion || '');
                     if (city && state) locations.push({ city, state, location: `${city}, ${state}` });
                 }
             }
         }
 
         if (locations.length === 0 && domData.city) {
-            const state = normalizeState(domData.state || '');
+            const state = expandState(domData.state || '');
             locations.push({
                 city: domData.city,
                 state,
@@ -847,7 +870,7 @@
         hospitalName: buildHospitalName(domData.city || ''),
         description: fullDescription,
         city: domData.city || '',
-        state: normalizeState(domData.state || ''),
+        state: expandState(domData.state || ''),
         location: ''
     }];
 })();

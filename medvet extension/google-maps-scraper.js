@@ -27,7 +27,17 @@
         while (Date.now() - startTime < MAX_WAIT) {
             // Check if we're on a single place page (address button exists)
             addressData = tryExtractFromPlaceDetail();
-            if (addressData) return addressData;
+            if (addressData) {
+                // Wait up to 3s more for phone if not yet loaded
+                if (!addressData.phone) {
+                    for (let i = 0; i < 6; i++) {
+                        await wait(500);
+                        const phone = tryExtractPhone();
+                        if (phone) { addressData.phone = phone; break; }
+                    }
+                }
+                return addressData;
+            }
 
             // Check if search results list has loaded
             const resultLinks = document.querySelectorAll('a.hfpxzc');
@@ -80,7 +90,18 @@
             await wait(POLL);
 
             addressData = tryExtractFromPlaceDetail();
-            if (addressData) return addressData;
+            if (addressData) {
+                // Address found — but phone/website may load slightly later.
+                // Wait up to 3 more seconds specifically for phone to appear.
+                if (!addressData.phone) {
+                    for (let i = 0; i < 6; i++) {
+                        await wait(500);
+                        const phone = tryExtractPhone();
+                        if (phone) { addressData.phone = phone; break; }
+                    }
+                }
+                return addressData;
+            }
         }
 
         // Last resort: try extracting from whatever is on the page now
@@ -165,24 +186,54 @@
         return '';
     }
 
+    // ===== Extract a clean phone number string from raw text =====
+    // Uses innerText (not textContent) to avoid hidden icon glyphs (charCode 57520 etc.)
+    // Then regex-extracts only valid phone characters.
+    function cleanPhone(raw) {
+        if (!raw) return '';
+        // Strip "Phone: " label prefix
+        let s = raw.replace(/^Phone:\s*/i, '');
+        // Collapse all whitespace (including \n from innerText) to single space
+        s = s.replace(/\s+/g, ' ').trim();
+        // Extract just the phone number — +1 XXX-XXX-XXXX or (XXX) XXX-XXXX etc.
+        const m = s.match(/(\+?1[\s\-.]?)?\(?\d{3}\)?[\s\-\.]\d{3}[\s\-\.]\d{4}/);
+        if (m) return m[0].replace(/\s+/g, ' ').trim();
+        // Fallback: keep only phone-safe chars
+        const stripped = s.replace(/[^\d\+\-\(\) ]/g, '').trim();
+        return stripped.length >= 7 ? stripped : '';
+    }
+
     // ===== Extract phone number from place detail panel =====
     function tryExtractPhone() {
-        // Method 1: button with data-item-id starting with "phone:"
+        // Method 1: button with data-item-id starting with "phone:" (most reliable)
         const phoneBtn = document.querySelector('button[data-item-id^="phone:"]');
         if (phoneBtn) {
-            // data-item-id="phone:tel:+1-555-123-4567" or similar
-            const dataId = phoneBtn.getAttribute('data-item-id') || '';
-            const phoneFromId = dataId.replace(/^phone:tel:/, '').replace(/^phone:/, '').trim();
-            if (phoneFromId) return phoneFromId;
-            // Fallback: aria-label
-            const ariaLabel = phoneBtn.getAttribute('aria-label') || '';
-            const cleaned = ariaLabel.replace(/^Phone:\s*/i, '').trim();
+            // Use innerText — excludes hidden icon glyphs that textContent includes
+            const fromInnerText = cleanPhone(phoneBtn.innerText);
+            if (fromInnerText) return fromInnerText;
+            // Fallback: aria-label "Phone: +1 773-281-7110 "
+            const fromAria = cleanPhone(phoneBtn.getAttribute('aria-label'));
+            if (fromAria) return fromAria;
+            // Last resort: data-item-id "phone:tel:+17732817110"
+            const fromId = cleanPhone(
+                (phoneBtn.getAttribute('data-item-id') || '')
+                    .replace(/^phone:tel:/, '')
+                    .replace(/^phone:/, '')
+            );
+            if (fromId) return fromId;
+        }
+        // Method 2: any element with aria-label starting "Phone:"
+        const ariaPhoneEl = document.querySelector('[aria-label^="Phone:"]');
+        if (ariaPhoneEl) {
+            const cleaned = cleanPhone(ariaPhoneEl.getAttribute('aria-label'));
             if (cleaned) return cleaned;
         }
-        // Method 2: look for tel: links
+        // Method 3: tel: links
         const telLinks = document.querySelectorAll('a[href^="tel:"]');
         for (const link of telLinks) {
-            const phone = link.getAttribute('href').replace('tel:', '').trim();
+            const text = cleanPhone(link.innerText || link.textContent);
+            if (text) return text;
+            const phone = cleanPhone(link.getAttribute('href').replace('tel:', ''));
             if (phone) return phone;
         }
         return '';

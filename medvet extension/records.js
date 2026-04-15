@@ -23,8 +23,17 @@ document.addEventListener('DOMContentLoaded', () => {
   let detailsQueue = [];
   let currentDetailsIndex = 0;
 
+  // ── Selection state ──
+  let selectedIndices = new Set(); // indices into allRecords
+
   const fetchAddressesBtn = document.getElementById('fetchAddressesBtn');
-  const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
+  const fetchDetailsBtn   = document.getElementById('fetchDetailsBtn');
+  const selectionBar              = document.getElementById('selectionBar');
+  const selectedCountSpan         = document.getElementById('selectedCount');
+  const selectAllCheckbox         = document.getElementById('selectAllCheckbox');
+  const clearSelectionBtn         = document.getElementById('clearSelectionBtn');
+  const fetchSelectedDetailsBtn   = document.getElementById('fetchSelectedDetailsBtn');
+  const fetchSelectedAddressesBtn = document.getElementById('fetchSelectedAddressesBtn');
 
   const descriptionModal = document.getElementById('descriptionModal');
   const modalDescriptionContent = document.getElementById('modalDescriptionContent');
@@ -71,6 +80,47 @@ document.addEventListener('DOMContentLoaded', () => {
   function updateRecordCount(count) {
     recordCountSpan.textContent = count;
   }
+
+  // ── Selection helpers ──
+  function updateSelectionUI() {
+    const count = selectedIndices.size;
+    selectedCountSpan.textContent = count;
+    selectionBar.classList.toggle('hidden', count === 0);
+    // Update select-all checkbox state
+    const visibleBoxes = document.querySelectorAll('.row-checkbox');
+    if (visibleBoxes.length === 0) {
+      selectAllCheckbox.indeterminate = false;
+      selectAllCheckbox.checked = false;
+    } else {
+      const checkedCount = Array.from(visibleBoxes).filter(cb => cb.checked).length;
+      selectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < visibleBoxes.length;
+      selectAllCheckbox.checked = checkedCount === visibleBoxes.length;
+    }
+  }
+
+  function clearSelection() {
+    selectedIndices.clear();
+    document.querySelectorAll('.row-checkbox').forEach(cb => {
+      cb.checked = false;
+      cb.closest('tr').classList.remove('selected-row');
+    });
+    updateSelectionUI();
+  }
+
+  // Select-all checkbox
+  selectAllCheckbox.addEventListener('change', () => {
+    const check = selectAllCheckbox.checked;
+    document.querySelectorAll('.row-checkbox').forEach(cb => {
+      const idx = parseInt(cb.dataset.idx, 10);
+      cb.checked = check;
+      cb.closest('tr').classList.toggle('selected-row', check);
+      if (check) selectedIndices.add(idx);
+      else selectedIndices.delete(idx);
+    });
+    updateSelectionUI();
+  });
+
+  clearSelectionBtn.addEventListener('click', clearSelection);
 
   function populateFilters(records) {
     const states = new Set();
@@ -159,8 +209,13 @@ document.addEventListener('DOMContentLoaded', () => {
       emptyState.classList.remove('show');
 
       records.forEach(record => {
+        const realIdx = allRecords.indexOf(record);
+        const isSelected = selectedIndices.has(realIdx);
         const row = document.createElement('tr');
+        if (record.multiLocation) row.classList.add('multi-location-row');
+        if (isSelected) row.classList.add('selected-row');
         row.innerHTML = `
+          <td class="col-select"><input type="checkbox" class="row-checkbox" data-idx="${realIdx}" ${isSelected ? 'checked' : ''}></td>
           <td>${escapeHtml(record.title || '')}</td>
           <td class="job-id-cell">${escapeHtml(record.jobId || 'N/A')}</td>
           <td>${escapeHtml(record.areaOfPractice || '-')}</td>
@@ -181,6 +236,23 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         recordsTableBody.appendChild(row);
       });
+
+      // Checkbox row selection
+      document.querySelectorAll('.row-checkbox').forEach(cb => {
+        cb.addEventListener('change', () => {
+          const idx = parseInt(cb.dataset.idx, 10);
+          if (cb.checked) {
+            selectedIndices.add(idx);
+            cb.closest('tr').classList.add('selected-row');
+          } else {
+            selectedIndices.delete(idx);
+            cb.closest('tr').classList.remove('selected-row');
+          }
+          updateSelectionUI();
+        });
+      });
+
+      updateSelectionUI();
 
       document.querySelectorAll('.view-description-btn').forEach(button => {
         button.addEventListener('click', (event) => {
@@ -324,9 +396,31 @@ document.addEventListener('DOMContentLoaded', () => {
     const location = [record.city, record.state].filter(Boolean).join(', ') || 'USA';
     const hospitalName = record.hospitalName || record.title || '';
 
-    console.log(`[${currentAddressIndex + 1}/${addressQueue.length}] Fetching address for: ${hospitalName}, ${location}`);
+    // ── Deduplication: if another record with the same hospital name already has
+    //    an address (fetched earlier in this run or a previous run), copy it directly
+    //    instead of opening Google Maps again.
+    const hospitalKey = hospitalName.trim().toLowerCase();
+    const donor = allRecords.find((r, i) =>
+      i !== recordIndex &&
+      (r.hospitalName || '').trim().toLowerCase() === hospitalKey &&
+      r.streetAddress
+    );
 
-    const addressData = await fetchAddressFromGoogleMaps(hospitalName, location);
+    let addressData;
+    if (donor) {
+      console.log(`[${currentAddressIndex + 1}/${addressQueue.length}] Copying address from duplicate: ${hospitalName}`);
+      addressData = {
+        streetAddress: donor.streetAddress || '',
+        zipCode:       donor.zipCode       || '',
+        city:          donor.city          || '',
+        state:         donor.state         || '',
+        phone:         donor.phone         || '',
+        website:       donor.website       || ''
+      };
+    } else {
+      console.log(`[${currentAddressIndex + 1}/${addressQueue.length}] Fetching address for: ${hospitalName}, ${location}`);
+      addressData = await fetchAddressFromGoogleMaps(hospitalName, location);
+    }
 
     // Save to storage
     await new Promise((resolve) => {
@@ -337,8 +431,10 @@ document.addEventListener('DOMContentLoaded', () => {
           if (addressData.zipCode)       records[recordIndex].zipCode       = addressData.zipCode;
           if (addressData.city && !records[recordIndex].city)   records[recordIndex].city  = addressData.city;
           if (addressData.state && !records[recordIndex].state) records[recordIndex].state = addressData.state;
-          if (addressData.phone)         records[recordIndex].phone         = addressData.phone;
-          if (addressData.website)       records[recordIndex].website       = addressData.website;
+          if (addressData.phone)   records[recordIndex].phone   = addressData.phone.replace(/\s+/g, ' ').trim();
+          if (addressData.website) records[recordIndex].website = addressData.website.trim();
+          // Update allRecords cache so subsequent duplicates can find this data
+          allRecords[recordIndex] = { ...allRecords[recordIndex], ...records[recordIndex] };
         }
         chrome.storage.local.set({ records: records }, resolve);
       });
@@ -428,7 +524,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Save extracted detail results to the record in chrome storage
+  // Save extracted detail results to the record in chrome storage.
+  // If the job has multiple locations (detailsList.length > 1), the existing record
+  // gets Location 1 and a new cloned record is appended for each additional location.
   function saveDetailResults(detailsList, recordIndex) {
     return new Promise((resolve) => {
       chrome.storage.local.get({ records: [] }, (result) => {
@@ -439,58 +537,86 @@ document.addEventListener('DOMContentLoaded', () => {
         const firstDetail = detailsList[0];
         if (!firstDetail) { resolve(); return; }
 
-        // Area of Practice
-        if (firstDetail.areaOfPractice) {
-          record.areaOfPractice = firstDetail.areaOfPractice;
-        }
+        // ── Helper: apply a detail object to a record ──
+        function applyDetail(rec, detail) {
+          if (detail.areaOfPractice) rec.areaOfPractice = detail.areaOfPractice;
 
-        // Position — use the value computed by detail-extractor.js (full keyword matching)
-        // Fall back to getPositionFromTitle only if detail-extractor returned nothing.
-        const detailAOP = firstDetail.areaOfPractice || record.areaOfPractice || '';
-        if (firstDetail.position) {
-          record.position = firstDetail.position;
-        } else {
-          const listingTitle = record.title || '';
-          record.position = getPositionFromTitle(listingTitle, detailAOP, firstDetail.description || record.description || '');
-        }
-
-        // Salary
-        if (firstDetail.salary) {
-          record.salary = firstDetail.salary;
-        }
-
-        // Job Type
-        if (firstDetail.jobType) {
-          record.jobType = firstDetail.jobType;
-        }
-
-        // Hospital name — update if detail gives a more specific name
-        if (firstDetail.hospitalName && firstDetail.hospitalName !== 'MedVet') {
-          record.hospitalName = firstDetail.hospitalName;
-        } else if (!record.hospitalName || record.hospitalName === 'MedVet') {
-          // Construct from existing city if we have one
-          const city = firstDetail.city || record.city || '';
-          const skipLocs = ['nationwide', 'remote', 'national', 'multiple', 'united states', ''];
-          if (city && !skipLocs.includes(city.toLowerCase())) {
-            record.hospitalName = 'MedVet ' + city;
+          const detailAOP = detail.areaOfPractice || rec.areaOfPractice || '';
+          if (detail.position) {
+            rec.position = detail.position;
           } else {
-            record.hospitalName = record.hospitalName || 'MedVet';
+            rec.position = getPositionFromTitle(rec.title || '', detailAOP, detail.description || rec.description || '');
           }
+
+          if (detail.salary)  rec.salary  = detail.salary;
+          if (detail.jobType) rec.jobType  = detail.jobType;
+
+          // Hospital name
+          const skipLocs = ['nationwide', 'remote', 'national', 'multiple', 'united states', ''];
+          if (detail.hospitalName && detail.hospitalName !== 'MedVet') {
+            rec.hospitalName = detail.hospitalName;
+          } else if (!rec.hospitalName || rec.hospitalName === 'MedVet') {
+            const city = detail.city || rec.city || '';
+            rec.hospitalName = (city && !skipLocs.includes(city.toLowerCase()))
+              ? 'MedVet ' + city
+              : (rec.hospitalName || 'MedVet');
+          }
+
+          // City / State — overwrite if "2 Locations" placeholder or empty
+          const cityIsPlaceholder = /^\d+\s+location/i.test(rec.city || '');
+          if (detail.city && (!rec.city || cityIsPlaceholder)) rec.city  = detail.city;
+          if (detail.state && (!rec.state || cityIsPlaceholder)) rec.state = detail.state;
+
+          if (detail.description && (!rec.description || rec.description.trim() === '')) {
+            rec.description = detail.description;
+          }
+
+          rec.detailsFetched = true;
         }
 
-        // City / State — fill in if missing from listing
-        if (firstDetail.city && !record.city) record.city = firstDetail.city;
-        if (firstDetail.state && !record.state) record.state = firstDetail.state;
+        // ── Apply Location 1 to the existing record ──
+        applyDetail(record, firstDetail);
+        // Flag both the original and clones if there are multiple locations
+        if (detailsList.length > 1) record.multiLocation = true;
 
-        // Description — fill in if not already fetched
-        if (firstDetail.description && (!record.description || record.description.trim() === '')) {
-          record.description = firstDetail.description;
+        // ── For each additional location, clone the record and append ──
+        for (let i = 1; i < detailsList.length; i++) {
+          const extraDetail = detailsList[i];
+          if (!extraDetail || (!extraDetail.city && !extraDetail.state)) continue;
+
+          // Deep-clone the (now-updated) base record
+          const newRecord = JSON.parse(JSON.stringify(record));
+
+          // Clear address fields — these are location-specific and must be re-fetched
+          newRecord.streetAddress = '';
+          newRecord.zipCode       = '';
+          newRecord.phone         = '';
+          newRecord.website       = '';
+          newRecord.detailsFetched  = true;
+          newRecord.multiLocation   = true;
+
+          // Override location fields with the extra location
+          const skipLocs = ['nationwide', 'remote', 'national', 'multiple', 'united states', ''];
+          newRecord.city  = extraDetail.city  || '';
+          newRecord.state = extraDetail.state || '';
+          if (extraDetail.hospitalName && extraDetail.hospitalName !== 'MedVet') {
+            newRecord.hospitalName = extraDetail.hospitalName;
+          } else {
+            const city = extraDetail.city || '';
+            newRecord.hospitalName = (city && !skipLocs.includes(city.toLowerCase()))
+              ? 'MedVet ' + city
+              : 'MedVet';
+          }
+
+          records.push(newRecord);
+          console.log(`  ↳ Created extra location record: ${newRecord.hospitalName} (${newRecord.city}, ${newRecord.state})`);
         }
 
-        // Mark as fetched so resume logic skips this record next time
-        record.detailsFetched = true;
-
-        chrome.storage.local.set({ records }, resolve);
+        chrome.storage.local.set({ records }, () => {
+          // Refresh allRecords so the table and address queue see the new records
+          allRecords = records;
+          resolve();
+        });
       });
     });
   }
@@ -720,42 +846,58 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => processNextDetail(), 1000);
   }
 
+  // ── Shared helper: start a Fetch Details run with a given queue ──
+  function startFetchDetails(queue) {
+    if (queue.length === 0) {
+      showToast('No jobs to fetch details for.', 'error');
+      return;
+    }
+    detailsQueue = queue;
+    isFetchingDetails = true;
+    currentDetailsIndex = 0;
+    fetchDetailsBtn.disabled = true;
+    fetchDetailsBtn.textContent = 'Fetching Details...';
+    const progressSection = document.getElementById('progressSection');
+    const progressBar     = document.getElementById('progressBar');
+    const progressText    = document.getElementById('progressText');
+    progressSection.classList.remove('hidden');
+    progressBar.style.width = '0%';
+    progressText.textContent = `0 / ${queue.length}`;
+    processNextDetail();
+  }
+
   fetchDetailsBtn.addEventListener('click', async () => {
     if (isFetchingDetails) {
       showToast('Already fetching details. Please wait...', 'error');
       return;
     }
-
     if (allRecords.length === 0) {
       showToast('No records to fetch details for', 'error');
       return;
     }
-
     // Queue only records that haven't been fetched yet (resume support)
-    detailsQueue = allRecords
+    let queue = allRecords
       .map((record, index) => ({ record, recordIndex: index }))
       .filter(({ record }) => !record.detailsFetched);
-
-    if (detailsQueue.length === 0) {
+    if (queue.length === 0) {
       if (!confirm('All records already have details. Re-fetch all?')) return;
-      detailsQueue = allRecords.map((record, index) => ({ record, recordIndex: index }));
+      queue = allRecords.map((record, index) => ({ record, recordIndex: index }));
     }
+    if (!confirm(`This will fetch details for ${queue.length} job(s) by opening each in a background tab. Continue?`)) return;
+    startFetchDetails(queue);
+  });
 
-    if (!confirm(`This will fetch details for ${detailsQueue.length} job(s) by opening each in a background tab. Continue?`)) return;
-
-    isFetchingDetails = true;
-    currentDetailsIndex = 0;
-    fetchDetailsBtn.disabled = true;
-    fetchDetailsBtn.textContent = 'Fetching Details...';
-
-    const progressSection = document.getElementById('progressSection');
-    const progressBar = document.getElementById('progressBar');
-    const progressText = document.getElementById('progressText');
-    progressSection.classList.remove('hidden');
-    progressBar.style.width = '0%';
-    progressText.textContent = `0 / ${detailsQueue.length}`;
-
-    processNextDetail();
+  fetchSelectedDetailsBtn.addEventListener('click', () => {
+    if (isFetchingDetails) {
+      showToast('Already fetching details. Please wait...', 'error');
+      return;
+    }
+    const queue = Array.from(selectedIndices)
+      .sort((a, b) => a - b)
+      .map(idx => ({ record: allRecords[idx], recordIndex: idx }))
+      .filter(({ record }) => record);
+    if (!confirm(`Fetch details for ${queue.length} selected job(s)?`)) return;
+    startFetchDetails(queue);
   });
 
   // ============ FETCH ADDRESSES ============
@@ -772,31 +914,52 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Queue only records that don't already have a street address
-    addressQueue = allRecords
+    let queue = allRecords
       .map((record, index) => ({ record, recordIndex: index }))
       .filter(({ record }) => !record.streetAddress);
 
-    if (addressQueue.length === 0) {
+    if (queue.length === 0) {
       if (!confirm('All records already have street addresses. Re-fetch all?')) return;
-      addressQueue = allRecords.map((record, index) => ({ record, recordIndex: index }));
+      queue = allRecords.map((record, index) => ({ record, recordIndex: index }));
     }
 
-    if (!confirm(`This will fetch street addresses for ${addressQueue.length} job(s) via Google Maps. Continue?`)) return;
+    if (!confirm(`This will fetch street addresses for ${queue.length} job(s) via Google Maps. Continue?`)) return;
 
+    startFetchAddresses(queue);
+  });
+
+  fetchSelectedAddressesBtn.addEventListener('click', () => {
+    if (isFetchingAddresses) {
+      showToast('Already fetching addresses. Please wait...', 'error');
+      return;
+    }
+    const queue = Array.from(selectedIndices)
+      .sort((a, b) => a - b)
+      .map(idx => ({ record: allRecords[idx], recordIndex: idx }))
+      .filter(({ record }) => record);
+    if (!confirm(`Fetch addresses for ${queue.length} selected job(s) via Google Maps?`)) return;
+    startFetchAddresses(queue);
+  });
+
+  // ── Shared helper: start a Fetch Addresses run with a given queue ──
+  function startFetchAddresses(queue) {
+    if (queue.length === 0) {
+      showToast('No jobs to fetch addresses for.', 'error');
+      return;
+    }
+    addressQueue = queue;
     isFetchingAddresses = true;
     currentAddressIndex = 0;
     fetchAddressesBtn.disabled = true;
     fetchAddressesBtn.textContent = 'Fetching Addresses...';
-
     const progressSection = document.getElementById('progressSection');
-    const progressBar = document.getElementById('progressBar');
-    const progressText = document.getElementById('progressText');
+    const progressBar     = document.getElementById('progressBar');
+    const progressText    = document.getElementById('progressText');
     progressSection.classList.remove('hidden');
     progressBar.style.width = '0%';
-    progressText.textContent = `0 / ${addressQueue.length}`;
-
+    progressText.textContent = `0 / ${queue.length}`;
     processNextAddress();
-  });
+  }
 
   function loadRecords() {
     chrome.storage.local.get({ records: [] }, (result) => {
@@ -804,6 +967,7 @@ document.addEventListener('DOMContentLoaded', () => {
       filteredRecords = [...allRecords];
       populateFilters(allRecords);
       renderTable(filteredRecords);
+      updateSelectionUI();
     });
   }
 

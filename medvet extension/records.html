@@ -82,6 +82,13 @@
       </div>
     </div>
 
+    <div id="selectionBar" class="selection-bar hidden">
+      <span id="selectedCount">0</span> job(s) selected
+      <button id="fetchSelectedDetailsBtn" class="sel-btn sel-btn-blue">Fetch Details for Selected</button>
+      <button id="fetchSelectedAddressesBtn" class="sel-btn sel-btn-green">Fetch Addresses for Selected</button>
+      <button id="clearSelectionBtn" class="sel-btn sel-btn-gray">Clear Selection</button>
+    </div>
+
     <div class="search-filter-bar">
       <div class="search-box">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -104,6 +111,7 @@
       <table id="recordsTable">
         <thead>
           <tr>
+            <th class="col-select"><input type="checkbox" id="selectAllCheckbox" title="Select / deselect all visible"></th>
             <th class="sortable" data-column="title">
               Title
               <span class="sort-icon">⇅</span>
