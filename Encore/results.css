@@ -261,6 +261,11 @@ header {
   color: white;
 }
 
+.btn-green {
+  background: #2e7d32;
+  color: white;
+}
+
 /* Table */
 .table-container {
   background: var(--card-bg);
@@ -302,16 +307,24 @@ header {
   background: #e3f2fd;
 }
 
-.col-checkbox { width: 40px; text-align: center; }
-.col-status { width: 80px; }
-.col-jobid { width: 110px; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; color: var(--text-light); }
-.col-title { min-width: 200px; }
-.col-reqid { width: 100px; }
-.col-hospital { min-width: 150px; }
-.col-location { min-width: 150px; }
-.col-category { width: 120px; }
-.col-description { width: 150px; }
-.col-actions { width: 100px; }
+.col-checkbox  { width: 40px; text-align: center; }
+.col-status    { width: 80px; }
+.col-jobid     { width: 100px; font-family: monospace; font-size: 12px; color: var(--text-light); }
+.col-title     { min-width: 200px; }
+.col-reqid     { width: 80px; }
+.col-position  { min-width: 160px; }
+.col-aop       { min-width: 140px; }
+.col-salary    { min-width: 160px; }
+.col-jobtype   { width: 100px; }
+.col-hospital  { min-width: 160px; }
+.col-city      { width: 100px; }
+.col-state     { width: 100px; }
+.col-address   { min-width: 160px; }
+.col-zip       { width: 80px; }
+.col-phone     { width: 140px; }
+.col-category  { width: 120px; }
+.col-description { width: 140px; }
+.col-actions   { width: 80px; }
 
 /* Status badges */
 .badge {

@@ -6,6 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const searchInput = document.getElementById('searchInput');
   const stateFilter = document.getElementById('stateFilter');
   const positionFilter = document.getElementById('positionFilter');
+  const aopFilter = document.getElementById('aopFilter');
   const recordCountSpan = document.getElementById('recordCount');
   const emptyState = document.getElementById('emptyState');
   const recordsTable = document.getElementById('recordsTable');
@@ -123,15 +124,20 @@ document.addEventListener('DOMContentLoaded', () => {
   clearSelectionBtn.addEventListener('click', clearSelection);
 
   function populateFilters(records) {
-    const states = new Set();
+    const states    = new Set();
     const positions = new Set();
+    const aops      = new Set();
 
     records.forEach(record => {
       if (record.state) states.add(record.state);
-      // Show derived position if available, otherwise raw position from listing
-      const pos = record.position || '';
-      if (pos) positions.add(pos);
+      if (record.position) positions.add(record.position);
+      if (record.areaOfPractice) aops.add(record.areaOfPractice);
     });
+
+    // Preserve current selections so filtering survives a reload
+    const prevState    = stateFilter.value;
+    const prevPosition = positionFilter.value;
+    const prevAop      = aopFilter.value;
 
     // Populate state filter
     stateFilter.innerHTML = '<option value="">All States</option>';
@@ -141,6 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
       option.textContent = state;
       stateFilter.appendChild(option);
     });
+    if (prevState) stateFilter.value = prevState;
 
     // Populate position filter
     positionFilter.innerHTML = '<option value="">All Positions</option>';
@@ -150,12 +157,24 @@ document.addEventListener('DOMContentLoaded', () => {
       option.textContent = position;
       positionFilter.appendChild(option);
     });
+    if (prevPosition) positionFilter.value = prevPosition;
+
+    // Populate area-of-practice filter
+    aopFilter.innerHTML = '<option value="">All Areas of Practice</option>';
+    Array.from(aops).sort().forEach(aop => {
+      const option = document.createElement('option');
+      option.value = aop;
+      option.textContent = aop;
+      aopFilter.appendChild(option);
+    });
+    if (prevAop) aopFilter.value = prevAop;
   }
 
   function filterRecords() {
-    const searchTerm = searchInput.value.toLowerCase();
-    const selectedState = stateFilter.value;
+    const searchTerm      = searchInput.value.toLowerCase();
+    const selectedState    = stateFilter.value;
     const selectedPosition = positionFilter.value;
+    const selectedAop      = aopFilter.value;
 
     filteredRecords = allRecords.filter(record => {
       const matchesSearch =
@@ -167,10 +186,11 @@ document.addEventListener('DOMContentLoaded', () => {
         (record.areaOfPractice || '').toLowerCase().includes(searchTerm) ||
         (record.salary || '').toLowerCase().includes(searchTerm);
 
-      const matchesState = !selectedState || record.state === selectedState;
-      const matchesPosition = !selectedPosition || record.position === selectedPosition;
+      const matchesState    = !selectedState    || record.state         === selectedState;
+      const matchesPosition = !selectedPosition || record.position      === selectedPosition;
+      const matchesAop      = !selectedAop      || record.areaOfPractice === selectedAop;
 
-      return matchesSearch && matchesState && matchesPosition;
+      return matchesSearch && matchesState && matchesPosition && matchesAop;
     });
 
     if (sortColumn) {
@@ -977,6 +997,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Filter functionality
   stateFilter.addEventListener('change', filterRecords);
   positionFilter.addEventListener('change', filterRecords);
+  aopFilter.addEventListener('change', filterRecords);
 
   // Sorting functionality
   document.querySelectorAll('.sortable').forEach(header => {
@@ -1216,10 +1237,29 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    const BATCH_SIZE = 50;
-    const totalBatches = Math.ceil(allRecords.length / BATCH_SIZE);
+    // Determine which records to send:
+    // 1. If rows are selected → send only those selected rows
+    // 2. Else if a filter is active → send only the filtered (visible) rows
+    // 3. Else → send all records
+    let recordsToSend;
+    if (selectedIndices.size > 0) {
+      recordsToSend = Array.from(selectedIndices).sort((a, b) => a - b).map(i => allRecords[i]).filter(Boolean);
+    } else if (filteredRecords.length !== allRecords.length) {
+      recordsToSend = filteredRecords;
+    } else {
+      recordsToSend = allRecords;
+    }
 
-    if (!confirm(`Send ${allRecords.length} record(s) in ${totalBatches} batch(es) to webhook?`)) {
+    const BATCH_SIZE = 50;
+    const totalBatches = Math.ceil(recordsToSend.length / BATCH_SIZE);
+
+    const filterDesc = selectedIndices.size > 0
+      ? `${recordsToSend.length} selected record(s)`
+      : filteredRecords.length !== allRecords.length
+        ? `${recordsToSend.length} filtered record(s) (AOP/State/Position filter active)`
+        : `all ${recordsToSend.length} record(s)`;
+
+    if (!confirm(`Send ${filterDesc} in ${totalBatches} batch(es) to webhook?`)) {
       return;
     }
 
@@ -1235,7 +1275,7 @@ document.addEventListener('DOMContentLoaded', () => {
     progressText.textContent = `0 / ${totalBatches} batches`;
 
     // Map records to webhook format — mirrors UVC field structure exactly
-    const mappedRecords = allRecords.map(record => {
+    const mappedRecords = recordsToSend.map(record => {
       const city = record.city || '';
       const state = record.state || '';
       const location = city && state ? `${city}, ${state}` : (city || state || '');
@@ -1292,7 +1332,7 @@ document.addEventListener('DOMContentLoaded', () => {
         batchNumber: batchNumber,
         totalBatches: totalBatches,
         batchSize: batch.length,
-        totalRecords: allRecords.length,
+        totalRecords: recordsToSend.length,
         data: batch
       };
 
@@ -1329,12 +1369,12 @@ document.addEventListener('DOMContentLoaded', () => {
       Send to Webhook`;
 
     if (errorCount === 0) {
-      showToast(`Success! ${allRecords.length} records sent in ${totalBatches} batch(es).`, 'success');
+      showToast(`Success! ${recordsToSend.length} records sent in ${totalBatches} batch(es).`, 'success');
     } else {
       showToast(`Partial: ${successCount} succeeded, ${errorCount} failed.`, 'error');
     }
 
-    let resultMsg = `Webhook Complete!\nSync ID: ${syncId}\nTotal Records: ${allRecords.length}\nBatches Sent: ${totalBatches} (${BATCH_SIZE} per batch)\nSuccessful: ${successCount} | Failed: ${errorCount}`;
+    let resultMsg = `Webhook Complete!\nSync ID: ${syncId}\nTotal Records Sent: ${recordsToSend.length}\nBatches Sent: ${totalBatches} (${BATCH_SIZE} per batch)\nSuccessful: ${successCount} | Failed: ${errorCount}`;
     alert(resultMsg);
   });
 
