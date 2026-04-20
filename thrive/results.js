@@ -200,6 +200,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <td class="city-cell">${escapeHtml(job.city || 'N/A')}</td>
       <td class="state-cell">${escapeHtml(job.state || 'N/A')}</td>
       <td class="zip-cell">${escapeHtml(job.postalCode || 'N/A')}</td>
+      <td class="phone-cell">${escapeHtml(job.phone || 'N/A')}</td>
       <td>${escapeHtml(job.position || 'N/A')}</td>
       <td>${escapeHtml(job.areaOfPractice || 'N/A')}</td>
       <td>${escapeHtml(job.salary || 'N/A')}</td>
@@ -430,6 +431,7 @@ document.addEventListener('DOMContentLoaded', () => {
       city: job.city || '',
       state: job.state || '',
       zip_code: job.postalCode || '',
+      phone: job.phone || '',
       position: job.position || '',
       area_of_practice: job.areaOfPractice || '',
       salary: job.salary || '',
@@ -682,7 +684,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const jobs = result[STORAGE_KEY] || [];
         if (jobs[jobIndex]) {
           if (details.hospitalName) jobs[jobIndex].hospitalName = details.hospitalName;
-          if (details.streetAddress) jobs[jobIndex].streetAddress = details.streetAddress;
           if (details.city) jobs[jobIndex].city = details.city;
           if (details.state) jobs[jobIndex].state = details.state;
           if (details.postalCode) jobs[jobIndex].postalCode = details.postalCode;
@@ -771,6 +772,218 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   fetchDetailsBtn.addEventListener('click', fetchDetails);
+
+  // ==================== FETCH ADDRESSES FUNCTIONS ====================
+
+  let isFetchingAddresses = false;
+  let addressQueue = [];
+  let currentAddressIndex = 0;
+
+  // Opens a Google Maps tab, injects the scraper, and returns address data.
+  function fetchAddressFromGoogleMaps(hospitalName, location) {
+    const searchQuery = `${hospitalName}, ${location}`;
+    const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
+
+    function scrapeGoogleMapsTab(url, queryLabel) {
+      return new Promise((resolve) => {
+        const timeout = setTimeout(() => {
+          console.warn(`✗ Google Maps timeout for: "${queryLabel}"`);
+          resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
+        }, 30000);
+
+        chrome.tabs.create({ url: url, active: false }, (tab) => {
+          if (!tab) {
+            clearTimeout(timeout);
+            resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
+            return;
+          }
+
+          const tabId = tab.id;
+          const listener = (updatedTabId, info) => {
+            if (updatedTabId === tabId && info.status === 'complete') {
+              chrome.tabs.onUpdated.removeListener(listener);
+              // Wait 2s for Google Maps SPA to render, then inject scraper
+              setTimeout(() => {
+                chrome.scripting.executeScript({
+                  target: { tabId: tabId },
+                  files: ['google-maps-scraper.js']
+                }).then((results) => {
+                  clearTimeout(timeout);
+                  chrome.tabs.remove(tabId).catch(() => {});
+                  const data = results?.[0]?.result || {};
+                  resolve({
+                    streetAddress: data.streetAddress || '',
+                    zipCode: data.zipCode || '',
+                    city: data.city || '',
+                    state: data.state || '',
+                    fullAddress: data.fullAddress || '',
+                    website: data.website || '',
+                    phone: data.phone || ''
+                  });
+                }).catch((err) => {
+                  console.error(`Google Maps script error for "${queryLabel}":`, err);
+                  clearTimeout(timeout);
+                  chrome.tabs.remove(tabId).catch(() => {});
+                  resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
+                });
+              }, 2000);
+            }
+          };
+          chrome.tabs.onUpdated.addListener(listener);
+        });
+      });
+    }
+
+    return (async () => {
+      console.log(`🔍 Google Maps search: "${searchQuery}"`);
+      let data = await scrapeGoogleMapsTab(mapsUrl, searchQuery);
+
+      // Retry with simplified name if first attempt failed
+      if (!data.streetAddress && !data.zipCode) {
+        const simplifiedName = hospitalName
+          .replace(/&/g, 'and')
+          .replace(/[-–—()]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        const altQuery = `${simplifiedName}, ${location}`;
+        if (altQuery !== searchQuery) {
+          console.log(`↻ Retry with: "${altQuery}"`);
+          const altUrl = `https://www.google.com/maps/search/${encodeURIComponent(altQuery)}`;
+          data = await scrapeGoogleMapsTab(altUrl, altQuery);
+        }
+      }
+
+      if (data.streetAddress || data.zipCode) {
+        console.log(`✓ SUCCESS: "${searchQuery}"`);
+        console.log(`  → Street="${data.streetAddress}", City="${data.city}", State="${data.state}", Zip="${data.zipCode}"`);
+      } else {
+        console.warn(`✗ No address found for: "${searchQuery}"`);
+      }
+
+      return {
+        streetAddress: data.streetAddress || '',
+        zipCode: data.zipCode || '',
+        city: data.city || '',
+        state: data.state || '',
+        fullAddress: data.fullAddress || '',
+        website: data.website || '',
+        phone: data.phone || ''
+      };
+    })();
+  }
+
+  document.getElementById('fetchAddressesBtn').addEventListener('click', async () => {
+    if (isFetchingAddresses) {
+      alert('Already fetching addresses. Please wait...');
+      return;
+    }
+
+    const data = await chrome.storage.local.get([STORAGE_KEY]);
+    const jobs = data[STORAGE_KEY] || [];
+
+    // Jobs missing street address or postal code
+    const jobsNeedingAddresses = jobs.map((job, index) => ({ job, index }))
+      .filter(item => item.job.hospitalName && (item.job.city || item.job.state) &&
+                      (!item.job.streetAddress || !item.job.postalCode));
+
+    if (jobsNeedingAddresses.length === 0) {
+      if (!confirm('All jobs already have addresses. Re-fetch all?')) return;
+      addressQueue = jobs.map((job, index) => ({ job, index }))
+        .filter(item => item.job.hospitalName && (item.job.city || item.job.state));
+    } else {
+      addressQueue = jobsNeedingAddresses;
+    }
+
+    if (addressQueue.length === 0) {
+      alert('No jobs have valid hospital/location data to fetch addresses.');
+      return;
+    }
+
+    isFetchingAddresses = true;
+    currentAddressIndex = 0;
+    const btn = document.getElementById('fetchAddressesBtn');
+    btn.disabled = true;
+    btn.textContent = 'Fetching Addresses...';
+
+    progressSection.classList.remove('hidden');
+    progressBar.style.width = '0%';
+    progressText.textContent = `0 / ${addressQueue.length}`;
+
+    processNextAddress();
+  });
+
+  async function processNextAddress() {
+    if (currentAddressIndex >= addressQueue.length) {
+      finishAddressFetching();
+      return;
+    }
+
+    const { job, index } = addressQueue[currentAddressIndex];
+
+    progressBar.style.width = `${Math.round(((currentAddressIndex + 1) / addressQueue.length) * 100)}%`;
+    progressText.textContent = `${currentAddressIndex + 1} / ${addressQueue.length}`;
+    const btn = document.getElementById('fetchAddressesBtn');
+    btn.textContent = `Fetching... (${currentAddressIndex + 1}/${addressQueue.length})`;
+
+    try {
+      // Build search hospital name — append "Pet Hospital" if no clinic/hospital word
+      let searchHospital = job.hospitalName || '';
+      if (searchHospital && !/hospital|clinic|veterinary|vet\b|animal/i.test(searchHospital)) {
+        searchHospital = searchHospital + ' Animal Hospital';
+      }
+
+      // Build location from separate city + state fields
+      const searchLocation = [job.city, job.state].filter(Boolean).join(', ');
+
+      const addressData = await fetchAddressFromGoogleMaps(searchHospital, searchLocation);
+
+      // Save back to storage
+      const stored = await chrome.storage.local.get([STORAGE_KEY]);
+      const jobs = stored[STORAGE_KEY] || [];
+
+      if (jobs[index]) {
+        if (addressData.streetAddress) jobs[index].streetAddress = addressData.streetAddress;
+        if (addressData.zipCode)       jobs[index].postalCode    = addressData.zipCode;
+
+        // Prefer Google Maps city/state if richer; else keep existing
+        if (addressData.city)  jobs[index].city  = addressData.city;
+        if (addressData.state) jobs[index].state = addressData.state;
+
+        // Try to pull zip from fullAddress if still missing
+        if (!jobs[index].postalCode && addressData.fullAddress) {
+          const zipMatch = addressData.fullAddress.match(/\b(\d{5}(?:-\d{4})?)\b/);
+          if (zipMatch) jobs[index].postalCode = zipMatch[1];
+        }
+
+        if (addressData.website) jobs[index].website = addressData.website;
+        if (addressData.phone)   jobs[index].phone   = addressData.phone;
+
+        await chrome.storage.local.set({ [STORAGE_KEY]: jobs });
+        storedJobs = jobs;
+        displayRecords(searchInput.value);
+      }
+    } catch (err) {
+      console.error('Error fetching address:', err);
+    }
+
+    currentAddressIndex++;
+    setTimeout(() => processNextAddress(), 1500);
+  }
+
+  function finishAddressFetching() {
+    isFetchingAddresses = false;
+    const btn = document.getElementById('fetchAddressesBtn');
+    btn.disabled = false;
+    btn.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12,2C8.13,2 5,5.13 5,9C5,14.25 12,22 12,22C12,22 19,14.25 19,9C19,5.13 15.87,2 12,2M12,11.5C10.62,11.5 9.5,10.38 9.5,9C9.5,7.62 10.62,6.5 12,6.5C13.38,6.5 14.5,7.62 14.5,9C14.5,10.38 13.38,11.5 12,11.5Z"/>
+      </svg>
+      Fetch Addresses`;
+    progressSection.classList.add('hidden');
+    addressQueue = [];
+    currentAddressIndex = 0;
+    alert(`Address fetching completed! Processed ${addressQueue.length || 0} jobs.`);
+  }
 
   // ==================== RESULTS MODAL FUNCTIONS ====================
 
@@ -993,6 +1206,7 @@ document.addEventListener('DOMContentLoaded', () => {
       city: job.city || '',
       state: job.state || '',
       zip_code: job.postalCode || '',
+      phone: job.phone || '',
       position: job.position || '',
       area_of_practice: job.areaOfPractice || '',
       salary: job.salary || '',
