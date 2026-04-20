@@ -214,6 +214,15 @@ body {
   background: #c0392b;
 }
 
+.btn-address {
+  background: #8e44ad;
+  color: white;
+}
+
+.btn-address:hover:not(:disabled) {
+  background: #7d3c98;
+}
+
 .btn-cancel {
   background: #6c757d;
   color: white;
