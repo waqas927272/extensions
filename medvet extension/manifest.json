@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Job Scraper",
+  "name": "MedVet Emergency & Specialty Veterinary Care",
   "version": "1.1",
   "description": "Scrapes job listings from the current page.",
   "permissions": [
