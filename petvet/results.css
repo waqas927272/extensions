@@ -454,8 +454,16 @@ body {
 .col-checkbox { width: 44px; text-align: center; }
 .col-title { min-width: 250px; }
 .col-jobid { width: 110px; font-family: 'Consolas', 'Monaco', monospace; font-size: 12px; color: var(--text-light); }
-.col-hospital { min-width: 180px; }
-.col-location { min-width: 150px; }
+.col-areaofpractice { min-width: 150px; }
+.col-position { min-width: 140px; }
+.col-jobtype { min-width: 110px; }
+.col-salary { min-width: 140px; }
+.col-hospital { min-width: 160px; }
+.col-city { min-width: 100px; }
+.col-state { width: 70px; }
+.col-address { min-width: 180px; }
+.col-zipcode { width: 100px; }
+.col-phone { min-width: 130px; }
 .col-actions { width: 80px; text-align: center; }
 
 /* Table Links */
