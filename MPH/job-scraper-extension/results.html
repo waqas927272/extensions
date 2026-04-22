@@ -105,33 +105,33 @@
     </div>
 
     <div class="table-wrapper table-container">
-      <div class="table-scroll-wrapper">
+      <div class="table-scroll-wrapper" id="tableScrollWrapper">
         <table id="jobsTable">
           <thead>
             <tr>
-              <th class="col-checkbox"><input type="checkbox" id="select-all-checkbox"></th>
-              <th class="col-status">Status</th>
-              <th class="col-num">#</th>
+              <th class="col-num">Serial Number</th>
+              <th class="sortable col-jobid" data-sort="jobId">Job ID <span class="sort-indicator"></span></th>
               <th class="sortable" data-sort="jobTitle">Job Title <span class="sort-indicator"></span></th>
-              <th class="col-jobid">Job ID</th>
+              <th class="sortable" data-sort="areaOfPractice">Area of Practice <span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort="position">Position <span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort="streetAddress">Street Address <span class="sort-indicator"></span></th>
               <th class="sortable" data-sort="city">City <span class="sort-indicator"></span></th>
               <th class="sortable" data-sort="state">State <span class="sort-indicator"></span></th>
-              <th>Hospital</th>
-              <th>Street Address</th>
-              <th>Zip</th>
-              <th>Phone</th>
-              <th>Website</th>
-              <th>Position</th>
-              <th>Area of Practice</th>
-              <th>Salary</th>
-              <th>Job Type</th>
-              <th class="col-link">Link</th>
+              <th class="sortable" data-sort="postalCode">Zip Code <span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort="hospitalName">Hospital Name <span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort="phone">Phone <span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort="website">Website <span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort="salary">Salary <span class="sort-indicator"></span></th>
+              <th class="sortable" data-sort="jobType">Job Type <span class="sort-indicator"></span></th>
+              <th class="sortable col-link" data-sort="link">Job URL <span class="sort-indicator"></span></th>
               <th class="col-description">Description</th>
-              <th class="col-actions">Actions</th>
             </tr>
           </thead>
           <tbody id="jobsTableBody"></tbody>
         </table>
+      </div>
+      <div id="tableBottomScrollbar" class="table-scrollbar-bottom hidden" aria-hidden="true">
+        <div id="tableBottomScrollbarInner" class="table-scrollbar-bottom-inner"></div>
       </div>
     </div>
 

@@ -9,6 +9,7 @@ body {
   background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 50%, #f8fbff 100%);
   min-height: 100vh;
   color: #1e293b;
+  overflow-y: auto;
 }
 
 body::before {
@@ -123,6 +124,7 @@ body::before {
   padding: 28px 40px;
   position: relative;
   z-index: 1;
+  padding-bottom: 88px;
 }
 
 .webhook-bar {
@@ -309,17 +311,61 @@ body::before {
   border-radius: 20px;
   box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
   border: 1px solid rgba(14, 165, 233, 0.12);
+  overflow: hidden;
 }
 
 .table-scroll-wrapper {
-  overflow-x: auto;
-  max-height: calc(100vh - 120px);
   overflow-y: auto;
+  overflow-x: hidden;
+  max-height: clamp(360px, calc(100vh - 340px), 72vh);
+  scrollbar-gutter: stable both-edges;
+}
+
+.table-scrollbar-bottom {
+  position: sticky;
+  bottom: 12px;
+  z-index: 5;
+  height: 18px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin: 0 16px 16px;
+  border-radius: 999px;
+  background: rgba(226, 232, 240, 0.95);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  backdrop-filter: blur(8px);
+}
+
+.table-scrollbar-bottom-inner {
+  height: 1px;
+}
+
+.table-scrollbar-bottom::-webkit-scrollbar,
+.table-scroll-wrapper::-webkit-scrollbar {
+  height: 14px;
+  width: 14px;
+}
+
+.table-scrollbar-bottom::-webkit-scrollbar-track,
+.table-scroll-wrapper::-webkit-scrollbar-track {
+  background: rgba(226, 232, 240, 0.9);
+  border-radius: 999px;
+}
+
+.table-scrollbar-bottom::-webkit-scrollbar-thumb,
+.table-scroll-wrapper::-webkit-scrollbar-thumb {
+  background: rgba(3, 105, 161, 0.5);
+  border-radius: 999px;
+  border: 3px solid rgba(226, 232, 240, 0.9);
+}
+
+.table-scrollbar-bottom::-webkit-scrollbar-thumb:hover,
+.table-scroll-wrapper::-webkit-scrollbar-thumb:hover {
+  background: rgba(3, 105, 161, 0.72);
 }
 
 #jobsTable {
   width: 100%;
-  min-width: 1800px;
+  min-width: 2100px;
   border-collapse: collapse;
 }
 
@@ -336,6 +382,9 @@ body::before {
   text-transform: uppercase;
   letter-spacing: 0.5px;
   white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 #jobsTable td {
@@ -344,6 +393,7 @@ body::before {
   font-size: 13px;
   color: #475569;
   font-weight: 500;
+  vertical-align: top;
 }
 
 #jobsTable tbody tr:nth-child(even) {
@@ -352,6 +402,10 @@ body::before {
 
 #jobsTable tbody tr:hover {
   background-color: #f0f9ff;
+}
+
+#jobsTable tbody tr.selected {
+  background: #dbeafe;
 }
 
 .sortable {
@@ -399,7 +453,7 @@ body::before {
 }
 
 .description-preview {
-  max-width: 220px;
+  max-width: 320px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -527,6 +581,15 @@ input[type="checkbox"] {
 @media (max-width: 1024px) {
   .container {
     padding: 24px;
+    padding-bottom: 80px;
+  }
+
+  .table-scroll-wrapper {
+    max-height: clamp(320px, calc(100vh - 300px), 68vh);
+  }
+
+  #jobsTable {
+    min-width: 1900px;
   }
 }
 
@@ -537,6 +600,7 @@ input[type="checkbox"] {
 
   .container {
     padding: 16px;
+    padding-bottom: 72px;
   }
 
   .header-content {
@@ -567,4 +631,21 @@ input[type="checkbox"] {
   .button-group {
     justify-content: flex-start;
   }
+
+  .table-scroll-wrapper {
+    max-height: clamp(280px, calc(100vh - 260px), 62vh);
+  }
+
+  .table-scrollbar-bottom {
+    bottom: 8px;
+    margin: 0 12px 12px;
+  }
+
+  #jobsTable {
+    min-width: 1750px;
+  }
 }
+
+.sort-indicator::after { content: "\2195"; }
+.sortable.asc .sort-indicator::after { content: "\2191"; }
+.sortable.desc .sort-indicator::after { content: "\2193"; }

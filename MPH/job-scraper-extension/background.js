@@ -449,6 +449,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 // Rules:
                 //   - "Part Time" only if PART-TIME is mentioned AND full-time is NOT mentioned
                 //   - "Full Time" if full-time is mentioned, OR both are mentioned, OR neither is mentioned
+                const rawJobTypeField = result.jobType || '';
                 (function normaliseJobType() {
                   // Start with whatever the labeled field gave us (may be empty)
                   const rawField = (result.jobType || '').toLowerCase();
@@ -461,9 +462,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                   if (hasPart && !hasFull) {
                     result.jobType = 'Part Time';
+                  } else if (hasFull) {
+                    result.jobType = 'Full Time';
                   } else {
                     // full-time only, both, or neither → Full Time
                     result.jobType = 'Full Time';
+                  }
+                })();
+
+                // Re-apply job type logic using the untouched field value so unknowns stay unknown.
+                (function ensureAccurateJobType() {
+                  const scan = (rawJobTypeField + ' ' + bodyText).toLowerCase();
+                  const hasPart = /part[\s\-]?time/.test(scan);
+                  const hasFull = /full[\s\-]?time/.test(scan);
+
+                  if (hasPart && !hasFull) {
+                    result.jobType = 'Part Time';
+                  } else if (hasFull) {
+                    result.jobType = 'Full Time';
+                  } else {
+                    result.jobType = rawJobTypeField ? rawJobTypeField.trim() : '';
                   }
                 })();
 
@@ -499,30 +517,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         chrome.tabs.onUpdated.removeListener(listener);
 
         // Inject the description scraper script
-        chrome.scripting.executeScript({
-          target: { tabId: tabId },
-          files: ['description-scraper.js']
-        }).then((results) => {
-          const description = (results && results[0] && results[0].result) ? results[0].result : '';
+                chrome.scripting.executeScript({
+                  target: { tabId: tabId },
+                  files: ['description-scraper.js']
+                }).then((results) => {
+                  const description = (results && results[0] && results[0].result) ? results[0].result : '';
 
-          // Save extracted description to the job record
-          chrome.storage.local.get(['scrapedJobs'], (result) => {
-            const jobs = result.scrapedJobs || [];
-            if (jobs[jobIndex]) {
-              jobs[jobIndex].description = description;
+                  // Save extracted description to the job record
+                  chrome.storage.local.get(['scrapedJobs'], (result) => {
+                    const jobs = result.scrapedJobs || [];
+                    if (jobs[jobIndex]) {
+                      jobs[jobIndex].description = description;
 
-              chrome.storage.local.set({ scrapedJobs: jobs }, () => {
-                console.log(`Description saved for job ${jobIndex + 1}`);
-                chrome.tabs.remove(tabId);
-                chrome.runtime.sendMessage({
-                  action: 'descriptionSaved',
-                  jobIndex: jobIndex,
-                  success: true
-                });
-              });
-            }
-          });
-        }).catch(err => {
+                      chrome.storage.local.set({ scrapedJobs: jobs }, () => {
+                        console.log(`Description saved for job ${jobIndex + 1}`);
+                        chrome.tabs.remove(tabId).catch(() => {});
+                        chrome.runtime.sendMessage({
+                          action: 'descriptionSaved',
+                          jobIndex: jobIndex,
+                          success: true
+                        });
+                      });
+                    } else {
+                      chrome.tabs.remove(tabId).catch(() => {});
+                      chrome.runtime.sendMessage({
+                        action: 'descriptionSaved',
+                        jobIndex: jobIndex,
+                        success: false
+                      }).catch(() => {});
+                    }
+                  });
+                }).catch(err => {
           console.error('Error extracting description:', err);
           chrome.tabs.remove(tabId).catch(() => {});
           chrome.runtime.sendMessage({

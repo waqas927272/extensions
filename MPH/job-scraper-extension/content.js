@@ -55,6 +55,32 @@ function detectPageType(url) {
     return 'marketplace';
 }
 
+const EXCLUDED_JOB_TITLES = new Set([
+    'payroll coordinator',
+    'marketing analyst',
+    'analyst, product insights',
+    'marketing automation specialist',
+    'test veterinarian',
+    'senior indirect tax analyst',
+    'test only do not submit',
+    'data scientist',
+    'financial analyst',
+    'marketing business partner',
+    'director, indirect tax',
+    'tax analyst',
+    'division vice president',
+    'operations analyst',
+    'staff accountant'
+]);
+
+function normalizeTitleForComparison(title) {
+    return (title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
+function shouldSkipJobTitle(title) {
+    return EXCLUDED_JOB_TITLES.has(normalizeTitleForComparison(title));
+}
+
 // ── Main scraping dispatcher ──────────────────────────────────────────────
 function scrapeCurrentPage(scrapedJobIds, pageType) {
     if (pageType === 'agency') {
@@ -74,11 +100,13 @@ function scrapeMarketplacePage(scrapedJobIds) {
             const jobLink = titleElement ? titleElement.href : null;
             if (!jobLink) return;
 
+            const jobTitle = titleElement.textContent.trim();
+            if (shouldSkipJobTitle(jobTitle)) return;
+
             const rawJobId = extractNumericId(jobLink);
             if (!rawJobId || scrapedJobIds.has(rawJobId)) return;
             scrapedJobIds.add(rawJobId);
 
-            const jobTitle = titleElement.textContent.trim();
             const { location, city, state, hospitalName } = extractLocationFromSubtitle(article);
 
             jobs.push({ jobTitle, jobId: 'MPH-' + rawJobId, location, city, state, hospitalName: hospitalName || '', link: jobLink });
@@ -121,11 +149,13 @@ function tryArticleStrategy(scrapedJobIds, jobs) {
             const jobLink  = titleEl ? titleEl.href : null;
             if (!jobLink) return;
 
+            const jobTitle = titleEl.textContent.trim();
+            if (shouldSkipJobTitle(jobTitle)) return;
+
             const rawJobId = extractNumericId(jobLink);
             if (!rawJobId || scrapedJobIds.has(rawJobId)) return;
             scrapedJobIds.add(rawJobId);
 
-            const jobTitle = titleEl.textContent.trim();
             const { location, city, state, hospitalName } = extractLocationFromSubtitle(article);
 
             jobs.push({ jobTitle, jobId: 'MPH-' + rawJobId, location, city, state, hospitalName: hospitalName || '', link: jobLink });
@@ -149,13 +179,14 @@ function tryTableStrategy(scrapedJobIds, jobs) {
             const link = row.querySelector('a[href*="JobDetail"], a[href*="OpenPositions/"], a[href*="job"]');
             if (!link || !link.href) return;
 
-            const rawJobId = extractNumericId(link.href);
-            if (!rawJobId || scrapedJobIds.has(rawJobId)) return;
-            scrapedJobIds.add(rawJobId);
-
             // Try to find title — prefer the link text or a dedicated title cell
             const titleCell = row.querySelector('td:first-child, .jobTitle, .title');
             const jobTitle  = (titleCell ? titleCell.textContent : link.textContent).trim() || 'N/A';
+            if (shouldSkipJobTitle(jobTitle)) return;
+
+            const rawJobId = extractNumericId(link.href);
+            if (!rawJobId || scrapedJobIds.has(rawJobId)) return;
+            scrapedJobIds.add(rawJobId);
 
             // Try to find city / state from other cells
             const cells   = Array.from(row.querySelectorAll('td'));
@@ -185,11 +216,13 @@ function tryListItemStrategy(scrapedJobIds, jobs) {
             const link = item.querySelector('a[href]');
             if (!link || !link.href) return;
 
+            const jobTitle = (item.querySelector('.jobTitle, .title, h2, h3, h4') || link).textContent.trim() || 'N/A';
+            if (shouldSkipJobTitle(jobTitle)) return;
+
             const rawJobId = extractNumericId(link.href);
             if (!rawJobId || scrapedJobIds.has(rawJobId)) return;
             scrapedJobIds.add(rawJobId);
 
-            const jobTitle = (item.querySelector('.jobTitle, .title, h2, h3, h4') || link).textContent.trim() || 'N/A';
             const locEl    = item.querySelector('.location, .city, .jobLocation');
             const { location, city, state } = parseLocationText(locEl ? locEl.textContent : '');
 
@@ -214,11 +247,13 @@ function tryLinkFallbackStrategy(scrapedJobIds, jobs) {
     links.forEach((link) => {
         try {
             if (!link.href) return;
+            const jobTitle = link.textContent.trim() || 'N/A';
+            if (shouldSkipJobTitle(jobTitle)) return;
+
             const rawJobId = extractNumericId(link.href);
             if (!rawJobId || scrapedJobIds.has(rawJobId)) return;
             scrapedJobIds.add(rawJobId);
 
-            const jobTitle = link.textContent.trim() || 'N/A';
             jobs.push({
                 jobTitle,
                 jobId: 'MPH-' + rawJobId,
@@ -301,6 +336,53 @@ function findNextAgencyPageUrl() {
         } catch (_) {}
     }
 
+    return nextUrl.toString();
+}
+
+function findNextAgencyPageUrl() {
+    const nextContainer = document.querySelector('.list-controls__pagination__item.next, .pagination__next, [aria-label="Next page"]');
+    if (nextContainer) {
+        const nextLink = nextContainer.querySelector('a');
+        if (nextLink && nextLink.href && nextLink.href !== window.location.href) {
+            return nextLink.href;
+        }
+    }
+
+    const relNext = document.querySelector('a[rel="next"]');
+    if (relNext && relNext.href && relNext.href !== window.location.href) return relNext.href;
+
+    const anyNextLink = Array.from(document.querySelectorAll('a[href*="jobOffset="]')).find(link => {
+        try {
+            const linked = new URL(link.href);
+            const current = new URL(window.location.href);
+            const linkedOffset = parseInt(linked.searchParams.get('jobOffset') || '0', 10);
+            const currentOffset = parseInt(current.searchParams.get('jobOffset') || '0', 10);
+            return linkedOffset > currentOffset;
+        } catch (_) {
+            return false;
+        }
+    });
+    if (anyNextLink) return anyNextLink.href;
+
+    const currentUrl = new URL(window.location.href);
+    const currentOffset = parseInt(currentUrl.searchParams.get('jobOffset') || '0', 10);
+    const recordsPerPage = parseInt(currentUrl.searchParams.get('jobRecordsPerPage') || '6', 10);
+    const summaryText = document.body.innerText;
+    const rangeMatch = summaryText.match(/(\d+)\s*[-â€“]\s*(\d+)\s+of\s+(\d+)/i);
+
+    if (!rangeMatch) return null;
+
+    const currentEnd = parseInt(rangeMatch[2], 10);
+    const totalJobs = parseInt(rangeMatch[3], 10);
+    if (!Number.isFinite(currentEnd) || !Number.isFinite(totalJobs) || currentEnd >= totalJobs) {
+        return null;
+    }
+
+    const nextOffset = currentOffset + recordsPerPage;
+    if (!Number.isFinite(nextOffset) || nextOffset >= totalJobs) return null;
+
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set('jobOffset', String(nextOffset));
     return nextUrl.toString();
 }
 
@@ -393,4 +475,50 @@ function parseLocationText(text) {
         return { location: clean, city: cityPart, state: abbr };
     }
     return { location: clean, city: clean, state: 'N/A' };
+}
+
+function findNextAgencyPageUrl() {
+    const nextContainer = document.querySelector('.list-controls__pagination__item.next, .pagination__next, [aria-label="Next page"]');
+    if (nextContainer) {
+        const nextLink = nextContainer.querySelector('a');
+        if (nextLink && nextLink.href && nextLink.href !== window.location.href) {
+            return nextLink.href;
+        }
+    }
+
+    const relNext = document.querySelector('a[rel="next"]');
+    if (relNext && relNext.href && relNext.href !== window.location.href) return relNext.href;
+
+    const offsetLinks = Array.from(document.querySelectorAll('a[href*="jobOffset="]'));
+    const currentUrl = new URL(window.location.href);
+    const currentOffset = parseInt(currentUrl.searchParams.get('jobOffset') || '0', 10);
+
+    const linkedNext = offsetLinks.find(link => {
+        try {
+            const parsed = new URL(link.href);
+            const linkedOffset = parseInt(parsed.searchParams.get('jobOffset') || '0', 10);
+            return linkedOffset > currentOffset;
+        } catch (_) {
+            return false;
+        }
+    });
+    if (linkedNext) return linkedNext.href;
+
+    const summaryText = document.body.innerText;
+    const rangeMatch = summaryText.match(/(\d+)\s*[-\u2013]\s*(\d+)\s+of\s+(\d+)/i);
+    if (!rangeMatch) return null;
+
+    const currentEnd = parseInt(rangeMatch[2], 10);
+    const totalJobs = parseInt(rangeMatch[3], 10);
+    if (!Number.isFinite(currentEnd) || !Number.isFinite(totalJobs) || currentEnd >= totalJobs) {
+        return null;
+    }
+
+    const recordsPerPage = parseInt(currentUrl.searchParams.get('jobRecordsPerPage') || '6', 10);
+    const nextOffset = currentOffset + recordsPerPage;
+    if (!Number.isFinite(nextOffset) || nextOffset >= totalJobs) return null;
+
+    const nextUrl = new URL(window.location.href);
+    nextUrl.searchParams.set('jobOffset', String(nextOffset));
+    return nextUrl.toString();
 }

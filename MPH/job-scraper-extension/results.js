@@ -1,124 +1,797 @@
-// MPH Job Scraper - Results Script
-
-// ── Quick position/AOP from title alone (used immediately after initial scrape) ──
-// Mirrors the same keyword table in background.js so positions appear before Fetch Details.
-(function buildQuickMatcher() {
-  const SPECIALTY = new Set([
-    'Anesthesiologist','Cardiologist','Credentialed Veterinary Technician Specialist',
-    'DABVP Specialist','Dental Specialist','Dermatologist','ECC Specialist',
-    'Internal Medicine Specialist','Medical Oncologist','Neurologist & Neurosurgeon',
-    'Ophthalmologist','Radiation Oncologist','Radiologist','Surgeon','Theriogenologist'
-  ]);
-
-  function matchKeywords(t, d) {
-    d = d || '';
-    if (/associate veterinarian|associate vet\b/.test(t))    return 'Associate Veterinarian';
-    if (/medical lead veterinarian|medical lead vet\b/.test(t)) return 'Lead Veterinarian';
-    if (/medical director|medical lead/.test(t))              return 'Medical Director';
-    if (/lead veterinarian|lead vet\b/.test(t))              return 'Lead Veterinarian';
-    if (/criticalist|dacvecc|\becc specialist\b/.test(t) || /\becc\b/.test(t) ||
-        (t.includes('emergency') && t.includes('critical care'))) return 'ECC Specialist';
-
-    const isTech = /\b(technician|technologist|vet\s+tech|lvt|cvt|rdvt|nurse)\b/.test(t) && !/technician specialist|\bvts\b/.test(t);
-    if (isTech) {
-      if (/anesthes/.test(t)||/anesthes/.test(d))                return 'Anesthesiologist';
-      if (/dental|dentist/.test(t)||/dental|dentist/.test(d))    return 'Dental Specialist';
-      if (/criticalist|critical care|\becc\b/.test(t))           return 'ECC Specialist';
-      if (/radiation.*oncol|oncol.*radiation/.test(t))           return 'Radiation Oncologist';
-      if (/oncol/.test(t)&&!/radiation/.test(t))                 return 'Medical Oncologist';
-      if (/cardiolog/.test(t)||/cardiolog/.test(d))              return 'Cardiologist';
-      if (/neurolog|neurosurg/.test(t))                          return 'Neurologist & Neurosurgeon';
-      if (/dermatolog/.test(t))                                  return 'Dermatologist';
-      if (/ophthalmolog/.test(t))                                return 'Ophthalmologist';
-      if (/surgery|surgical|surgeon/.test(t)&&!/neurosurg/.test(t)) return 'Surgeon';
-      if (/radiolog|diagnostic imaging/.test(t))                 return 'Radiologist';
-      if (/internal medicine/.test(t))                           return 'Internal Medicine Specialist';
-      return 'Credentialed Veterinary Technician Specialist';
-    }
-    if (/technician specialist|\bvts\b/.test(t)) return 'Credentialed Veterinary Technician Specialist';
-
-    if (/dacvim/.test(t)&&/oncol/.test(t))              return 'Medical Oncologist';
-    if (/dacvr/.test(t)&&/(radiation|-ro)/.test(t))     return 'Radiation Oncologist';
-    if (/dacvim/.test(t)&&/(neurolog|neurosurg)/.test(t)) return 'Neurologist & Neurosurgeon';
-    if (/dacvim/.test(t)&&/cardiolog/.test(t))           return 'Cardiologist';
-    if (/dacvim/.test(t))                                return 'Internal Medicine Specialist';
-    if (/davdc|avdc/.test(t))                            return 'Dental Specialist';
-    if (/dacvd/.test(t))                                 return 'Dermatologist';
-    if (/dacvs|\bacvs\b/.test(t))                        return 'Surgeon';
-    if (/dacvr/.test(t))                                 return 'Radiologist';
-    if (/dacvo/.test(t))                                 return 'Ophthalmologist';
-    if (/dacvaa|dacva/.test(t))                          return 'Anesthesiologist';
-    if (/\bdact\b/.test(t))                              return 'Theriogenologist';
-    if (/\bdabvp\b/.test(t))                             return 'DABVP Specialist';
-
-    if (/radiation oncolog/.test(t))                                         return 'Radiation Oncologist';
-    if (/oncolog/.test(t))                                                   return 'Medical Oncologist';
-    if (/cardiolog/.test(t))                                                 return 'Cardiologist';
-    if (/neurolog|neurosurg/.test(t))                                        return 'Neurologist & Neurosurgeon';
-    if (/dermatolog/.test(t))                                                return 'Dermatologist';
-    if (/ophthalmolog/.test(t))                                              return 'Ophthalmologist';
-    if (/anesthesiolog/.test(t))                                             return 'Anesthesiologist';
-    if (/theriogenolog/.test(t))                                             return 'Theriogenologist';
-    if (/internist|internal medicine/.test(t))                              return 'Internal Medicine Specialist';
-    if (/radiolog|diagnostic imaging/.test(t))                              return 'Radiologist';
-    if (/(dental|dentist|dentistry)/.test(t)&&!/assistant/.test(t))        return 'Dental Specialist';
-    if (/\bsurgeon\b/.test(t))                                              return 'Surgeon';
-    if (/(surgery|surgical)/.test(t)&&!/neurosurg|dental/.test(t))         return 'Surgeon';
-    if (/equine|bovine|large animal/.test(t)) return 'Equine/Bovine Veterinarian/Large Animal';
-    if (/\bavian\b|exotics/.test(t))          return 'Avian & Exotics Veterinarian / Associate Exotics';
-    if (/veterinarian|veterinary|\bdvm\b|relief|locum/.test(t)) return 'Associate Veterinarian';
-    return '';
-  }
-
-  window.quickPosition = function(jobTitle, dept) {
-    const t = (jobTitle||'').toLowerCase();
-    const d = (dept||'').toLowerCase();
-    if (/client service|receptionist|kennel|groomer|practice manager|hospital manager|billing|human resources|customer service|front desk|inventory|externship/.test(t)) return '';
-    return matchKeywords(t, d);
-  };
-
-  window.quickAOP = function(position, jobTitle, hospitalName) {
-    const t = (jobTitle||'').toLowerCase();
-    const h = (hospitalName||'').toLowerCase();
-    if (!position) {
-      if (/emergency/.test(t)||h.includes('emergency')) return 'Emergency Care';
-      if (/urgent care/.test(t)) return 'Urgent Care';
-      return '';
-    }
-    if (SPECIALTY.has(position)) return 'Specialty Care';
-    if (position === 'Medical Director') return 'General Practice Care';
-    if (position === 'Lead Veterinarian') return 'General Practice Care';
-    if (/emergency/.test(t)||h.includes('emergency')) return 'Emergency Care';
-    if (/urgent care/.test(t)) return 'Urgent Care';
-    if (/equine|bovine|large animal|avian|exotics/.test(t)) return 'General Practice Care / Emergency Care / Urgent Care';
-    return 'General Practice Care';
-  };
-})();
-
 let allJobs = [];
 let filteredJobs = [];
-let selectedIndexes = new Set();
+let selectedJobIndexes = new Set();
 let isGettingDescriptions = false;
 let isFetchingDetails = false;
-let currentJobIndex = 0;
-let detailsQueue = [];
+let isFetchingAddresses = false;
 let currentDetailsIndex = 0;
+let detailsQueue = [];
+let addressQueue = [];
+let currentAddressIndex = 0;
 let currentSort = { field: null, direction: 'asc' };
+let tableScrollSyncLocked = false;
+let tableResizeObserver = null;
+const DETAILS_ANALYSIS_DELAY_MS = 300;
+
+const EXCLUDED_JOB_TITLES = new Set([
+    'Payroll Coordinator',
+    'Marketing Analyst',
+    'Analyst, Product Insights',
+    'Marketing Automation Specialist',
+    'TEST Veterinarian',
+    'Senior Indirect Tax Analyst',
+    'TEST ONLY DO NOT SUBMIT',
+    'Data Scientist',
+    'Financial Analyst',
+    'Marketing Business Partner',
+    'Director, Indirect Tax',
+    'Tax Analyst',
+    'Division Vice President',
+    'Operations Analyst',
+    'Staff Accountant'
+].map(title => title.toLowerCase()));
+
+const SPECIALTY_POSITIONS = new Set([
+    'Anesthesiologist',
+    'Cardiologist',
+    'Credentialed Veterinary Technician Specialist',
+    'DABVP Specialist',
+    'Dental Specialist',
+    'Dermatologist',
+    'ECC Specialist',
+    'Internal Medicine Specialist',
+    'Medical Oncologist',
+    'Neurologist & Neurosurgeon',
+    'Ophthalmologist',
+    'Radiation Oncologist',
+    'Radiologist',
+    'Surgeon',
+    'Theriogenologist'
+]);
+
+const SPECIALTY_CERTIFICATIONS = [
+    'board certified',
+    'residency trained',
+    'diplomate',
+    'dacvecc',
+    'dacvim',
+    'dacvr',
+    'dacvs',
+    'dacvd',
+    'dacvo',
+    'dacvaa',
+    'dact',
+    'davdc',
+    'dabvp',
+    'acvs',
+    'acvim',
+    'vts'
+];
+
+const SPECIALTY_SERVICE_KEYWORDS = [
+    'oncology',
+    'cardiology',
+    'neurology',
+    'neurosurgery',
+    'dermatology',
+    'ophthalmology',
+    'anesthesia',
+    'radiology',
+    'diagnostic imaging',
+    'internal medicine',
+    'critical care',
+    'specialty hospital',
+    'specialty care'
+];
 
 document.addEventListener('DOMContentLoaded', async () => {
     await loadJobs();
     setupEventListeners();
+    setupBottomScrollbar();
     loadWebhookConfig();
 });
 
-// ==================== LOAD / RENDER ====================
+function normalizeWhitespace(value) {
+    return (value || '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeTitleForComparison(title) {
+    return normalizeWhitespace(title).toLowerCase();
+}
+
+function isExcludedJobTitle(title) {
+    return EXCLUDED_JOB_TITLES.has(normalizeTitleForComparison(title));
+}
+
+function isNonClinicalTitle(title) {
+    const normalized = normalizeTitleForComparison(title);
+    if (!normalized) return false;
+
+    return (
+        isExcludedJobTitle(title) ||
+        /client service|service representative|receptionist|kennel|groomer|grooming|practice manager|hospital manager|office manager|administrator|billing|human resources|patient care coordinator|client care coordinator|customer service|front desk|inventory|housekeeper|janitorial|externship|general job application|join our team|analyst|accountant|coordinator|marketing|tax|vice president|data scientist/.test(normalized)
+    );
+}
+
+function sanitizeJobs(jobs) {
+    return jobs.filter(job => !isExcludedJobTitle(job.jobTitle));
+}
+
+function extractDetailsFromDescription(positionTitle, descriptionText) {
+    function formatSalary(raw) {
+        if (!raw) return '';
+        const isHourly = /(?:per\s+)?(?:hour|hr|\/hr)/i.test(raw);
+        const amounts = [];
+        const amountRegex = /\$?([\d,]+(?:\.\d{2})?)\s*k?\b/gi;
+        let match;
+        while ((match = amountRegex.exec(raw)) !== null) {
+            let num = parseFloat(match[1].replace(/,/g, ''));
+            const afterMatch = raw.substring(match.index + match[0].length - 1, match.index + match[0].length + 1);
+            if (/k/i.test(match[0]) || /k/i.test(afterMatch)) {
+                num *= 1000;
+            }
+            if (num > 0) amounts.push(num);
+        }
+        if (amounts.length === 0) return raw;
+        const fmt = (n) => {
+            if (Number.isInteger(n)) return '$' + n.toLocaleString('en-US');
+            return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        };
+        const unit = isHourly ? 'per hour' : 'per year';
+        if (amounts.length >= 2) {
+            const min = Math.min(amounts[0], amounts[1]);
+            const max = Math.max(amounts[0], amounts[1]);
+            return `${fmt(min)}-${fmt(max)} ${unit}`;
+        }
+        return `${fmt(amounts[0])} ${unit}`;
+    }
+
+    function extractSalary(text) {
+        if (!text) return '';
+
+        const jsonLdMatch = text.match(/Salary Range:\s*([^\n]+)/i);
+        if (jsonLdMatch) {
+            return formatSalary(jsonLdMatch[1].trim());
+        }
+
+        const salaryPatterns = [
+            /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
+            /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
+            /(?:(?:pay|salary|compensation)\s+range)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
+            /(?:(?:pay|salary|compensation)\s+range)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
+            /(?:salary|compensation|pay)[:\s]+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual))?/i,
+            /(?:salary|compensation|pay)[:\s]+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual))?/i,
+            /\$[\d,]+(?:\.\d{2})?\s*[-–—]\s*\$[\d,]+(?:\.\d{2})?/i,
+            /\$[\d,]+(?:\.\d{2})?\s+to\s+\$[\d,]+(?:\.\d{2})?/i,
+            /\$[\d,]+\s*(?:\/k|k)\s*[-–—]+\s*\$?[\d,]+\s*(?:\/k|k)/i,
+            /\$[\d,]+\s*(?:\/k|k)?\s+to\s+\$?[\d,]+\s*(?:\/k|k)/i,
+            /(?:earn|earning)\s+\$[\d,]+(?:\.\d{2})?\s*(?:annually|per\s*year)?/i,
+            /\$[\d,]+(?:\.\d{2})?\s*(?:annually|per\s*year|per\s*annum)/i,
+            /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hour|hr|\/hr)/i
+        ];
+        for (const pattern of salaryPatterns) {
+            const match = text.match(pattern);
+            if (match) return formatSalary(match[0].trim());
+        }
+        return '';
+    }
+
+    function getIndustryCategory(text) {
+        const match = text.match(/Industry\/Category:\s*([^\n]+)/i);
+        return match ? match[1].trim() : '';
+    }
+
+    function extractQualificationsSection(text) {
+        const patterns = [
+            /(?:requirements?|qualifications?|what you'?ll need|what we'?re looking for|credentials?|must have|what we need)[:\s]*([\s\S]{0,800}?)(?=(?:benefits?|compensation|salary|about|our culture|location|equal|join us|why|facility|what we offer|ready to)[:\s])/i,
+            /(?:requirements?|qualifications?|what you'?ll need|what we'?re looking for|credentials?|must have|what we need)[:\s]*([\s\S]{0,500})/i
+        ];
+        for (const pattern of patterns) {
+            const match = text.match(pattern);
+            if (match) return match[1];
+        }
+        return null;
+    }
+
+    function determineAreaOfPractice(positionText, text) {
+        const title = positionText.toLowerCase();
+        const category = getIndustryCategory(text).toLowerCase();
+
+        if (title.includes('urgent care')) return 'Urgent Care';
+
+        if (category) {
+            if (category.includes('gen practice')) return 'General Practice Care';
+            if (category === 'veterinarian (er)' || category.includes('(er)')) return 'Emergency Care';
+            if (category.includes('specialty diplomate') || category.includes('surgeon diplomate')) return 'Specialty Care';
+        }
+
+        const specialtyPositionNames = [
+            'oncologist', 'cardiologist', 'neurologist', 'neurosurgeon',
+            'dermatologist', 'ophthalmologist', 'anesthesiologist', 'theriogenologist',
+            'radiologist', 'internist', 'criticalist', 'ecc specialist',
+            'oncology', 'cardiology', 'neurology', 'dermatology', 'ophthalmology',
+            'anesthesia', 'theriogenology', 'radiology'
+        ];
+        for (const sp of specialtyPositionNames) {
+            if (title.includes(sp)) return 'Specialty Care';
+        }
+
+        const specialtyCerts = [
+            'board certified', 'residency trained', 'residential trained',
+            'diplomate', 'dacvecc', 'dacvim', 'dacvr', 'dacvs', 'dacvd', 'dacvo', 'dacvaa',
+            'dact', 'davdc', 'dabvp', 'acvs', 'acvim'
+        ];
+        for (const cert of specialtyCerts) {
+            if (title.includes(cert)) return 'Specialty Care';
+        }
+
+        if (title.includes('specialist') && !title.includes('technician specialist')) return 'Specialty Care';
+        if (title.match(/\bsurgeon\b/) && !title.includes('neurosurgeon')) return 'Specialty Care';
+
+        const emergencyPatterns = [
+            /\bemergency\b/,
+            /\ber\b/,
+            /\ber vet\b/,
+            /\ber dvm\b/,
+            /\ber veterinarian\b/,
+            /\becc\b/
+        ];
+        if (emergencyPatterns.some(pattern => pattern.test(title))) {
+            return 'Emergency Care';
+        }
+
+        if (title.includes('equine') || title.includes('bovine') || title.includes('large animal') ||
+            title.includes('avian') || title.includes('exotics')) {
+            return 'General Practice Care / Emergency Care / Urgent Care';
+        }
+
+        const qualSection = extractQualificationsSection(text);
+        if (qualSection) {
+            const qualLower = qualSection.toLowerCase();
+            for (const cert of specialtyCerts) {
+                if (qualLower.includes(cert)) return 'Specialty Care';
+            }
+        }
+
+        if (text.match(/Veterinarian \(ER\)/i)) return 'Emergency Care';
+
+        return 'General Practice Care';
+    }
+
+    function matchPositionFromTitle(title) {
+        const t = title.toLowerCase();
+
+        if (t.includes('medical director')) return 'Medical Director';
+        if (t.includes('lead veterinarian') || t.includes('lead vet')) return 'Lead Veterinarian';
+        if (t.includes('neurologist') || t.includes('neurosurgeon') || t.includes('neurology')) return 'Neurologist & Neurosurgeon';
+        if (t.includes('dermatologist') || t.includes('dermatology')) return 'Dermatologist';
+        if (t.includes('cardiologist') || t.includes('cardiology')) return 'Cardiologist';
+        if (t.includes('oncologist') && t.includes('radiation')) return 'Radiation Oncologist';
+        if (t.includes('oncologist') || t.includes('oncology')) return 'Medical Oncologist';
+        if (t.includes('radiologist') || t.includes('diagnostic imaging') || t.includes('radiology')) return 'Radiologist';
+        if (t.includes('ophthalmologist') || t.includes('ophthalmology')) return 'Ophthalmologist';
+        if (t.includes('anesthesiologist') || t.includes('anesthesia')) return 'Anesthesiologist';
+        if (t.includes('theriogenologist') || t.includes('theriogenology')) return 'Theriogenologist';
+        if (t.includes('internist') || t.includes('internal medicine')) return 'Internal Medicine Specialist';
+        if (t.includes('criticalist') || t.match(/\becc\b/) || t.includes('emergency medicine')) return 'ECC Specialist';
+        if (t.includes('dabvp')) return 'DABVP Specialist';
+        if ((t.includes('dental') || t.includes('dentist') || t.includes('dentistry')) && !t.includes('assistant')) return 'Dental Specialist';
+        if ((t.includes('surgeon') || t.includes('surgery')) && !t.includes('neurosurgeon') && !t.includes('neurology') && !t.includes('dental') && !t.includes('dentistry')) return 'Surgeon';
+        if (t.includes('technician specialist') || (t.match(/\bvts\b/) && t.includes('specialist'))) return 'Credentialed Veterinary Technician Specialist';
+        if (t.includes('equine') || t.includes('bovine') || t.includes('large animal')) return 'Equine/Bovine Veterinarian/Large Animal';
+        if (t.includes('avian') || t.includes('exotics')) return 'Avian & Exotics Veterinarian / Associate Exotics';
+        if (t.includes('partner veterinarian')) return 'Partner Veterinarian';
+
+        return '';
+    }
+
+    function matchPositionFromQualifications(text) {
+        const qualSection = extractQualificationsSection(text);
+        if (!qualSection) return '';
+        const q = qualSection.toLowerCase();
+        if (q.includes('dacvecc')) return 'ECC Specialist';
+        if (q.includes('dacvim') && q.includes('oncology')) return 'Medical Oncologist';
+        if (q.includes('dacvr') && q.includes('radiation')) return 'Radiation Oncologist';
+        if (q.includes('dacvim') && q.includes('neurology')) return 'Neurologist & Neurosurgeon';
+        if (q.includes('dacvim') && q.includes('cardiology')) return 'Cardiologist';
+        if (q.includes('dacvim')) return 'Internal Medicine Specialist';
+        if (q.includes('davdc')) return 'Dental Specialist';
+        if (q.includes('dacvd')) return 'Dermatologist';
+        if (q.includes('dacvs') || q.includes('acvs')) return 'Surgeon';
+        if (q.includes('dacvr')) return 'Radiologist';
+        if (q.includes('dacvo')) return 'Ophthalmologist';
+        if (q.includes('dacvaa')) return 'Anesthesiologist';
+        if (q.includes('dact')) return 'Theriogenologist';
+        if (q.includes('dabvp')) return 'DABVP Specialist';
+        return '';
+    }
+
+    function validatePositionForAOP(position, aop) {
+        const validPositions = {
+            'Emergency Care': ['Associate Veterinarian'],
+            'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director', 'Partner Veterinarian'],
+            'Specialty Care': [
+                'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
+                'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
+                'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
+                'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
+                'Radiologist', 'Surgeon'
+            ],
+            'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
+        };
+
+        const aopParts = aop.split('/').map(s => s.trim());
+        for (const part of aopParts) {
+            const allowed = validPositions[part];
+            if (allowed && allowed.includes(position)) return position;
+        }
+
+        const hasKnownAOP = aopParts.some(part => validPositions[part]);
+        if (hasKnownAOP) return 'Associate Veterinarian';
+
+        const allValid = new Set(Object.values(validPositions).flat());
+        if (allValid.has(position)) return position;
+
+        return 'Associate Veterinarian';
+    }
+
+    function determinePosition(positionText, text, areaOfPractice) {
+        let position = matchPositionFromTitle(positionText);
+        if (!position && areaOfPractice === 'Specialty Care') {
+            position = matchPositionFromQualifications(text);
+        }
+        if (position) {
+            position = validatePositionForAOP(position, areaOfPractice);
+        }
+        if (position === 'Associate Veterinarian' && positionText.toLowerCase().includes('medical director')) {
+            position = 'Medical Director';
+        }
+        if (!position) position = 'Associate Veterinarian';
+        return position;
+    }
+
+    function extractLocations(text) {
+        const primaryText = text.split(/\bSimilar jobs\b/i)[0];
+        const locations = [];
+        const locationsSection = primaryText.match(/Locations:\n((?:\s*-\s*[^\n]+\n?)+)/i);
+        if (locationsSection) {
+            const locationLines = locationsSection[1].split('\n');
+            for (const line of locationLines) {
+                const trimmed = line.trim();
+                if (!trimmed.startsWith('-')) continue;
+                const parts = trimmed.replace(/^-\s*/, '').split(',').map(s => s.trim()).filter(Boolean);
+                if (parts.length >= 2) {
+                    const city = parts[0];
+                    let state = parts[1];
+                    if (state.length > 2) {
+                        const stateAbbrev = primaryText.match(new RegExp(`${city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')},\\s*([A-Z]{2})\\b`));
+                        if (stateAbbrev) {
+                            state = stateAbbrev[1];
+                        }
+                    }
+                    locations.push({ city, state, location: `${city}, ${state}` });
+                }
+            }
+        }
+
+        if (locations.length === 0) {
+            let searchText = primaryText.replace(/^Description\s*/i, '').replace(/^Position at\s*/i, '');
+            searchText = searchText.substring(0, 500);
+            const matches = searchText.matchAll(/\b([A-Za-z][\w\s.'()-]*[A-Za-z])\s*,\s*([A-Z]{2})\b/g);
+            for (const match of matches) {
+                const city = match[1].trim();
+                const state = match[2].trim();
+                const invalidWords = ['description', 'position', 'associate', 'veterinarian', 'hospital', 'care', 'center', 'clinic', 'location'];
+                if (!invalidWords.some(word => city.toLowerCase().includes(word)) && city.length > 1 && city.length < 50) {
+                    locations.push({ city, state, location: `${city}, ${state}` });
+                }
+            }
+        }
+
+        const uniqueLocations = [];
+        const seen = new Set();
+        for (const loc of locations) {
+            const key = `${loc.city}|${loc.state}`.toLowerCase();
+            if (!seen.has(key)) {
+                seen.add(key);
+                uniqueLocations.push(loc);
+            }
+        }
+
+        return uniqueLocations;
+    }
+
+    function extractHospitalName(text) {
+        const primaryText = text.split(/\bSimilar jobs\b/i)[0];
+
+        const hiringOrgMatch = primaryText.match(/Hiring Organization:\s*([^\n]+)/i);
+        if (hiringOrgMatch) {
+            return hiringOrgMatch[1].trim();
+        }
+
+        const positionAtMatch = primaryText.match(/Position at\s+((?:[\w'.&-]+\s+){1,8}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)|The\s+[A-Z][\w\s]+Service))/i);
+        if (positionAtMatch) {
+            return positionAtMatch[1].trim();
+        }
+
+        const hospitalMatch = primaryText.match(/at\s+((?:[\w'.&-]+\s+){1,5}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)|The\s+[A-Z][\w\s]+Service))\b/i);
+        if (hospitalMatch) {
+            return hospitalMatch[1].trim();
+        }
+
+        return '';
+    }
+
+    function extractJobType(text) {
+        if (!text) return 'Full-Time';
+        const lower = text.toLowerCase();
+
+        const empTypeMatch = lower.match(/employment type:\s*([^\n]+)/i);
+        if (empTypeMatch) {
+            const empType = empTypeMatch[1].trim().toLowerCase();
+            if (empType.includes('part') && empType.includes('full')) return 'Full-Time';
+            if (empType.includes('part')) return 'Part-Time';
+            return 'Full-Time';
+        }
+
+        const hasPartTime = /\bpart[\s-]?time\b/i.test(lower);
+        const hasFullTime = /\bfull[\s-]?time\b/i.test(lower);
+
+        if (hasPartTime && hasFullTime) return 'Full-Time';
+        if (hasPartTime) return 'Part-Time';
+        return 'Full-Time';
+    }
+
+    const salary = extractSalary(descriptionText);
+    const areaOfPractice = determineAreaOfPractice(positionTitle, descriptionText);
+    const position = determinePosition(positionTitle, descriptionText, areaOfPractice);
+    const locations = extractLocations(descriptionText);
+    const hospitalName = extractHospitalName(descriptionText);
+    const jobType = extractJobType(descriptionText);
+
+    return {
+        salary,
+        areaOfPractice,
+        position,
+        locations,
+        hospitalName,
+        jobType
+    };
+}
+
+function extractQualificationsSection(text) {
+    if (!text) return '';
+
+    const patterns = [
+        /(?:requirements?|qualifications?|what you'?ll need|what we'?re looking for|credentials?|must have|what we need)[:\s]*([\s\S]{0,800}?)(?=(?:benefits?|compensation|salary|about|our culture|location|equal|join us|why|facility|what we offer|ready to)[:\s])/i,
+        /(?:requirements?|qualifications?|what you'?ll need|what we'?re looking for|credentials?|must have|what we need)[:\s]*([\s\S]{0,500})/i
+    ];
+
+    for (const pattern of patterns) {
+        const match = text.match(pattern);
+        if (match) return match[1];
+    }
+
+    return text;
+}
+
+function extractStructuredMetadataValue(text, labels) {
+    for (const label of labels) {
+        const pattern = new RegExp(`^${label}:\\s*(.+)$`, 'im');
+        const match = text.match(pattern);
+        if (match) return normalizeWhitespace(match[1]);
+    }
+
+    return '';
+}
+
+function hasSpecialtyCertification(text) {
+    const lowerText = (text || '').toLowerCase();
+    return SPECIALTY_CERTIFICATIONS.some(keyword => lowerText.includes(keyword));
+}
+
+function countSpecialtySignals(text) {
+    const lowerText = (text || '').toLowerCase();
+    return SPECIALTY_SERVICE_KEYWORDS.reduce((count, keyword) => count + (lowerText.includes(keyword) ? 1 : 0), 0);
+}
+
+function matchPositionFromTitle(jobTitle) {
+    const title = (jobTitle || '').toLowerCase();
+
+    if (!title || isNonClinicalTitle(jobTitle)) return '';
+    if (/medical director|medical lead/.test(title)) return 'Medical Director';
+    if (/lead veterinarian|lead vet\b/.test(title)) return 'Lead Veterinarian';
+    if (/associate veterinarian|associate vet\b/.test(title)) return 'Associate Veterinarian';
+    if (/partner veterinarian/.test(title)) return 'Partner Veterinarian';
+    if (/criticalist|dacvecc|\becc specialist\b/.test(title) || (title.includes('emergency') && title.includes('critical care'))) return 'ECC Specialist';
+    if (/technician specialist|\bvts\b/.test(title)) return 'Credentialed Veterinary Technician Specialist';
+    if (/neurologist|neurosurgeon|neurology/.test(title)) return 'Neurologist & Neurosurgeon';
+    if (/dermatologist|dermatology/.test(title)) return 'Dermatologist';
+    if (/cardiologist|cardiology/.test(title)) return 'Cardiologist';
+    if (/radiation oncolog/.test(title)) return 'Radiation Oncologist';
+    if (/oncologist|oncology/.test(title)) return 'Medical Oncologist';
+    if (/radiologist|diagnostic imaging|radiology/.test(title)) return 'Radiologist';
+    if (/ophthalmologist|ophthalmology/.test(title)) return 'Ophthalmologist';
+    if (/anesthesiologist|anesthesia/.test(title)) return 'Anesthesiologist';
+    if (/theriogenologist|theriogenology/.test(title)) return 'Theriogenologist';
+    if (/internist|internal medicine/.test(title)) return 'Internal Medicine Specialist';
+    if (/\bdabvp\b/.test(title)) return 'DABVP Specialist';
+    if (/(dental|dentist|dentistry)/.test(title) && !/assistant/.test(title)) return 'Dental Specialist';
+    if ((/surgeon|surgery/.test(title)) && !/neurosurgeon|neurology|dental|dentistry/.test(title)) return 'Surgeon';
+    if (/equine|bovine|large animal/.test(title)) return 'Equine/Bovine Veterinarian/Large Animal';
+    if (/\bavian\b|exotics/.test(title)) return 'Avian & Exotics Veterinarian / Associate Exotics';
+    if (/veterinarian|veterinary|\bdvm\b|relief|locum/.test(title)) return 'Associate Veterinarian';
+
+    return '';
+}
+
+function matchPositionFromQualifications(descriptionText) {
+    const qualifications = extractQualificationsSection(descriptionText).toLowerCase();
+    if (!qualifications) return '';
+
+    if (qualifications.includes('dacvecc')) return 'ECC Specialist';
+    if (qualifications.includes('dacvim') && qualifications.includes('oncology')) return 'Medical Oncologist';
+    if (qualifications.includes('dacvr') && qualifications.includes('radiation')) return 'Radiation Oncologist';
+    if (qualifications.includes('dacvim') && qualifications.includes('neurology')) return 'Neurologist & Neurosurgeon';
+    if (qualifications.includes('dacvim') && qualifications.includes('cardiology')) return 'Cardiologist';
+    if (qualifications.includes('dacvim')) return 'Internal Medicine Specialist';
+    if (qualifications.includes('davdc') || qualifications.includes('avdc')) return 'Dental Specialist';
+    if (qualifications.includes('dacvd')) return 'Dermatologist';
+    if (qualifications.includes('dacvs') || qualifications.includes('acvs')) return 'Surgeon';
+    if (qualifications.includes('dacvr')) return 'Radiologist';
+    if (qualifications.includes('dacvo')) return 'Ophthalmologist';
+    if (qualifications.includes('dacvaa')) return 'Anesthesiologist';
+    if (qualifications.includes('dact')) return 'Theriogenologist';
+    if (qualifications.includes('dabvp')) return 'DABVP Specialist';
+
+    return '';
+}
+
+function validatePositionForAOP(position, aop) {
+    const validPositions = {
+        'Emergency Care': ['Associate Veterinarian'],
+        'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
+        'Specialty Care': [
+            'Anesthesiologist',
+            'Cardiologist',
+            'Credentialed Veterinary Technician Specialist',
+            'DABVP Specialist',
+            'Dental Specialist',
+            'Dermatologist',
+            'ECC Specialist',
+            'Internal Medicine Specialist',
+            'Medical Director',
+            'Medical Oncologist',
+            'Neurologist & Neurosurgeon',
+            'Ophthalmologist',
+            'Radiation Oncologist',
+            'Radiologist',
+            'Surgeon',
+            'Theriogenologist'
+        ],
+        'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
+    };
+
+    const aopParts = (aop || '').split('/').map(part => part.trim()).filter(Boolean);
+    for (const part of aopParts) {
+        const allowed = validPositions[part];
+        if (allowed && allowed.includes(position)) return position;
+    }
+
+    const hasKnownAOP = aopParts.some(part => validPositions[part]);
+    if (hasKnownAOP) return 'Associate Veterinarian';
+
+    const allKnownPositions = new Set(Object.values(validPositions).flat());
+    if (allKnownPositions.has(position)) return position;
+
+    return 'Associate Veterinarian';
+}
+
+function determineAreaOfPractice(jobTitle, descriptionText, hospitalName) {
+    const title = (jobTitle || '').toLowerCase();
+    const description = (descriptionText || '').toLowerCase();
+    const hospital = (hospitalName || '').toLowerCase();
+    const qualifications = extractQualificationsSection(descriptionText).toLowerCase();
+
+    if (isNonClinicalTitle(jobTitle)) return '';
+
+    const titlePosition = matchPositionFromTitle(jobTitle);
+    const qualificationsPosition = matchPositionFromQualifications(descriptionText);
+    const targetedSpecialtySignals = countSpecialtySignals([title, hospital, qualifications].join(' '));
+    const descriptionSpecialtySignals = countSpecialtySignals(description);
+
+    if (title.includes('urgent care') || hospital.includes('urgent care')) return 'Urgent Care';
+    if (SPECIALTY_POSITIONS.has(titlePosition) || SPECIALTY_POSITIONS.has(qualificationsPosition)) return 'Specialty Care';
+    if (hasSpecialtyCertification(`${title} ${qualifications}`)) return 'Specialty Care';
+    if ((title.includes('specialist') && !title.includes('technician specialist')) || /\bsurgeon\b/.test(title)) return 'Specialty Care';
+    if (
+        title.includes('emergency') ||
+        /\ber\b/.test(title) ||
+        title.includes('er vet') ||
+        title.includes('er dvm') ||
+        description.includes('veterinarian (er)')
+    ) {
+        return 'Emergency Care';
+    }
+    if (hospital.includes('emergency') && titlePosition !== 'Medical Director') return 'Emergency Care';
+    if (targetedSpecialtySignals > 0) return 'Specialty Care';
+    if ((description.includes('specialty hospital') || description.includes('specialty care')) && descriptionSpecialtySignals > 0) return 'Specialty Care';
+
+    if (titlePosition === 'Medical Director') {
+        if (targetedSpecialtySignals > 0 || hasSpecialtyCertification(descriptionText)) return 'Specialty Care';
+        if (title.includes('emergency') || hospital.includes('emergency')) return 'Emergency Care';
+        return 'General Practice Care';
+    }
+
+    if (
+        title.includes('equine') ||
+        title.includes('bovine') ||
+        title.includes('large animal') ||
+        title.includes('avian') ||
+        title.includes('exotics')
+    ) {
+        return 'General Practice Care / Emergency Care / Urgent Care';
+    }
+
+    if (description.includes('urgent care')) return 'Urgent Care';
+
+    return 'General Practice Care';
+}
+
+function determinePosition(jobTitle, descriptionText, areaOfPractice) {
+    if (isNonClinicalTitle(jobTitle)) return '';
+
+    const title = (jobTitle || '').toLowerCase();
+    let position = matchPositionFromTitle(jobTitle);
+
+    if (!position && areaOfPractice === 'Specialty Care') {
+        position = matchPositionFromQualifications(descriptionText);
+    }
+
+    if (position) {
+        position = validatePositionForAOP(position, areaOfPractice);
+    }
+
+    if (position === 'Associate Veterinarian' && title.includes('medical director')) {
+        position = 'Medical Director';
+    }
+
+    if (!position) {
+        position = 'Associate Veterinarian';
+    }
+
+    return position;
+}
+
+function formatSalary(raw) {
+    if (!raw) return '';
+
+    const isHourly = /(?:per\s+)?(?:hour|hr|\/hr)/i.test(raw);
+    const amounts = [];
+    const amountRegex = /\$?([\d,]+(?:\.\d{2})?)\s*k?\b/gi;
+    let match;
+
+    while ((match = amountRegex.exec(raw)) !== null) {
+        let amount = parseFloat(match[1].replace(/,/g, ''));
+        const suffix = raw.substring(match.index, match.index + match[0].length + 1);
+        if (/k/i.test(match[0]) || /k/i.test(suffix)) {
+            amount *= 1000;
+        }
+        if (amount > 0) amounts.push(amount);
+    }
+
+    if (amounts.length === 0) return normalizeWhitespace(raw);
+
+    const formatAmount = (value) => (
+        Number.isInteger(value)
+            ? `$${value.toLocaleString('en-US')}`
+            : `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    );
+
+    const unit = isHourly ? 'per hour' : 'per year';
+
+    if (amounts.length >= 2) {
+        const min = Math.min(amounts[0], amounts[1]);
+        const max = Math.max(amounts[0], amounts[1]);
+        return `${formatAmount(min)}-${formatAmount(max)} ${unit}`;
+    }
+
+    return `${formatAmount(amounts[0])} ${unit}`;
+}
+
+function extractSalary(descriptionText) {
+    const explicitSalary = extractStructuredMetadataValue(descriptionText, ['Salary Range', 'Salary', 'Base Salary']);
+    if (explicitSalary) return formatSalary(explicitSalary);
+
+    const salaryPatterns = [
+        /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
+        /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
+        /(?:(?:pay|salary|compensation)\s+range)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
+        /(?:(?:pay|salary|compensation)\s+range)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
+        /(?:salary|compensation|pay)[:\s]+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual))?/i,
+        /(?:salary|compensation|pay)[:\s]+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual))?/i,
+        /\$[\d,]+(?:\.\d{2})?\s*[-–—]\s*\$[\d,]+(?:\.\d{2})?/i,
+        /\$[\d,]+(?:\.\d{2})?\s+to\s+\$[\d,]+(?:\.\d{2})?/i,
+        /\$[\d,]+\s*(?:\/k|k)\s*[-–—]+\s*\$?[\d,]+\s*(?:\/k|k)/i,
+        /\$[\d,]+\s*(?:\/k|k)?\s+to\s+\$?[\d,]+\s*(?:\/k|k)/i,
+        /(?:earn|earning)\s+\$[\d,]+(?:\.\d{2})?\s*(?:annually|per\s*year)?/i,
+        /\$[\d,]+(?:\.\d{2})?\s*(?:annually|per\s*year|per\s*annum)/i,
+        /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hour|hr|\/hr)/i
+    ];
+
+    for (const pattern of salaryPatterns) {
+        const match = descriptionText.match(pattern);
+        if (match) return formatSalary(match[0].trim());
+    }
+
+    return '';
+}
+
+function normalizeJobType(rawValue) {
+    const value = normalizeWhitespace(rawValue);
+    const lowerValue = value.toLowerCase();
+
+    if (!value) return '';
+    if (/part[\s-]?time/.test(lowerValue)) return 'Part Time';
+    if (/full[\s-]?time/.test(lowerValue)) return 'Full Time';
+    if (/per[\s-]?diem/.test(lowerValue)) return 'Per Diem';
+    if (/relief/.test(lowerValue)) return 'Relief';
+    if (/locum/.test(lowerValue)) return 'Locum';
+    if (/contract/.test(lowerValue)) return 'Contract';
+    if (/temporary|temp\b/.test(lowerValue)) return 'Temporary';
+    if (/intern(ship)?/.test(lowerValue)) return 'Internship';
+
+    return value;
+}
+
+function extractJobType(descriptionText) {
+    const explicitType = extractStructuredMetadataValue(descriptionText, ['Employment Type', 'Job Type', 'Schedule']);
+    const normalizedExplicitType = normalizeJobType(explicitType);
+    if (normalizedExplicitType) return normalizedExplicitType;
+
+    const text = (descriptionText || '').toLowerCase();
+
+    if (/part[\s-]?time/.test(text) && !/full[\s-]?time/.test(text)) return 'Part Time';
+    if (/full[\s-]?time/.test(text)) return 'Full Time';
+    if (/per[\s-]?diem/.test(text)) return 'Per Diem';
+    if (/relief/.test(text)) return 'Relief';
+    if (/locum/.test(text)) return 'Locum';
+    if (/contract/.test(text)) return 'Contract';
+    if (/temporary|temp\b/.test(text)) return 'Temporary';
+    if (/intern(ship)?/.test(text)) return 'Internship';
+
+    return '';
+}
+
+function deriveDetailsFromDescription(job) {
+    const description = job.description || '';
+    const jobTitle = job.jobTitle || '';
+    const extracted = extractDetailsFromDescription(jobTitle, description);
+    const firstLocation = extracted.locations && extracted.locations.length > 0 ? extracted.locations[0] : null;
+
+    return {
+        areaOfPractice: extracted.areaOfPractice || job.areaOfPractice || '',
+        position: extracted.position || job.position || '',
+        salary: extracted.salary || job.salary || '',
+        jobType: extracted.jobType || job.jobType || 'Full-Time',
+        hospitalName: job.hospitalName || extracted.hospitalName || '',
+        city: job.city || firstLocation?.city || '',
+        state: job.state || firstLocation?.state || ''
+    };
+}
 
 async function loadJobs() {
     try {
         const data = await chrome.storage.local.get(['scrapedJobs']);
-        const jobs = data.scrapedJobs;
+        let jobs = data.scrapedJobs || [];
+        const sanitizedJobs = sanitizeJobs(jobs);
 
-        if (!jobs || jobs.length === 0) {
+        if (sanitizedJobs.length !== jobs.length) {
+            jobs = sanitizedJobs;
+            await chrome.storage.local.set({ scrapedJobs: jobs });
+        }
+
+        if (jobs.length === 0) {
             document.getElementById('noData').classList.remove('hidden');
             document.querySelector('.table-wrapper').classList.add('hidden');
             return;
@@ -126,16 +799,6 @@ async function loadJobs() {
 
         document.getElementById('noData').classList.add('hidden');
         document.querySelector('.table-wrapper').classList.remove('hidden');
-
-        // Fill in position/AOP from title for jobs that don't have them yet
-        jobs.forEach(job => {
-            if (!job.position) {
-                job.position = window.quickPosition(job.jobTitle, job.department || '');
-            }
-            if (!job.areaOfPractice) {
-                job.areaOfPractice = window.quickAOP(job.position, job.jobTitle, job.hospitalName || '');
-            }
-        });
 
         allJobs = jobs;
         filteredJobs = [...jobs];
@@ -145,7 +808,7 @@ async function loadJobs() {
         displayJobs(filteredJobs);
     } catch (error) {
         console.error('Error loading jobs:', error);
-        alert('Error loading jobs data');
+        alert('Error loading jobs data.');
     }
 }
 
@@ -163,32 +826,28 @@ function populateStateFilter() {
 
 function updateStats() {
     const duplicateIds = findDuplicateIds();
-    const duplicateCount = allJobs.filter(j => duplicateIds.has(j.jobId)).length;
-    const withDescCount = allJobs.filter(j => j.description).length;
+    const duplicateCount = allJobs.filter(job => duplicateIds.has(job.jobId)).length;
+    const withDescCount = allJobs.filter(job => job.description).length;
 
     document.getElementById('total-count').textContent = allJobs.length;
-    document.getElementById('selected-count').textContent = selectedIndexes.size;
+    document.getElementById('selected-count').textContent = selectedJobIndexes.size;
     document.getElementById('duplicate-count').textContent = duplicateCount;
     document.getElementById('with-desc-count').textContent = withDescCount;
 }
 
 function findDuplicateIds() {
-    const idCount = {};
+    const counts = {};
     allJobs.forEach(job => {
-        if (job.jobId) idCount[job.jobId] = (idCount[job.jobId] || 0) + 1;
+        if (job.jobId) counts[job.jobId] = (counts[job.jobId] || 0) + 1;
     });
-    const duplicates = new Set();
-    Object.entries(idCount).forEach(([id, count]) => {
-        if (count > 1) duplicates.add(id);
-    });
-    return duplicates;
+
+    return new Set(Object.keys(counts).filter(jobId => counts[jobId] > 1));
 }
 
 function displayJobs(jobs) {
     const tbody = document.getElementById('jobsTableBody');
     const tableWrapper = document.querySelector('.table-wrapper');
     const noResults = document.getElementById('noResults');
-
     tbody.innerHTML = '';
 
     if (jobs.length === 0) {
@@ -200,265 +859,159 @@ function displayJobs(jobs) {
     tableWrapper.classList.remove('hidden');
     noResults.classList.add('hidden');
 
-    const duplicateIds = findDuplicateIds();
-
     jobs.forEach((job, filteredIndex) => {
         const originalIndex = allJobs.indexOf(job);
-        const isDuplicate = duplicateIds.has(job.jobId);
-        const isSelected = selectedIndexes.has(filteredIndex);
-        const hasDescription = !!(job.description && job.description.length > 0);
-
-        const tr = document.createElement('tr');
-        tr.className = `${isDuplicate ? 'duplicate' : ''} ${isSelected ? 'selected' : ''}`.trim();
-        tr.dataset.originalIndex = originalIndex;
+        const isSelected = selectedJobIndexes.has(originalIndex);
+        const hasDescription = Boolean(job.description);
+        const row = document.createElement('tr');
+        row.dataset.originalIndex = originalIndex;
+        row.className = isSelected ? 'selected' : '';
 
         const descHtml = hasDescription
-            ? `<span class="description-preview" data-original-index="${originalIndex}" title="${escapeHtml(job.description.substring(0, 200))}">${escapeHtml(job.description.substring(0, 60))}...</span>`
+            ? `<span class="description-preview" data-original-index="${originalIndex}" title="${escapeHtml(job.description.substring(0, 200))}">${escapeHtml(job.description.substring(0, 80))}...</span>`
             : '<span class="badge badge-missing">Missing</span>';
 
-        tr.innerHTML = `
-            <td class="col-checkbox">
-                <input type="checkbox" class="job-checkbox" data-index="${filteredIndex}" ${isSelected ? 'checked' : ''}>
-            </td>
-            <td class="col-status">
-                ${isDuplicate
-                    ? '<span class="badge badge-duplicate">Duplicate</span>'
-                    : '<span class="badge badge-unique">Unique</span>'}
-            </td>
+        row.innerHTML = `
             <td class="col-num">${filteredIndex + 1}</td>
-            <td class="col-title"><strong><a href="${escapeHtml(job.link)}" target="_blank">${escapeHtml(job.jobTitle)}</a></strong></td>
-            <td class="col-jobid">${escapeHtml(job.jobId || 'N/A')}</td>
+            <td class="col-jobid">${escapeHtml(job.jobId || '')}</td>
+            <td class="col-title">${escapeHtml(job.jobTitle || '')}</td>
+            <td class="col-aop">${escapeHtml(job.areaOfPractice || '')}</td>
+            <td class="col-position">${escapeHtml(job.position || '')}</td>
+            <td class="col-address">${escapeHtml(job.streetAddress || '')}</td>
             <td class="col-city">${escapeHtml(job.city || '')}</td>
             <td class="col-state">${escapeHtml(job.state || '')}</td>
-            <td class="col-hospital">${escapeHtml(job.hospitalName || '')}</td>
-            <td class="col-address">${escapeHtml(job.streetAddress || '')}</td>
             <td class="col-zip">${escapeHtml(job.postalCode || '')}</td>
+            <td class="col-hospital">${escapeHtml(job.hospitalName || '')}</td>
             <td class="col-phone">${escapeHtml(job.phone || '')}</td>
-            <td class="col-website">${job.website ? `<a href="${escapeHtml(job.website)}" target="_blank" style="color:#38bdf8;font-size:11px;">Visit</a>` : ''}</td>
-            <td class="col-position">${escapeHtml(job.position || '')}</td>
-            <td class="col-aop">${escapeHtml(job.areaOfPractice || '')}</td>
+            <td class="col-website">${job.website ? `<a href="${escapeHtml(job.website)}" target="_blank">Visit</a>` : ''}</td>
             <td class="col-salary">${escapeHtml(job.salary || '')}</td>
             <td class="col-jobtype">${escapeHtml(job.jobType || '')}</td>
-            <td class="col-link"><a href="${escapeHtml(job.link)}" target="_blank" class="job-link-btn">View</a></td>
+            <td class="col-link">${job.link ? `<a href="${escapeHtml(job.link)}" target="_blank">Open</a>` : ''}</td>
             <td class="col-description">${descHtml}</td>
-            <td class="col-actions">
-                <button class="view-btn" data-original-index="${originalIndex}">View</button>
-            </td>
         `;
 
-        tbody.appendChild(tr);
+        row.addEventListener('click', (event) => {
+            if (event.target.closest('a, .description-preview')) return;
+            toggleRowSelection(originalIndex, row);
+        });
+
+        tbody.appendChild(row);
     });
 
-    // Checkbox listeners
-    document.querySelectorAll('.job-checkbox').forEach(cb => {
-        cb.addEventListener('change', (e) => {
-            const idx = parseInt(e.target.dataset.index);
-            if (e.target.checked) {
-                selectedIndexes.add(idx);
-            } else {
-                selectedIndexes.delete(idx);
-            }
-            const tr = e.target.closest('tr');
-            if (tr) tr.classList.toggle('selected', e.target.checked);
-            updateStats();
+    document.querySelectorAll('.description-preview').forEach(element => {
+        element.addEventListener('click', (event) => {
+            const index = parseInt(event.target.dataset.originalIndex, 10);
+            showJobDetails(allJobs[index]);
         });
     });
 
-    // Select-all header checkbox
-    document.getElementById('select-all-checkbox').checked = false;
-
-    // View button listeners
-    document.querySelectorAll('.view-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            const idx = parseInt(e.target.dataset.originalIndex);
-            showJobDetails(allJobs[idx]);
-        });
-    });
-
-    // Description preview click
-    document.querySelectorAll('.description-preview').forEach(el => {
-        el.addEventListener('click', (e) => {
-            const idx = parseInt(e.target.dataset.originalIndex);
-            showJobDetails(allJobs[idx]);
-        });
-    });
+    updateBottomScrollbar();
 }
 
-function updateRowInDOM(originalIndex, job) {
-    const row = document.querySelector(`tr[data-original-index="${originalIndex}"]`);
-    if (!row) return;
+function toggleRowSelection(index, rowElement) {
+    if (selectedJobIndexes.has(index)) selectedJobIndexes.delete(index);
+    else selectedJobIndexes.add(index);
 
-    const duplicateIds = findDuplicateIds();
-    const isDuplicate = duplicateIds.has(job.jobId);
-    const hasDescription = !!(job.description && job.description.length > 0);
-
-    // Update Status
-    const statusCell = row.querySelector('.col-status');
-    if (statusCell) {
-        statusCell.innerHTML = isDuplicate
-            ? '<span class="badge badge-duplicate">Duplicate</span>'
-            : '<span class="badge badge-unique">Unique</span>';
-    }
-    
-    // Update data cells
-    const cellMap = {
-        '.col-city': job.city || '',
-        '.col-state': job.state || '',
-        '.col-hospital': job.hospitalName || '',
-        '.col-address': job.streetAddress || '',
-        '.col-zip': job.postalCode || '',
-        '.col-phone': job.phone || '',
-        '.col-position': job.position || '',
-        '.col-aop': job.areaOfPractice || '',
-        '.col-salary': job.salary || '',
-        '.col-jobtype': job.jobType || ''
-    };
-
-    Object.entries(cellMap).forEach(([selector, value]) => {
-        const cell = row.querySelector(selector);
-        if (cell) cell.textContent = value;
-    });
-
-    // Update Website
-    const webCell = row.querySelector('.col-website');
-    if (webCell) {
-        webCell.innerHTML = job.website ? `<a href="${escapeHtml(job.website)}" target="_blank" style="color:#38bdf8;font-size:11px;">Visit</a>` : '';
-    }
-
-    // Update Description
-    const descCell = row.querySelector('.col-description');
-    if (descCell) {
-        descCell.innerHTML = hasDescription
-            ? `<span class="description-preview" data-original-index="${originalIndex}" title="${escapeHtml(job.description.substring(0, 200))}">${escapeHtml(job.description.substring(0, 60))}...</span>`
-            : '<span class="badge badge-missing">Missing</span>';
-        
-        // Re-attach listener if it's new
-        const preview = descCell.querySelector('.description-preview');
-        if (preview) {
-            preview.addEventListener('click', () => showJobDetails(job));
-        }
-    }
-    
-    // Update Row Class
-    row.className = `${isDuplicate ? 'duplicate' : ''} ${row.classList.contains('selected') ? 'selected' : ''}`.trim();
+    rowElement.classList.toggle('selected', selectedJobIndexes.has(index));
+    updateStats();
 }
-
-// ==================== EVENT LISTENERS ====================
 
 function setupEventListeners() {
-    // Search
     const searchInput = document.getElementById('searchInput');
     const clearSearchBtn = document.getElementById('clearSearch');
-    searchInput.addEventListener('input', (e) => {
-        clearSearchBtn.style.display = e.target.value ? 'flex' : 'none';
+    clearSearchBtn.innerHTML = '&times;';
+
+    searchInput.addEventListener('input', (event) => {
+        clearSearchBtn.style.display = event.target.value ? 'flex' : 'none';
         applyFilters();
     });
+
     clearSearchBtn.addEventListener('click', () => {
         searchInput.value = '';
         clearSearchBtn.style.display = 'none';
         applyFilters();
     });
 
-    // Filters
     document.getElementById('stateFilter').addEventListener('change', applyFilters);
     document.getElementById('statusFilter').addEventListener('change', applyFilters);
 
-    // Select-all header checkbox
-    document.getElementById('select-all-checkbox').addEventListener('change', (e) => {
-        if (e.target.checked) {
-            filteredJobs.forEach((_, i) => selectedIndexes.add(i));
-        } else {
-            selectedIndexes.clear();
-        }
-        displayJobs(filteredJobs);
-        updateStats();
+    document.querySelectorAll('.sortable').forEach(header => {
+        header.addEventListener('click', () => handleSort(header.dataset.sort));
     });
 
-    // Sorting
-    document.querySelectorAll('.sortable').forEach(th => {
-        th.addEventListener('click', () => handleSort(th.dataset.sort));
-    });
-
-    // Selection buttons
     document.getElementById('select-all-btn').addEventListener('click', () => {
-        filteredJobs.forEach((_, i) => selectedIndexes.add(i));
+        filteredJobs.forEach(job => selectedJobIndexes.add(allJobs.indexOf(job)));
         displayJobs(filteredJobs);
         updateStats();
     });
 
     document.getElementById('deselect-all-btn').addEventListener('click', () => {
-        selectedIndexes.clear();
+        selectedJobIndexes.clear();
         displayJobs(filteredJobs);
         updateStats();
     });
 
     document.getElementById('select-duplicates-btn').addEventListener('click', selectDuplicates);
-
-    // Action buttons
     document.getElementById('getDescriptionsBtn').addEventListener('click', getJobDescriptions);
     document.getElementById('fetchDetailsBtn').addEventListener('click', fetchDetails);
+    document.getElementById('fetchAddressesBtn').addEventListener('click', startFetchAddresses);
     document.getElementById('exportCSV').addEventListener('click', exportToCSV);
     document.getElementById('exportJSON').addEventListener('click', exportToJSON);
     document.getElementById('delete-selected-btn').addEventListener('click', deleteSelected);
     document.getElementById('clearData').addEventListener('click', clearData);
     document.getElementById('debug-salary-btn').addEventListener('click', debugMissingSalary);
 
-    // Webhook
     document.getElementById('toggle-webhook').addEventListener('click', () => {
         document.getElementById('webhook-config').classList.toggle('hidden');
         document.querySelector('.webhook-section').classList.toggle('expanded');
     });
+
     document.getElementById('save-webhook-btn').addEventListener('click', saveWebhookConfig);
     document.getElementById('send-webhook-btn').addEventListener('click', sendToWebhook);
-
-    // Modal
     document.getElementById('modal-close').addEventListener('click', closeModal);
     document.querySelector('.modal-overlay').addEventListener('click', closeModal);
 }
-
-// ==================== FILTERS & SORT ====================
 
 function applyFilters() {
     const searchTerm = document.getElementById('searchInput').value.toLowerCase().trim();
     const stateFilter = document.getElementById('stateFilter').value;
     const statusFilter = document.getElementById('statusFilter').value;
-
     const duplicateIds = findDuplicateIds();
 
     filteredJobs = allJobs.filter(job => {
-        // Search
-        const matchesSearch = !searchTerm ||
+        const matchesSearch =
+            !searchTerm ||
+            (job.jobId || '').toLowerCase().includes(searchTerm) ||
             (job.jobTitle || '').toLowerCase().includes(searchTerm) ||
-            (job.location || '').toLowerCase().includes(searchTerm) ||
+            (job.areaOfPractice || '').toLowerCase().includes(searchTerm) ||
+            (job.position || '').toLowerCase().includes(searchTerm) ||
+            (job.streetAddress || '').toLowerCase().includes(searchTerm) ||
             (job.city || '').toLowerCase().includes(searchTerm) ||
             (job.state || '').toLowerCase().includes(searchTerm) ||
+            (job.postalCode || '').toLowerCase().includes(searchTerm) ||
             (job.hospitalName || '').toLowerCase().includes(searchTerm) ||
+            (job.phone || '').toLowerCase().includes(searchTerm) ||
+            (job.website || '').toLowerCase().includes(searchTerm) ||
+            (job.salary || '').toLowerCase().includes(searchTerm) ||
+            (job.jobType || '').toLowerCase().includes(searchTerm) ||
+            (job.link || '').toLowerCase().includes(searchTerm) ||
             (job.description || '').toLowerCase().includes(searchTerm);
 
-        // State
         const matchesState = !stateFilter || job.state === stateFilter;
 
-        // Status
         let matchesStatus = true;
-        if (statusFilter === 'duplicates') {
-            matchesStatus = duplicateIds.has(job.jobId);
-        } else if (statusFilter === 'unique') {
-            matchesStatus = !duplicateIds.has(job.jobId);
-        } else if (statusFilter === 'with-description') {
-            matchesStatus = !!job.description;
-        } else if (statusFilter === 'no-description') {
-            matchesStatus = !job.description;
-        }
+        if (statusFilter === 'duplicates') matchesStatus = duplicateIds.has(job.jobId);
+        else if (statusFilter === 'unique') matchesStatus = !duplicateIds.has(job.jobId);
+        else if (statusFilter === 'with-description') matchesStatus = Boolean(job.description);
+        else if (statusFilter === 'no-description') matchesStatus = !job.description;
 
         return matchesSearch && matchesState && matchesStatus;
     });
 
-    // Reapply sort
     if (currentSort.field) {
         sortJobs(currentSort.field, currentSort.direction);
     }
 
-    selectedIndexes.clear();
     displayJobs(filteredJobs);
     updateStats();
 }
@@ -470,6 +1023,7 @@ function handleSort(field) {
         currentSort.field = field;
         currentSort.direction = 'asc';
     }
+
     sortJobs(field, currentSort.direction);
     updateSortIndicators();
     displayJobs(filteredJobs);
@@ -477,54 +1031,64 @@ function handleSort(field) {
 
 function sortJobs(field, direction) {
     filteredJobs.sort((a, b) => {
-        let aVal = (a[field] || '').toLowerCase();
-        let bVal = (b[field] || '').toLowerCase();
-        if (aVal < bVal) return direction === 'asc' ? -1 : 1;
-        if (aVal > bVal) return direction === 'asc' ? 1 : -1;
+        if (field === 'salary') {
+            const salaryValue = (value) => {
+                const match = (value || '').match(/\$([\d,]+(?:\.\d{2})?)/);
+                return match ? parseFloat(match[1].replace(/,/g, '')) : 0;
+            };
+
+            const difference = salaryValue(a[field]) - salaryValue(b[field]);
+            return direction === 'asc' ? difference : -difference;
+        }
+
+        const aValue = (a[field] || '').toString().toLowerCase();
+        const bValue = (b[field] || '').toString().toLowerCase();
+
+        if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return direction === 'asc' ? 1 : -1;
         return 0;
     });
 }
 
 function updateSortIndicators() {
-    document.querySelectorAll('.sortable').forEach(th => {
-        th.classList.remove('asc', 'desc');
-        if (th.dataset.sort === currentSort.field) {
-            th.classList.add(currentSort.direction);
+    document.querySelectorAll('.sortable').forEach(header => {
+        header.classList.remove('asc', 'desc');
+        if (header.dataset.sort === currentSort.field) {
+            header.classList.add(currentSort.direction);
         }
     });
 }
 
-// ==================== SELECTION ====================
-
 function selectDuplicates() {
     const duplicateIds = findDuplicateIds();
-    selectedIndexes.clear();
-    filteredJobs.forEach((job, index) => {
-        if (duplicateIds.has(job.jobId)) selectedIndexes.add(index);
+    selectedJobIndexes.clear();
+    filteredJobs.forEach(job => {
+        if (duplicateIds.has(job.jobId)) selectedJobIndexes.add(allJobs.indexOf(job));
     });
     displayJobs(filteredJobs);
     updateStats();
 }
 
 async function deleteSelected() {
-    if (selectedIndexes.size === 0) {
+    if (selectedJobIndexes.size === 0) {
         alert('No jobs selected.');
         return;
     }
-    if (!confirm(`Delete ${selectedIndexes.size} selected job(s)? This cannot be undone.`)) return;
 
-    const jobsToDelete = new Set(
-        Array.from(selectedIndexes).map(i => allJobs.indexOf(filteredJobs[i]))
-    );
-    allJobs = allJobs.filter((_, i) => !jobsToDelete.has(i));
+    if (isAnyBackgroundTaskRunning()) {
+        alert('Wait for the current task to finish before deleting jobs.');
+        return;
+    }
+
+    if (!confirm(`Delete ${selectedJobIndexes.size} selected job(s)? This cannot be undone.`)) return;
+
+    const toDelete = new Set(selectedJobIndexes);
+    allJobs = allJobs.filter((_, index) => !toDelete.has(index));
+    selectedJobIndexes.clear();
     await chrome.storage.local.set({ scrapedJobs: allJobs });
-
-    selectedIndexes.clear();
     populateStateFilter();
     applyFilters();
 }
-
-// ==================== GET DESCRIPTIONS ====================
 
 async function getJobDescriptions() {
     if (isGettingDescriptions) {
@@ -532,223 +1096,241 @@ async function getJobDescriptions() {
         return;
     }
 
+    if (isFetchingDetails || isFetchingAddresses) {
+        alert('Wait for the current task to finish before starting another one.');
+        return;
+    }
+
     const data = await chrome.storage.local.get(['scrapedJobs']);
     const jobs = data.scrapedJobs || [];
-    const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
+    const jobsWithoutDescription = jobs.filter(job => !job.description && job.link);
 
-    if (jobsWithoutDesc.length === 0) {
-        alert('All jobs already have descriptions!');
+    if (jobsWithoutDescription.length === 0) {
+        alert('All jobs already have descriptions.');
         return;
     }
 
     isGettingDescriptions = true;
-    currentJobIndex = 0;
-
-    const btn = document.getElementById('getDescriptionsBtn');
-    btn.disabled = true;
-    btn.textContent = 'Getting Descriptions...';
-
-    showProgress('Getting Descriptions', 0, jobsWithoutDesc.length);
-    processNextJob();
+    showProgress('Getting Descriptions', 0, jobsWithoutDescription.length);
+    processNextDescriptionJob();
 }
 
-async function processNextJob() {
+async function processNextDescriptionJob() {
     const data = await chrome.storage.local.get(['scrapedJobs']);
     const jobs = data.scrapedJobs || [];
-    const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
-    const totalOriginal = allJobs.filter(job => job.link).length;
-    const processed = totalOriginal - jobsWithoutDesc.length;
+    const jobsWithoutDescription = jobs.filter(job => !job.description && job.link);
+    const total = jobs.filter(job => job.link).length;
+    const completed = total - jobsWithoutDescription.length;
+    const button = document.getElementById('getDescriptionsBtn');
 
-    updateProgress(processed, totalOriginal);
+    button.disabled = true;
+    button.textContent = `Getting Descriptions... (${completed}/${total})`;
+    updateProgress(completed, total);
 
-    if (jobsWithoutDesc.length === 0) {
+    if (jobsWithoutDescription.length === 0) {
         isGettingDescriptions = false;
-        const btn = document.getElementById('getDescriptionsBtn');
-        btn.disabled = false;
-        btn.textContent = 'Get Descriptions';
+        button.disabled = false;
+        button.textContent = 'Get Descriptions';
         hideProgress();
-        alert('All descriptions have been fetched!');
+        alert('All descriptions have been fetched.');
         return;
     }
 
-    const job = jobsWithoutDesc[0];
-    const jobIndex = jobs.findIndex(j => j.link === job.link);
+    const job = jobsWithoutDescription[0];
+    const jobIndex = jobs.findIndex(item => item.link === job.link);
 
     try {
         const tab = await chrome.tabs.create({ url: job.link, active: false });
         chrome.runtime.sendMessage({
             action: 'scrapeJobDescription',
             tabId: tab.id,
-            jobIndex: jobIndex,
-            jobLink: job.link
+            jobIndex
         });
     } catch (error) {
-        console.error('Error opening tab for job:', error);
-        setTimeout(() => processNextJob(), 1500);
+        console.error('Error opening description tab:', error);
+        setTimeout(() => processNextDescriptionJob(), 500);
     }
 }
 
-// ==================== FETCH DETAILS ====================
-
-function fetchDetails() {
+async function fetchDetails() {
     if (isFetchingDetails) return;
 
-    const jobsToFetch = allJobs.map((job, index) => ({ job, index }))
-        .filter(item => !item.job.detailsFetched);
-
-    if (jobsToFetch.length === 0) {
-        if (confirm('All jobs already have details. Re-fetch for all jobs?')) {
-            detailsQueue = allJobs.map((job, index) => ({ job, index }));
-        } else return;
-    } else {
-        if (!confirm(`Fetch details for ${jobsToFetch.length} jobs by opening each job page. Continue?`)) return;
-        detailsQueue = jobsToFetch;
+    if (isGettingDescriptions || isFetchingAddresses) {
+        alert('Wait for the current task to finish before starting another one.');
+        return;
     }
 
-    currentDetailsIndex = 0;
+    const jobsWithDescriptions = allJobs
+        .map((job, index) => ({ job, index }))
+        .filter(item => item.job.description);
+
+    if (jobsWithDescriptions.length === 0) {
+        alert('No stored descriptions found. Run "Get Descriptions" first.');
+        return;
+    }
+
+    const jobsNeedingDetails = jobsWithDescriptions.filter(item => !item.job.detailsFetched);
+    if (jobsNeedingDetails.length === 0) {
+        if (!confirm('All jobs already have derived details. Recalculate them from descriptions?')) return;
+        detailsQueue = jobsWithDescriptions;
+    } else {
+        detailsQueue = jobsNeedingDetails;
+    }
+
     isFetchingDetails = true;
-
-    const btn = document.getElementById('fetchDetailsBtn');
-    btn.disabled = true;
-    btn.textContent = 'Fetching Details...';
-
-    showProgress('Fetching Details', 0, detailsQueue.length);
+    currentDetailsIndex = 0;
+    const button = document.getElementById('fetchDetailsBtn');
+    button.disabled = true;
+    button.textContent = 'Analyzing Descriptions...';
+    showProgress('Deriving Details From Stored Descriptions', 0, detailsQueue.length);
     processNextDetail();
 }
 
-function processNextDetail() {
+async function processNextDetail() {
     if (currentDetailsIndex >= detailsQueue.length) {
         finishDetailsFetching();
         return;
     }
-    const { job, index } = detailsQueue[currentDetailsIndex];
-    chrome.runtime.sendMessage({ action: 'fetchJobDetails', url: job.link, jobIndex: index });
+
+    const { index } = detailsQueue[currentDetailsIndex];
+    const job = allJobs[index];
+    const button = document.getElementById('fetchDetailsBtn');
+    button.textContent = `Analyzing... (${currentDetailsIndex + 1}/${detailsQueue.length})`;
+    updateProgress(currentDetailsIndex + 1, detailsQueue.length);
+
+    if (!job || !job.description) {
+        currentDetailsIndex++;
+        setTimeout(processNextDetail, DETAILS_ANALYSIS_DELAY_MS);
+        return;
+    }
+
+    const details = deriveDetailsFromDescription(job);
+    allJobs[index] = {
+        ...job,
+        ...details,
+        detailsFetched: true
+    };
+
+    await chrome.storage.local.set({ scrapedJobs: allJobs });
+    applyFilters();
+
+    currentDetailsIndex++;
+    setTimeout(processNextDetail, DETAILS_ANALYSIS_DELAY_MS);
 }
 
 function finishDetailsFetching() {
     isFetchingDetails = false;
-    const btn = document.getElementById('fetchDetailsBtn');
-    btn.disabled = false;
-    btn.textContent = 'Fetch Details';
-    hideProgress();
-    detailsQueue = [];
     currentDetailsIndex = 0;
-    alert('Details fetching completed!');
+    detailsQueue = [];
+    const button = document.getElementById('fetchDetailsBtn');
+    button.disabled = false;
+    button.textContent = 'Fetch Details';
+    hideProgress();
+    alert('Details fetched from stored descriptions.');
 }
 
-// ==================== FETCH ADDRESSES (Google Maps) ====================
+async function startFetchAddresses() {
+    if (isFetchingAddresses) {
+        alert('Already fetching addresses. Please wait...');
+        return;
+    }
 
-let isFetchingAddresses = false;
-let addressQueue = [];
-let currentAddressIndex = 0;
-
-document.getElementById('fetchAddressesBtn').addEventListener('click', async () => {
-    if (isFetchingAddresses) { showToast('Already fetching addresses. Please wait...'); return; }
+    if (isGettingDescriptions || isFetchingDetails) {
+        alert('Wait for the current task to finish before starting address fetch.');
+        return;
+    }
 
     const data = await chrome.storage.local.get(['scrapedJobs']);
     const jobs = data.scrapedJobs || [];
 
-    let jobsNeedingAddresses = jobs.map((job, index) => ({ job, index }))
+    addressQueue = jobs
+        .map((job, index) => ({ job, index }))
         .filter(item => item.job.hospitalName && (!item.job.streetAddress || !item.job.postalCode));
 
-    if (jobsNeedingAddresses.length === 0) {
+    if (addressQueue.length === 0) {
         if (!confirm('All jobs already have addresses. Re-fetch all?')) return;
-        jobsNeedingAddresses = jobs.map((job, index) => ({ job, index }))
+        addressQueue = jobs
+            .map((job, index) => ({ job, index }))
             .filter(item => item.job.hospitalName);
     }
 
-    if (jobsNeedingAddresses.length === 0) {
-        alert('No jobs with hospital names found. Run "Fetch Details" first.'); return;
+    if (addressQueue.length === 0) {
+        alert('No jobs with hospital names found.');
+        return;
     }
 
-    addressQueue = jobsNeedingAddresses;
-    currentAddressIndex = 0;
     isFetchingAddresses = true;
-
-    const btn = document.getElementById('fetchAddressesBtn');
-    btn.disabled = true;
-    btn.textContent = `Fetching Addresses... (0/${addressQueue.length})`;
-    showProgress('Fetching Street Addresses', 0, addressQueue.length);
-
+    currentAddressIndex = 0;
+    const button = document.getElementById('fetchAddressesBtn');
+    button.disabled = true;
+    button.textContent = `Fetching Addresses... (0/${addressQueue.length})`;
+    showProgress('Fetching Addresses', 0, addressQueue.length);
     processNextAddress();
-});
+}
 
 async function processNextAddress() {
     if (currentAddressIndex >= addressQueue.length) {
-        finishAddressFetching(); return;
+        finishAddressFetching();
+        return;
     }
 
     const { job, index } = addressQueue[currentAddressIndex];
-    const btn = document.getElementById('fetchAddressesBtn');
-    btn.textContent = `Fetching... (${currentAddressIndex + 1}/${addressQueue.length})`;
+    const button = document.getElementById('fetchAddressesBtn');
+    button.textContent = `Fetching Addresses... (${currentAddressIndex + 1}/${addressQueue.length})`;
     updateProgress(currentAddressIndex + 1, addressQueue.length);
 
     try {
-        // Build search: hospitalName + city + state
         const searchHospital = (job.hospitalName || '').trim();
-        const searchCity  = (job.city  || '').trim();
-        const searchState = (job.state || '').trim();
-        const searchLocation = [searchCity, searchState].filter(Boolean).join(', ');
-
-        if (!searchHospital) {
-            currentAddressIndex++;
-            setTimeout(processNextAddress, 500);
-            return;
-        }
-
+        const searchLocation = [job.city || '', job.state || ''].filter(Boolean).join(', ');
         const addressData = await fetchAddressFromGoogleMaps(searchHospital, searchLocation);
 
-        // Save back into storage
-        const freshData = await chrome.storage.local.get(['scrapedJobs']);
-        const freshJobs = freshData.scrapedJobs || [];
-
-        if (freshJobs[index]) {
-            if (addressData.streetAddress) freshJobs[index].streetAddress = addressData.streetAddress;
-            if (addressData.zipCode)       freshJobs[index].postalCode    = addressData.zipCode;
-            if (addressData.city)          freshJobs[index].city          = addressData.city;
-            if (addressData.state)         freshJobs[index].state         = addressData.state;
-            if (addressData.website)       freshJobs[index].website       = addressData.website;
-            if (addressData.phone)         freshJobs[index].phone         = addressData.phone;
-
-            await chrome.storage.local.set({ scrapedJobs: freshJobs });
-            allJobs = freshJobs;
-            updateRowInDOM(index, freshJobs[index]);
-            updateStats();
+        if (allJobs[index]) {
+            if (addressData.streetAddress) allJobs[index].streetAddress = addressData.streetAddress;
+            if (addressData.zipCode) allJobs[index].postalCode = addressData.zipCode;
+            if (addressData.city) allJobs[index].city = addressData.city;
+            if (addressData.state) allJobs[index].state = addressData.state;
+            if (addressData.website) allJobs[index].website = addressData.website;
+            if (addressData.phone) allJobs[index].phone = addressData.phone;
+            await chrome.storage.local.set({ scrapedJobs: allJobs });
+            applyFilters();
         }
-    } catch (err) {
-        console.error('Error fetching address:', err);
+    } catch (error) {
+        console.error('Error fetching address:', error);
     }
 
     currentAddressIndex++;
-    setTimeout(processNextAddress, 1500); // pace requests
+    setTimeout(processNextAddress, 1500);
 }
 
 function finishAddressFetching() {
     isFetchingAddresses = false;
-    const btn = document.getElementById('fetchAddressesBtn');
-    btn.disabled = false;
-    btn.textContent = '📍 Fetch Addresses';
-    hideProgress();
     addressQueue = [];
     currentAddressIndex = 0;
-    alert('Address fetching completed!');
+    const button = document.getElementById('fetchAddressesBtn');
+    button.disabled = false;
+    button.textContent = 'Fetch Addresses';
+    hideProgress();
+    alert('Address fetching completed.');
 }
 
-// Open a Maps tab, inject scraper, return address data
 function fetchAddressFromGoogleMaps(hospitalName, location) {
     const searchQuery = location ? `${hospitalName}, ${location}` : hospitalName;
     const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
 
-    function scrapeTab(url, label) {
+    function scrapeTab(url) {
         return new Promise((resolve) => {
             const timeout = setTimeout(() => {
                 resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
             }, 30000);
 
             chrome.tabs.create({ url, active: false }, (tab) => {
-                if (!tab) { clearTimeout(timeout); resolve({}); return; }
-                const tabId = tab.id;
+                if (!tab) {
+                    clearTimeout(timeout);
+                    resolve({});
+                    return;
+                }
 
+                const tabId = tab.id;
                 const listener = (updatedTabId, info) => {
                     if (updatedTabId !== tabId || info.status !== 'complete') return;
                     chrome.tabs.onUpdated.removeListener(listener);
@@ -760,15 +1342,14 @@ function fetchAddressFromGoogleMaps(hospitalName, location) {
                         }).then((results) => {
                             clearTimeout(timeout);
                             chrome.tabs.remove(tabId).catch(() => {});
-                            const d = results?.[0]?.result || {};
+                            const data = results?.[0]?.result || {};
                             resolve({
-                                streetAddress: d.streetAddress || '',
-                                zipCode:       d.zipCode       || '',
-                                city:          d.city          || '',
-                                state:         d.state         || '',
-                                fullAddress:   d.fullAddress   || '',
-                                website:       d.website       || '',
-                                phone:         d.phone         || ''
+                                streetAddress: data.streetAddress || '',
+                                zipCode: data.zipCode || '',
+                                city: data.city || '',
+                                state: data.state || '',
+                                website: data.website || '',
+                                phone: data.phone || ''
                             });
                         }).catch(() => {
                             clearTimeout(timeout);
@@ -777,305 +1358,207 @@ function fetchAddressFromGoogleMaps(hospitalName, location) {
                         });
                     }, 2000);
                 };
+
                 chrome.tabs.onUpdated.addListener(listener);
             });
         });
     }
 
-    return scrapeTab(mapsUrl, searchQuery).then(async (data) => {
-        // Retry with simplified name if first attempt failed
-        if (!data.streetAddress && !data.zipCode) {
-            const simplified = hospitalName
-                .replace(/&/g, 'and').replace(/[-–—()]/g, ' ').replace(/\s+/g, ' ').trim();
-            if (simplified !== hospitalName) {
-                const altQuery = location ? `${simplified}, ${location}` : simplified;
-                const altUrl = `https://www.google.com/maps/search/${encodeURIComponent(altQuery)}`;
-                return scrapeTab(altUrl, altQuery);
-            }
+    return scrapeTab(mapsUrl);
+}
+
+    chrome.runtime.onMessage.addListener((message) => {
+    if (message.action !== 'descriptionSaved') return;
+
+    chrome.storage.local.get(['scrapedJobs'], (data) => {
+        allJobs = sanitizeJobs(data.scrapedJobs || []);
+        applyFilters();
+
+        if (isGettingDescriptions) {
+            setTimeout(() => processNextDescriptionJob(), 300);
         }
-        return data;
     });
-}
-
-// ---- progress helpers (shared with fetch details) ----
-function showProgress(label, current, total) {
-    const sec = document.getElementById('progress-section');
-    if (sec) {
-        sec.style.display = 'block';
-        const lbl = document.getElementById('progress-label');
-        if (lbl) lbl.textContent = label;
-    }
-    updateProgress(current, total);
-}
-
-// Message listener from background.js
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === 'descriptionSaved') {
-        chrome.storage.local.get(['scrapedJobs'], (data) => {
-            const jobs = data.scrapedJobs || [];
-            allJobs = jobs;
-            // Update the row in DOM immediately
-            const jobIndex = message.jobIndex;
-            if (jobIndex !== undefined && jobs[jobIndex]) {
-                updateRowInDOM(jobIndex, jobs[jobIndex]);
-            } else {
-                applyFilters();
-            }
-            updateStats();
-
-            if (isGettingDescriptions) {
-                setTimeout(() => processNextJob(), 1500);
-            }
-        });
-    } else if (message.action === 'detailsFetched') {
-        const details = message.details || {};
-        const jobIndex = message.jobIndex;
-
-        chrome.storage.local.get(['scrapedJobs'], (result) => {
-            const jobs = result.scrapedJobs || [];
-            if (jobs[jobIndex]) {
-                if (details.hospitalName)  jobs[jobIndex].hospitalName  = details.hospitalName;
-                if (details.streetAddress) jobs[jobIndex].streetAddress = details.streetAddress;
-                if (details.city)          jobs[jobIndex].city          = details.city;
-                if (details.state)         jobs[jobIndex].state         = details.state;
-                if (details.postalCode)    jobs[jobIndex].postalCode    = details.postalCode;
-                if (details.jobType)       jobs[jobIndex].jobType       = details.jobType;
-                if (details.salary)        jobs[jobIndex].salary        = details.salary;
-                if (details.position)      jobs[jobIndex].position      = details.position;
-                if (details.areaOfPractice) jobs[jobIndex].areaOfPractice = details.areaOfPractice;
-                if (details.department)    jobs[jobIndex].department    = details.department;
-                jobs[jobIndex].detailsFetched = true;
-
-                chrome.storage.local.set({ scrapedJobs: jobs }, () => {
-                    allJobs = jobs;
-                    // Update the row in DOM immediately
-                    updateRowInDOM(jobIndex, jobs[jobIndex]);
-                    
-                    // Also update stats since duplicate status or description might have changed
-                    updateStats();
-
-                    if (isFetchingDetails) {
-                        currentDetailsIndex++;
-                        updateProgress(currentDetailsIndex, detailsQueue.length);
-
-                        if (currentDetailsIndex < detailsQueue.length) {
-                            setTimeout(() => processNextDetail(), 1500);
-                        } else {
-                            finishDetailsFetching();
-                        }
-                    }
-                });
-            }
-        });
-    }
 });
 
-// ==================== EXPORT ====================
-
 function exportToCSV() {
-    const jobsToExport = selectedIndexes.size > 0
-        ? Array.from(selectedIndexes).map(i => filteredJobs[i])
+    const jobsToExport = selectedJobIndexes.size > 0
+        ? allJobs.filter((_, index) => selectedJobIndexes.has(index))
         : allJobs;
 
     const headers = [
-        'Job Title', 'Job ID', 'City', 'State',
-        'Street Address', 'Postal Code', 'Phone', 'Website',
-        'Hospital', 'Position', 'Area of Practice', 'Salary',
-        'Job Type', 'Department', 'Link', 'Description'
+        'Serial Number',
+        'Job ID',
+        'Job Title',
+        'Area of Practice',
+        'Position',
+        'Street Address',
+        'City',
+        'State',
+        'Zip Code',
+        'Hospital Name',
+        'Phone',
+        'Website',
+        'Salary',
+        'Job Type',
+        'Job URL',
+        'Description'
     ];
 
-    const rows = jobsToExport.map(job => [
-        `"${escapeCSV(job.jobTitle)}"`,
+    const rows = jobsToExport.map((job, index) => [
+        `"${escapeCSV(index + 1)}"`,
         `"${escapeCSV(job.jobId)}"`,
+        `"${escapeCSV(job.jobTitle)}"`,
+        `"${escapeCSV(job.areaOfPractice)}"`,
+        `"${escapeCSV(job.position)}"`,
+        `"${escapeCSV(job.streetAddress)}"`,
         `"${escapeCSV(job.city)}"`,
         `"${escapeCSV(job.state)}"`,
-        `"${escapeCSV(job.streetAddress)}"`,
         `"${escapeCSV(job.postalCode)}"`,
+        `"${escapeCSV(job.hospitalName)}"`,
         `"${escapeCSV(job.phone)}"`,
         `"${escapeCSV(job.website)}"`,
-        `"${escapeCSV(job.hospitalName)}"`,
-        `"${escapeCSV(job.position)}"`,
-        `"${escapeCSV(job.areaOfPractice)}"`,
         `"${escapeCSV(job.salary)}"`,
         `"${escapeCSV(job.jobType)}"`,
-        `"${escapeCSV(job.department)}"`,
         `"${escapeCSV(job.link)}"`,
         `"${escapeCSV(job.description)}"`
     ].join(','));
 
-    const csvContent = [headers.join(','), ...rows].join('\n');
-    downloadFile(csvContent, 'mission-pet-health-jobs.csv', 'text/csv');
+    downloadFile([headers.join(','), ...rows].join('\n'), 'mission-pet-health-jobs.csv', 'text/csv');
 }
 
 function exportToJSON() {
-    const jobsToExport = selectedIndexes.size > 0
-        ? Array.from(selectedIndexes).map(i => filteredJobs[i])
+    const jobsToExport = selectedJobIndexes.size > 0
+        ? allJobs.filter((_, index) => selectedJobIndexes.has(index))
         : allJobs;
 
     downloadFile(JSON.stringify(jobsToExport, null, 2), 'mission-pet-health-jobs.json', 'application/json');
 }
 
-function escapeCSV(val) {
-    return (val || '').toString().replace(/"/g, '""');
+function escapeCSV(value) {
+    return (value || '').toString().replace(/"/g, '""');
 }
-
-// ==================== CLEAR DATA ====================
 
 function clearData() {
-    if (confirm('Are you sure you want to clear ALL scraped data? This cannot be undone.')) {
-        chrome.storage.local.remove(['scrapedJobs'], () => {
-            location.reload();
-        });
+    if (isAnyBackgroundTaskRunning()) {
+        alert('Wait for the current task to finish before clearing data.');
+        return;
     }
-}
 
-// ==================== WEBHOOK ====================
+    if (!confirm('Are you sure you want to clear all scraped data? This cannot be undone.')) return;
+
+    chrome.storage.local.remove(['scrapedJobs'], () => {
+        location.reload();
+    });
+}
 
 async function loadWebhookConfig() {
     const stored = await chrome.storage.local.get('mphWebhook');
-    if (stored.mphWebhook) {
-        document.getElementById('webhook-url-input').value = stored.mphWebhook.url || '';
-        document.getElementById('parent-client-input').value = stored.mphWebhook.parentClient || 'Mission Pet Health';
-    }
+    if (!stored.mphWebhook) return;
+
+    document.getElementById('webhook-url-input').value = stored.mphWebhook.url || '';
+    document.getElementById('parent-client-input').value = stored.mphWebhook.parentClient || 'Mission Pet Health';
 }
 
 async function saveWebhookConfig() {
     const url = document.getElementById('webhook-url-input').value;
     const parentClient = document.getElementById('parent-client-input').value;
     await chrome.storage.local.set({ mphWebhook: { url, parentClient } });
-    alert('Webhook configuration saved!');
+    alert('Webhook configuration saved.');
 }
 
 async function sendToWebhook() {
     const webhookUrl = document.getElementById('webhook-url-input').value;
     const parentClient = document.getElementById('parent-client-input').value || 'Mission Pet Health';
 
-    if (!webhookUrl || !isValidHttpUrl(webhookUrl)) {
+    if (!isValidHttpUrl(webhookUrl)) {
         alert('Please enter a valid webhook URL.');
         return;
     }
 
     const data = await chrome.storage.local.get(['scrapedJobs']);
-    const jobs = data.scrapedJobs;
-
-    if (!jobs || jobs.length === 0) {
+    const jobs = data.scrapedJobs || [];
+    if (jobs.length === 0) {
         alert('No jobs to send.');
         return;
     }
 
-    const jobsToSend = jobs.map(job => ({
+    const payload = jobs.map(job => ({
         parent_client: parentClient,
         aggregator: 'Mission Pet Health (Parent Client)',
-        job_title: job.jobTitle || '',
         job_id: job.jobId || '',
+        job_title: job.jobTitle || '',
+        area_of_practice: job.areaOfPractice || '',
+        position: job.position || '',
+        street_address: job.streetAddress || '',
         city: job.city || '',
         state: job.state || '',
-        street_address: job.streetAddress || '',
         postal_code: job.postalCode || '',
+        hospital: job.hospitalName || '',
         phone: job.phone || '',
         website: job.website || '',
-        hospital: job.hospitalName || '',
-        position: job.position || '',
-        area_of_practice: job.areaOfPractice || '',
         salary: job.salary || '',
         job_type: job.jobType || '',
-        department: job.department || '',
         url: job.link || '',
-        link: job.link || '',
         description: job.description || ''
     }));
 
-    const BATCH_SIZE = 50;
-    const totalBatches = Math.ceil(jobsToSend.length / BATCH_SIZE);
+    const sendButton = document.getElementById('send-webhook-btn');
+    sendButton.disabled = true;
+    sendButton.textContent = 'Sending...';
 
-    if (!confirm(`This will send ${jobsToSend.length} jobs in ${totalBatches} batch(es) of up to ${BATCH_SIZE}. Continue?`)) return;
+    try {
+        const response = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                source: 'Mission Pet Health Job Scraper',
+                parentClientName: parentClient,
+                timestamp: new Date().toISOString(),
+                data: payload
+            })
+        });
 
-    const sendBtn = document.getElementById('send-webhook-btn');
-    sendBtn.disabled = true;
-    sendBtn.textContent = 'Sending...';
-
-    showProgress('Sending Batches', 0, totalBatches);
-
-    const syncId = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
-    let successCount = 0;
-    let failCount = 0;
-
-    for (let i = 0; i < totalBatches; i++) {
-        const batch = jobsToSend.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
-        const batchNumber = i + 1;
-
-        const payload = {
-            source: 'Mission Pet Health Job Scraper',
-            parentClientName: parentClient,
-            syncId,
-            timestamp: new Date().toISOString(),
-            batchNumber,
-            totalBatches,
-            batchSize: batch.length,
-            totalRecords: jobsToSend.length,
-            data: batch
-        };
-
-        try {
-            const response = await fetch(webhookUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`Batch ${batchNumber}: Status ${response.status}. ${errorText}`);
-            }
-            successCount++;
-        } catch (error) {
-            console.error(`Batch ${batchNumber} error:`, error);
-            failCount++;
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
         }
 
-        updateProgress(batchNumber, totalBatches);
-        if (i < totalBatches - 1) await new Promise(r => setTimeout(r, 500));
+        alert(`Sent ${payload.length} jobs to the webhook.`);
+    } catch (error) {
+        console.error('Webhook error:', error);
+        alert(`Webhook failed: ${error.message}`);
+    } finally {
+        sendButton.disabled = false;
+        sendButton.textContent = 'Send to Webhook';
     }
-
-    hideProgress();
-    sendBtn.disabled = false;
-    sendBtn.textContent = 'Send';
-
-    alert(`Webhook send complete!\n\nTotal jobs: ${jobsToSend.length}\nBatches sent: ${successCount}/${totalBatches}\nFailed: ${failCount}`);
 }
 
-function isValidHttpUrl(string) {
+function isValidHttpUrl(value) {
     try {
-        const url = new URL(string);
+        const url = new URL(value);
         return url.protocol === 'http:' || url.protocol === 'https:';
     } catch (_) {
         return false;
     }
 }
 
-// ==================== MODAL ====================
-
 function showJobDetails(job) {
     document.getElementById('modal-title').textContent = job.jobTitle || 'Job Details';
-
     document.getElementById('modal-body').innerHTML = `
+        <p><strong>Serial Number:</strong> ${escapeHtml((filteredJobs.indexOf(job) + 1) || '')}</p>
         <p><strong>Job ID:</strong> ${escapeHtml(job.jobId || 'N/A')}</p>
-        <p><strong>Hospital:</strong> ${escapeHtml(job.hospitalName || 'N/A')}</p>
-        <hr>
-        <p><strong>Street Address:</strong> ${escapeHtml(job.streetAddress || '—')}</p>
-        <p><strong>City:</strong> ${escapeHtml(job.city || '—')}</p>
-        <p><strong>State:</strong> ${escapeHtml(job.state || '—')}</p>
-        <p><strong>Postal Code:</strong> ${escapeHtml(job.postalCode || '—')}</p>
-        <p><strong>Phone:</strong> ${escapeHtml(job.phone || '—')}</p>
-        <p><strong>Website:</strong> ${job.website ? `<a href="${escapeHtml(job.website)}" target="_blank" style="color:#38bdf8">${escapeHtml(job.website)}</a>` : '—'}</p>
-        <p><strong>Location:</strong> ${escapeHtml(job.location || '—')}</p>
-        <hr>
+        <p><strong>Job Title:</strong> ${escapeHtml(job.jobTitle || 'N/A')}</p>
         <p><strong>Area of Practice:</strong> ${escapeHtml(job.areaOfPractice || 'N/A')}</p>
         <p><strong>Position:</strong> ${escapeHtml(job.position || 'N/A')}</p>
+        <p><strong>Street Address:</strong> ${escapeHtml(job.streetAddress || 'N/A')}</p>
+        <p><strong>City:</strong> ${escapeHtml(job.city || 'N/A')}</p>
+        <p><strong>State:</strong> ${escapeHtml(job.state || 'N/A')}</p>
+        <p><strong>Zip Code:</strong> ${escapeHtml(job.postalCode || 'N/A')}</p>
+        <p><strong>Hospital Name:</strong> ${escapeHtml(job.hospitalName || 'N/A')}</p>
+        <p><strong>Phone:</strong> ${escapeHtml(job.phone || 'N/A')}</p>
+        <p><strong>Website:</strong> ${job.website ? `<a href="${escapeHtml(job.website)}" target="_blank">${escapeHtml(job.website)}</a>` : 'N/A'}</p>
         <p><strong>Salary:</strong> ${escapeHtml(job.salary || 'N/A')}</p>
         <p><strong>Job Type:</strong> ${escapeHtml(job.jobType || 'N/A')}</p>
-        <p><strong>Department:</strong> ${escapeHtml(job.department || 'N/A')}</p>
-        <p><strong>Link:</strong> <a href="${escapeHtml(job.link)}" target="_blank">${escapeHtml(job.link)}</a></p>
+        <p><strong>Job URL:</strong> ${job.link ? `<a href="${escapeHtml(job.link)}" target="_blank">${escapeHtml(job.link)}</a>` : 'N/A'}</p>
         <hr>
         <p><strong>Description:</strong></p>
         <pre>${escapeHtml(job.description || 'No description available.')}</pre>
@@ -1088,48 +1571,43 @@ function closeModal() {
     document.getElementById('modal').classList.add('hidden');
 }
 
-// ==================== DEBUG MISSING SALARY ====================
-
 async function debugMissingSalary() {
     const data = await chrome.storage.local.get(['scrapedJobs']);
     const jobs = data.scrapedJobs || [];
-    const noSalary = jobs.filter(j => !j.salary && j.description);
+    const noSalary = jobs.filter(job => !job.salary && job.description);
 
     if (noSalary.length === 0) {
-        alert('All jobs with descriptions already have a salary!');
+        alert('All jobs with descriptions already have a salary.');
         return;
     }
 
-    const salaryKeywords = /(\$[\d,]+|\bsalar|\bpay\b|\bpay\s|\bwage|\bcomp|\bhourly|\bannual|\bincome|\bearning)/gi;
-
-    let output = `MPH — Jobs Missing Salary (${noSalary.length} jobs)\n`;
+    const salaryKeywords = /(\$[\d,]+|\bsalar|\bpay\b|\bwage|\bcomp|\bhourly|\bannual|\bincome|\bearning)/gi;
+    let output = `MPH - Jobs Missing Salary (${noSalary.length} jobs)\n`;
     output += '='.repeat(70) + '\n\n';
 
-    noSalary.forEach((job, i) => {
-        output += `[${i + 1}] ${job.jobTitle || '(no title)'}\n`;
+    noSalary.forEach((job, index) => {
+        output += `[${index + 1}] ${job.jobTitle || '(no title)'}\n`;
         output += `    Job ID : ${job.jobId || ''}\n`;
         output += `    Link   : ${job.link || ''}\n`;
 
-        const desc = job.description || '';
-        const lines = desc.split('\n');
-        const salaryLines = lines.filter(l => salaryKeywords.test(l));
+        const lines = (job.description || '').split('\n');
+        const salaryLines = lines.filter(line => salaryKeywords.test(line));
         salaryKeywords.lastIndex = 0;
 
         if (salaryLines.length > 0) {
             output += `    --- Salary-related lines from description ---\n`;
-            salaryLines.forEach(l => { output += `    > ${l.trim()}\n`; });
+            salaryLines.forEach(line => { output += `    > ${line.trim()}\n`; });
         } else {
             output += `    --- No salary keywords found. First 600 chars of description ---\n`;
-            output += `    ${desc.substring(0, 600).replace(/\n/g, '\n    ')}\n`;
+            output += `    ${(job.description || '').substring(0, 600).replace(/\n/g, '\n    ')}\n`;
         }
+
         output += '\n' + '-'.repeat(70) + '\n\n';
     });
 
     downloadFile(output, 'mph-missing-salary-debug.txt', 'text/plain');
     alert(`Debug file created for ${noSalary.length} jobs missing salary.`);
 }
-
-// ==================== PROGRESS HELPERS ====================
 
 function showProgress(label, current, total) {
     const section = document.getElementById('progressSection');
@@ -1148,7 +1626,55 @@ function hideProgress() {
     document.getElementById('progressSection').classList.add('hidden');
 }
 
-// ==================== UTILITIES ====================
+function setupBottomScrollbar() {
+    const scrollWrapper = document.getElementById('tableScrollWrapper');
+    const bottomScrollbar = document.getElementById('tableBottomScrollbar');
+    const bottomScrollbarInner = document.getElementById('tableBottomScrollbarInner');
+    const table = document.getElementById('jobsTable');
+
+    if (!scrollWrapper || !bottomScrollbar || !bottomScrollbarInner || !table) return;
+
+    const syncScrollPositions = (source, target) => {
+        if (tableScrollSyncLocked) return;
+        tableScrollSyncLocked = true;
+        target.scrollLeft = source.scrollLeft;
+        requestAnimationFrame(() => {
+            tableScrollSyncLocked = false;
+        });
+    };
+
+    scrollWrapper.addEventListener('scroll', () => syncScrollPositions(scrollWrapper, bottomScrollbar));
+    bottomScrollbar.addEventListener('scroll', () => syncScrollPositions(bottomScrollbar, scrollWrapper));
+    window.addEventListener('resize', updateBottomScrollbar);
+
+    if (tableResizeObserver) {
+        tableResizeObserver.disconnect();
+    }
+
+    tableResizeObserver = new ResizeObserver(() => updateBottomScrollbar());
+    tableResizeObserver.observe(scrollWrapper);
+    tableResizeObserver.observe(table);
+
+    updateBottomScrollbar();
+}
+
+function updateBottomScrollbar() {
+    const scrollWrapper = document.getElementById('tableScrollWrapper');
+    const bottomScrollbar = document.getElementById('tableBottomScrollbar');
+    const bottomScrollbarInner = document.getElementById('tableBottomScrollbarInner');
+    const table = document.getElementById('jobsTable');
+    const tableWrapper = document.querySelector('.table-wrapper');
+
+    if (!scrollWrapper || !bottomScrollbar || !bottomScrollbarInner || !table || !tableWrapper) return;
+
+    bottomScrollbarInner.style.width = `${table.scrollWidth}px`;
+    const shouldShowScrollbar = !tableWrapper.classList.contains('hidden') && table.scrollWidth > scrollWrapper.clientWidth + 4;
+    bottomScrollbar.classList.toggle('hidden', !shouldShowScrollbar);
+
+    if (shouldShowScrollbar) {
+        bottomScrollbar.scrollLeft = scrollWrapper.scrollLeft;
+    }
+}
 
 function downloadFile(content, filename, contentType) {
     const blob = new Blob([content], { type: contentType });
@@ -1166,4 +1692,8 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     if (text) div.textContent = text;
     return div.innerHTML;
+}
+
+function isAnyBackgroundTaskRunning() {
+    return isGettingDescriptions || isFetchingDetails || isFetchingAddresses;
 }

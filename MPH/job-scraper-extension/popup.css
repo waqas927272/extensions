@@ -312,3 +312,11 @@ body {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
 }
+
+.status-message.success::before {
+    content: "\2713";
+}
+
+.status-message.error::before {
+    content: "\2715";
+}
