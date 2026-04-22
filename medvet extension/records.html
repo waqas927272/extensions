@@ -1,84 +1,37 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Scraped Records</title>
-  <link rel="stylesheet" type="text/css" href="records.css">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MedVet Job Records</title>
+  <link rel="stylesheet" href="records.css">
 </head>
 <body>
-  <div class="sidebar">
-    <div class="sidebar-header">
-      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M20 6h-4V4c0-1.11-.89-2-2-2h-4c-1.11 0-2 .89-2 2v2H4c-1.11 0-1.99.89-1.99 2L2 19c0 1.11.89 2 2 2h16c1.11 0 2-.89 2-2V8c0-1.11-.89-2-2-2zm-6 0h-4V4h4v2z" fill="currentColor"/>
-      </svg>
-      <h2>Job Scraper</h2>
-    </div>
-
-    <button id="getJobDescriptions" class="sidebar-btn">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" fill="currentColor"/>
-      </svg>
-      Get Job Descriptions
-    </button>
-
-    <button id="fetchDetailsBtn" class="sidebar-btn">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M11 17h2v-6h-2v6zm1-15C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zM11 9h2V7h-2v2z" fill="currentColor"/>
-      </svg>
-      Fetch Details
-    </button>
-
-    <button id="fetchAddressesBtn" class="sidebar-btn">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5S10.62 6.5 12 6.5s2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="currentColor"/>
-      </svg>
-      Fetch Addresses
-    </button>
-
-    <div class="button-container">
-      <button id="downloadCsv" class="sidebar-btn btn-success">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M19 12v7H5v-7H3v7c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2v-7h-2zm-6 .67l2.59-2.58L17 11.5l-5 5-5-5 1.41-1.41L11 12.67V3h2v9.67z" fill="currentColor"/>
-        </svg>
-        Download CSV
-      </button>
-
-      <button id="clearRecords" class="sidebar-btn btn-danger">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" fill="currentColor"/>
-        </svg>
-        Clear Records
-      </button>
-
-      <div class="webhook-section">
-        <label for="webhookUrlInput">Webhook URL:</label>
-        <input type="text" id="webhookUrlInput" placeholder="Enter webhook URL">
+  <div class="header">
+    <span class="version-tag">v1.0</span>
+    <div class="header-content">
+      <div class="header-left">
+        <div class="logo-icon">MV</div>
+        <div>
+          <h1>Scraped Job Records</h1>
+          <p>MedVet Job Listings</p>
+        </div>
       </div>
-
-      <button id="sendToWebhook" class="sidebar-btn btn-purple">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill="currentColor"/>
-        </svg>
-        Send to Webhook
-      </button>
-    </div>
-
-    <div class="progress-section hidden" id="progressSection">
-      <h3>Progress</h3>
-      <div class="progress-bar-container">
-        <div class="progress-bar" id="progressBar"></div>
+      <div class="stats-badge">
+        <strong id="recordCount">0</strong>
+        <span>Jobs Found</span>
       </div>
-      <span class="progress-text" id="progressText">0 / 0</span>
     </div>
   </div>
 
-  <div class="main-content">
-    <div class="page-header">
-      <div>
-        <h1>Scraped Job Records</h1>
-        <p class="subtitle">Manage and export your scraped job listings</p>
-      </div>
-      <div class="record-count">
-        <span id="recordCount">0</span> Records
+  <div class="container">
+    <div class="webhook-bar">
+      <div class="webhook-row">
+        <label for="webhookUrlInput">Webhook URL:</label>
+        <div class="webhook-input-group">
+          <input type="text" id="webhookUrlInput" placeholder="Enter webhook URL">
+          <button id="sendToWebhook" class="btn btn-primary">Send to Webhook</button>
+        </div>
       </div>
     </div>
 
@@ -89,12 +42,12 @@
       <button id="clearSelectionBtn" class="sel-btn sel-btn-gray">Clear Selection</button>
     </div>
 
-    <div class="search-filter-bar">
+    <div class="toolbar">
       <div class="search-box">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z" fill="currentColor"/>
+        <svg viewBox="0 0 24 24" fill="none">
+          <path d="M15.5 14h-.79l-.28-.27A6.5 6.5 0 1 0 14 14l.27.28v.79L20 21l1-1-5.5-6zM9.5 14A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z" fill="currentColor"/>
         </svg>
-        <input type="text" id="searchInput" placeholder="Search by title, city, state, or position...">
+        <input type="text" id="searchInput" placeholder="Search by title, city, state, position, hospital...">
       </div>
 
       <div class="filter-controls">
@@ -110,53 +63,51 @@
       </div>
     </div>
 
+    <div class="button-group">
+      <button id="getJobDescriptions" class="btn btn-primary">Get Job Descriptions</button>
+      <button id="fetchDetailsBtn" class="btn btn-primary">Fetch Details</button>
+      <button id="fetchAddressesBtn" class="btn btn-primary">Fetch Addresses</button>
+      <button id="downloadCsv" class="btn btn-success">Download CSV</button>
+      <button id="clearRecords" class="btn btn-danger">Clear Records</button>
+    </div>
+
+    <div id="progressSection" class="progress-section hidden">
+      <div class="progress-info">
+        <span class="progress-label">Progress</span>
+        <span class="progress-text" id="progressText">0 / 0</span>
+      </div>
+      <div class="progress-bar-container">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+    </div>
+
     <div class="table-container">
-      <table id="recordsTable">
-        <thead>
-          <tr>
-            <th class="col-select"><input type="checkbox" id="selectAllCheckbox" title="Select / deselect all visible"></th>
-            <th class="sortable" data-column="title">
-              Title
-              <span class="sort-icon">⇅</span>
-            </th>
-            <th>Job ID</th>
-            <th class="sortable" data-column="areaOfPractice">
-              Area of Practice
-              <span class="sort-icon">⇅</span>
-            </th>
-            <th class="sortable" data-column="position">
-              Position
-              <span class="sort-icon">⇅</span>
-            </th>
-            <th>Salary</th>
-            <th>Job Type</th>
-            <th class="sortable" data-column="hospitalName">
-              Hospital Name
-              <span class="sort-icon">⇅</span>
-            </th>
-            <th class="sortable" data-column="city">
-              City
-              <span class="sort-icon">⇅</span>
-            </th>
-            <th class="sortable" data-column="state">
-              State
-              <span class="sort-icon">⇅</span>
-            </th>
-            <th>Street Address</th>
-            <th>Zip Code</th>
-            <th>Phone</th>
-            <th>Website</th>
-            <th>Link</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-        </tbody>
-      </table>
+      <div class="table-scroll-wrapper">
+        <table id="recordsTable">
+          <thead>
+            <tr>
+              <th class="col-select"><input type="checkbox" id="selectAllCheckbox" title="Select / deselect all visible"></th>
+              <th class="sortable" data-column="title">Title <span class="sort-icon">⇅</span></th>
+              <th>Job ID</th>
+              <th class="sortable" data-column="areaOfPractice">Area of Practice <span class="sort-icon">⇅</span></th>
+              <th class="sortable" data-column="position">Position <span class="sort-icon">⇅</span></th>
+              <th>Salary</th>
+              <th>Job Type</th>
+              <th class="sortable" data-column="hospitalName">Hospital Name <span class="sort-icon">⇅</span></th>
+              <th class="sortable" data-column="city">City <span class="sort-icon">⇅</span></th>
+              <th class="sortable" data-column="state">State <span class="sort-icon">⇅</span></th>
+              <th>Street Address</th>
+              <th>Zip Code</th>
+              <th>Phone</th>
+              <th>Website</th>
+              <th>Link</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
       <div id="emptyState" class="empty-state">
-        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" fill="currentColor" opacity="0.3"/>
-        </svg>
         <p>No records found</p>
         <span>Start scraping to see job listings here</span>
       </div>

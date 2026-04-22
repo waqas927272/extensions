@@ -226,19 +226,19 @@ function displayJobs(jobs) {
                     : '<span class="badge badge-unique">Unique</span>'}
             </td>
             <td class="col-num">${filteredIndex + 1}</td>
-            <td><strong><a href="${escapeHtml(job.link)}" target="_blank">${escapeHtml(job.jobTitle)}</a></strong></td>
+            <td class="col-title"><strong><a href="${escapeHtml(job.link)}" target="_blank">${escapeHtml(job.jobTitle)}</a></strong></td>
             <td class="col-jobid">${escapeHtml(job.jobId || 'N/A')}</td>
-            <td>${escapeHtml(job.city || '')}</td>
-            <td>${escapeHtml(job.state || '')}</td>
-            <td>${escapeHtml(job.hospitalName || '')}</td>
-            <td>${escapeHtml(job.streetAddress || '')}</td>
-            <td>${escapeHtml(job.postalCode || '')}</td>
-            <td>${escapeHtml(job.phone || '')}</td>
-            <td>${job.website ? `<a href="${escapeHtml(job.website)}" target="_blank" style="color:#38bdf8;font-size:11px;">Visit</a>` : ''}</td>
-            <td>${escapeHtml(job.position || '')}</td>
-            <td>${escapeHtml(job.areaOfPractice || '')}</td>
-            <td>${escapeHtml(job.salary || '')}</td>
-            <td>${escapeHtml(job.jobType || '')}</td>
+            <td class="col-city">${escapeHtml(job.city || '')}</td>
+            <td class="col-state">${escapeHtml(job.state || '')}</td>
+            <td class="col-hospital">${escapeHtml(job.hospitalName || '')}</td>
+            <td class="col-address">${escapeHtml(job.streetAddress || '')}</td>
+            <td class="col-zip">${escapeHtml(job.postalCode || '')}</td>
+            <td class="col-phone">${escapeHtml(job.phone || '')}</td>
+            <td class="col-website">${job.website ? `<a href="${escapeHtml(job.website)}" target="_blank" style="color:#38bdf8;font-size:11px;">Visit</a>` : ''}</td>
+            <td class="col-position">${escapeHtml(job.position || '')}</td>
+            <td class="col-aop">${escapeHtml(job.areaOfPractice || '')}</td>
+            <td class="col-salary">${escapeHtml(job.salary || '')}</td>
+            <td class="col-jobtype">${escapeHtml(job.jobType || '')}</td>
             <td class="col-link"><a href="${escapeHtml(job.link)}" target="_blank" class="job-link-btn">View</a></td>
             <td class="col-description">${descHtml}</td>
             <td class="col-actions">
@@ -282,6 +282,65 @@ function displayJobs(jobs) {
             showJobDetails(allJobs[idx]);
         });
     });
+}
+
+function updateRowInDOM(originalIndex, job) {
+    const row = document.querySelector(`tr[data-original-index="${originalIndex}"]`);
+    if (!row) return;
+
+    const duplicateIds = findDuplicateIds();
+    const isDuplicate = duplicateIds.has(job.jobId);
+    const hasDescription = !!(job.description && job.description.length > 0);
+
+    // Update Status
+    const statusCell = row.querySelector('.col-status');
+    if (statusCell) {
+        statusCell.innerHTML = isDuplicate
+            ? '<span class="badge badge-duplicate">Duplicate</span>'
+            : '<span class="badge badge-unique">Unique</span>';
+    }
+    
+    // Update data cells
+    const cellMap = {
+        '.col-city': job.city || '',
+        '.col-state': job.state || '',
+        '.col-hospital': job.hospitalName || '',
+        '.col-address': job.streetAddress || '',
+        '.col-zip': job.postalCode || '',
+        '.col-phone': job.phone || '',
+        '.col-position': job.position || '',
+        '.col-aop': job.areaOfPractice || '',
+        '.col-salary': job.salary || '',
+        '.col-jobtype': job.jobType || ''
+    };
+
+    Object.entries(cellMap).forEach(([selector, value]) => {
+        const cell = row.querySelector(selector);
+        if (cell) cell.textContent = value;
+    });
+
+    // Update Website
+    const webCell = row.querySelector('.col-website');
+    if (webCell) {
+        webCell.innerHTML = job.website ? `<a href="${escapeHtml(job.website)}" target="_blank" style="color:#38bdf8;font-size:11px;">Visit</a>` : '';
+    }
+
+    // Update Description
+    const descCell = row.querySelector('.col-description');
+    if (descCell) {
+        descCell.innerHTML = hasDescription
+            ? `<span class="description-preview" data-original-index="${originalIndex}" title="${escapeHtml(job.description.substring(0, 200))}">${escapeHtml(job.description.substring(0, 60))}...</span>`
+            : '<span class="badge badge-missing">Missing</span>';
+        
+        // Re-attach listener if it's new
+        const preview = descCell.querySelector('.description-preview');
+        if (preview) {
+            preview.addEventListener('click', () => showJobDetails(job));
+        }
+    }
+    
+    // Update Row Class
+    row.className = `${isDuplicate ? 'duplicate' : ''} ${row.classList.contains('selected') ? 'selected' : ''}`.trim();
 }
 
 // ==================== EVENT LISTENERS ====================
@@ -653,7 +712,7 @@ async function processNextAddress() {
 
             await chrome.storage.local.set({ scrapedJobs: freshJobs });
             allJobs = freshJobs;
-            applyFilters();
+            updateRowInDOM(index, freshJobs[index]);
             updateStats();
         }
     } catch (err) {
@@ -755,8 +814,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         chrome.storage.local.get(['scrapedJobs'], (data) => {
             const jobs = data.scrapedJobs || [];
             allJobs = jobs;
-            filteredJobs = [...jobs];
-            applyFilters();
+            // Update the row in DOM immediately
+            const jobIndex = message.jobIndex;
+            if (jobIndex !== undefined && jobs[jobIndex]) {
+                updateRowInDOM(jobIndex, jobs[jobIndex]);
+            } else {
+                applyFilters();
+            }
             updateStats();
 
             if (isGettingDescriptions) {
@@ -784,7 +848,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
                 chrome.storage.local.set({ scrapedJobs: jobs }, () => {
                     allJobs = jobs;
-                    applyFilters();
+                    // Update the row in DOM immediately
+                    updateRowInDOM(jobIndex, jobs[jobIndex]);
+                    
+                    // Also update stats since duplicate status or description might have changed
                     updateStats();
 
                     if (isFetchingDetails) {

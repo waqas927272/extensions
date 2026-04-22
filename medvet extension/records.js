@@ -234,23 +234,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const row = document.createElement('tr');
         if (record.multiLocation) row.classList.add('multi-location-row');
         if (isSelected) row.classList.add('selected-row');
+        row.dataset.realIdx = realIdx;
         row.innerHTML = `
           <td class="col-select"><input type="checkbox" class="row-checkbox" data-idx="${realIdx}" ${isSelected ? 'checked' : ''}></td>
-          <td>${escapeHtml(record.title || '')}</td>
-          <td class="job-id-cell">${escapeHtml(record.jobId || 'N/A')}</td>
-          <td>${escapeHtml(record.areaOfPractice || '-')}</td>
-          <td>${escapeHtml(record.position || '-')}</td>
-          <td>${escapeHtml(record.salary || '-')}</td>
-          <td>${escapeHtml(record.jobType || '-')}</td>
-          <td>${escapeHtml(record.hospitalName || '-')}</td>
-          <td>${escapeHtml(record.city || '')}</td>
-          <td>${escapeHtml(record.state || '')}</td>
-          <td>${escapeHtml(record.streetAddress || '')}</td>
-          <td>${escapeHtml(record.zipCode || '')}</td>
-          <td>${escapeHtml(record.phone || '')}</td>
-          <td>${record.website ? `<a href="${escapeHtml(record.website)}" target="_blank">${escapeHtml(record.website)}</a>` : ''}</td>
-          <td><a href="${record.link}" target="_blank">View Job</a></td>
-          <td>
+          <td class="col-title">${escapeHtml(record.title || '')}</td>
+          <td class="col-jobid">${escapeHtml(record.jobId || 'N/A')}</td>
+          <td class="col-aop">${escapeHtml(record.areaOfPractice || '-')}</td>
+          <td class="col-position">${escapeHtml(record.position || '-')}</td>
+          <td class="col-salary">${escapeHtml(record.salary || '-')}</td>
+          <td class="col-jobtype">${escapeHtml(record.jobType || '-')}</td>
+          <td class="col-hospital">${escapeHtml(record.hospitalName || '-')}</td>
+          <td class="col-city">${escapeHtml(record.city || '')}</td>
+          <td class="col-state">${escapeHtml(record.state || '')}</td>
+          <td class="col-address">${escapeHtml(record.streetAddress || '')}</td>
+          <td class="col-zip">${escapeHtml(record.zipCode || '')}</td>
+          <td class="col-phone">${escapeHtml(record.phone || '')}</td>
+          <td class="col-website">${record.website ? `<a href="${escapeHtml(record.website)}" target="_blank">Visit</a>` : ''}</td>
+          <td class="col-link"><a href="${record.link}" target="_blank">View Job</a></td>
+          <td class="col-actions">
               <button class="view-description-btn" data-description="${escapeHtml(record.description || '')}">View Description</button>
           </td>
         `;
@@ -287,6 +288,47 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     updateRecordCount(records.length);
+  }
+
+  function updateRowInDOM(realIndex, record) {
+    const row = document.querySelector(`tr[data-real-idx="${realIndex}"]`);
+    if (!row) return;
+
+    // Mapping of classes to record properties
+    const cellMap = {
+      '.col-title': record.title || '',
+      '.col-jobid': record.jobId || 'N/A',
+      '.col-aop': record.areaOfPractice || '-',
+      '.col-position': record.position || '-',
+      '.col-salary': record.salary || '-',
+      '.col-jobtype': record.jobType || '-',
+      '.col-hospital': record.hospitalName || '-',
+      '.col-city': record.city || '',
+      '.col-state': record.state || '',
+      '.col-address': record.streetAddress || '',
+      '.col-zip': record.zipCode || '',
+      '.col-phone': record.phone || ''
+    };
+
+    Object.entries(cellMap).forEach(([selector, value]) => {
+      const cell = row.querySelector(selector);
+      if (cell) cell.textContent = value;
+    });
+
+    // Update website link
+    const webCell = row.querySelector('.col-website');
+    if (webCell) {
+      webCell.innerHTML = record.website ? `<a href="${escapeHtml(record.website)}" target="_blank">Visit</a>` : '';
+    }
+
+    // Update description button
+    const descBtn = row.querySelector('.view-description-btn');
+    if (descBtn) {
+      descBtn.dataset.description = escapeHtml(record.description || '');
+    }
+
+    // Update row visual state
+    if (record.multiLocation) row.classList.add('multi-location-row');
   }
 
   // ============ FETCH ADDRESSES VIA GOOGLE MAPS ============
@@ -398,7 +440,7 @@ document.addEventListener('DOMContentLoaded', () => {
         Fetch Addresses`;
       document.getElementById('progressSection').classList.add('hidden');
       showToast(`Address fetching complete! Processed ${addressQueue.length} jobs.`, 'success');
-      loadRecords();
+      // No need to loadRecords(), as we update rows live
       return;
     }
 
@@ -455,6 +497,9 @@ document.addEventListener('DOMContentLoaded', () => {
           if (addressData.website) records[recordIndex].website = addressData.website.trim();
           // Update allRecords cache so subsequent duplicates can find this data
           allRecords[recordIndex] = { ...allRecords[recordIndex], ...records[recordIndex] };
+          
+          // Live update the row in DOM
+          updateRowInDOM(recordIndex, allRecords[recordIndex]);
         }
         chrome.storage.local.set({ records: records }, resolve);
       });
@@ -635,6 +680,16 @@ document.addEventListener('DOMContentLoaded', () => {
         chrome.storage.local.set({ records }, () => {
           // Refresh allRecords so the table and address queue see the new records
           allRecords = records;
+          
+          if (detailsList.length > 1) {
+            // If new rows were added (multi-location), we must re-render the table
+            filterRecords();
+          } else {
+            // Just update the single row live
+            updateRowInDOM(recordIndex, allRecords[recordIndex]);
+          }
+          
+          updateSelectionUI();
           resolve();
         });
       });
@@ -1100,8 +1155,13 @@ document.addEventListener('DOMContentLoaded', () => {
       // Refresh records from storage
       chrome.storage.local.get({ records: [] }, (result) => {
         allRecords = result.records;
-        filteredRecords = [...allRecords];
-        filterRecords();
+        
+        // Update the row in DOM live
+        if (request.jobIndex !== undefined && allRecords[request.jobIndex]) {
+          updateRowInDOM(request.jobIndex, allRecords[request.jobIndex]);
+        } else {
+          filterRecords();
+        }
 
         // Update progress
         const total = allRecords.length;
