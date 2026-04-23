@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isLocalhost) {
             // Development environment - use localhost without double slash
-            return 'http:/localhost/zoho-api/api/webhook-receiver.php';
+            return 'http://localhost/zoho-api/api/webhook-receiver.php';
         } else {
             // Production environment - try to detect the domain
             // User will need to update this for their production URL
@@ -100,6 +100,75 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.length > 2) return state;
         // Convert abbreviation to full name
         return stateAbbreviations[state.toUpperCase()] || state;
+    }
+
+    function isCleanCityName(city) {
+        if (!city) return false;
+        const value = city.trim();
+        const lower = value.toLowerCase();
+        const badWords = [
+            'description', 'position', 'associate', 'veterinarian', 'hospital',
+            'care', 'center', 'clinic', 'location', 'practice', 'team',
+            'beautiful', 'supportive', 'community', 'focused', 'general',
+            'located', 'opportunity', 'join', 'seeking', 'looking'
+        ];
+
+        if (value.length < 2 || value.length > 35) return false;
+        if (/\b(in|near|at|with|for)\b/i.test(value)) return false;
+        if (badWords.some(word => lower.includes(word))) return false;
+        if (!/^[A-Za-z][A-Za-z\s.'-]*$/.test(value)) return false;
+
+        return true;
+    }
+
+    function normalizeCityName(city) {
+        if (!city) return '';
+        const value = city.trim();
+        if (isCleanCityName(value)) return value;
+
+        const phraseMatch = value.match(/\b(?:located\s+in|in|near|at)\s+(?:beautiful\s+)?([A-Za-z][A-Za-z\s.'-]*?)\s*$/i);
+        if (phraseMatch && isCleanCityName(phraseMatch[1])) {
+            return phraseMatch[1].trim();
+        }
+
+        return '';
+    }
+
+    function parseListingLocation(location) {
+        if (!location) return null;
+        const parts = location.split(',').map(s => s.trim()).filter(Boolean);
+        if (parts.length < 2) return null;
+        const city = normalizeCityName(parts[0]);
+        const state = parts[1];
+        if (!city || !/^[A-Z]{2}$/.test(state)) return null;
+        return { city, state, location: `${city}, ${state}` };
+    }
+
+    function normalizeLocationText(location) {
+        const parsed = parseListingLocation(location);
+        return parsed ? parsed.location : '';
+    }
+
+    function getSavedDescriptionField(descriptionText, fieldName) {
+        if (!descriptionText) return '';
+        const escapedField = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const match = descriptionText.match(new RegExp(`^${escapedField}:\\s*([^\\n]+)`, 'im'));
+        return match ? match[1].trim() : '';
+    }
+
+    function isUsableHospitalName(hospitalName) {
+        if (!hospitalName) return false;
+        const cleaned = hospitalName.trim();
+        if (!cleaned) return false;
+        return !/^united\s+veterinary\s+care$/i.test(cleaned) && !/^uvc$/i.test(cleaned);
+    }
+
+    function shouldSkipFetchDetails(job) {
+        const title = (job?.title || '').toLowerCase();
+        return /\bveterinary\s+receptionist\b/.test(title) ||
+            /\bveterinary\s+customer\s+service\s+representative\b/.test(title) ||
+            /\blicensed\s+veterinary\s+technician\b/.test(title) ||
+            /\blicensed\s+vet(?:erinary)?\s+tech(?:nician)?\b/.test(title);
     }
 
     // ============ TOP-LEVEL POSITION MATCHING (used by both detail extraction and save) ============
@@ -223,28 +292,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ============ LOCAL DETAIL EXTRACTION (mirrors detail-extractor.js) ============
 
-    function extractDetailsFromDescription(positionTitle, descriptionText) {
+    function extractDetailsFromDescription(positionTitle, descriptionText, listingLocation = '') {
         // Format salary to standard "$X–$Y per year" or "$X per hour"
-        function formatSalary(raw) {
+        function formatSalary(raw, context = '') {
             if (!raw) return '';
-            const isHourly = /(?:per\s+)?(?:hour|hr|\/hr)/i.test(raw);
+            const salaryContext = `${raw} ${context}`;
+            const isHourly = /(?:per\s+)?(?:hour|hr)|\/\s*hr|hourly/i.test(salaryContext);
+            const isAnnual = /(?:per\s+)?(?:year|annually|annual|annum)|yearly/i.test(salaryContext);
+            const rangePattern = /\$?[\d,]+(?:\.\d{2})?\s*(?:\/?k)?\s*(?:-|\?|\u2010|\u2011|\u2012|\u2013|\u2014|\u2015|\uFFFD|to|\u00e2\S{0,3})\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/?k)?/i;
+            const amountSource = rangePattern.test(raw) ? raw : (salaryContext.match(rangePattern)?.[0] || raw);
+            const rangeUsesK = /\b\d[\d,]*(?:\.\d+)?\s*(?:\/?k)?\s*(?:[-–—]|to)\s*\$?\d[\d,]*(?:\.\d+)?\s*(?:\/?k)\b/i.test(raw);
             const amounts = [];
-            const amountRegex = /\$?([\d,]+(?:\.\d{2})?)\s*k?\b/gi;
+            const amountRegex = /\$?([\d,]+(?:\.\d{2})?)\s*(?:\/?k)?\b/gi;
             let match;
-            while ((match = amountRegex.exec(raw)) !== null) {
+            while ((match = amountRegex.exec(amountSource)) !== null) {
                 let num = parseFloat(match[1].replace(/,/g, ''));
-                const afterMatch = raw.substring(match.index + match[0].length - 1, match.index + match[0].length + 1);
-                if (/k/i.test(match[0]) || /k/i.test(afterMatch)) {
+                const afterMatch = amountSource.substring(match.index + match[0].length - 1, match.index + match[0].length + 1);
+                if (rangeUsesK || /\b\d[\d,]*(?:\.\d+)?\s*(?:\/?k)?\s*(?:-|\u2013|\u2014|to)\s*\$?\d[\d,]*(?:\.\d+)?\s*(?:\/?k)\b/i.test(amountSource) || /k/i.test(match[0]) || /k/i.test(afterMatch)) {
                     num = num * 1000;
                 }
                 if (num > 0) amounts.push(num);
             }
             if (amounts.length === 0) return raw;
+            const maxAmount = Math.max(...amounts);
             const fmt = (n) => {
                 if (Number.isInteger(n)) return '$' + n.toLocaleString('en-US');
                 return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             };
-            const unit = isHourly ? 'per hour' : 'per year';
+            const unit = isHourly || (!isAnnual && maxAmount > 0 && maxAmount < 300) ? 'per hour' : 'per year';
             if (amounts.length >= 2) {
                 const min = Math.min(amounts[0], amounts[1]);
                 const max = Math.max(amounts[0], amounts[1]);
@@ -265,6 +340,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Fallback to text pattern matching
             const salaryPatterns = [
+                /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|\u2013|\u2014)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
+                /(?:(?:pay|salary|compensation)\s+range)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|\u2013|\u2014)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
+                /(?:salary|compensation|pay)[:\s]+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|\u2013|\u2014)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual|hour|hr))?/i,
+                /\$[\d,]+(?:\.\d{2})?\s*(?:-|\u2013|\u2014)\s*\$[\d,]+(?:\.\d{2})?/i,
+                /\$[\d,]+\s*(?:\/k|k)\s*(?:-|\u2013|\u2014)+\s*\$?[\d,]+\s*(?:\/k|k)/i,
                 // "Base salary ranges: $150k - $171k" or "base salary range of $140,000 – 160,000"
                 /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
                 /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
@@ -289,7 +369,10 @@ document.addEventListener('DOMContentLoaded', () => {
             ];
             for (const pattern of salaryPatterns) {
                 const m = text.match(pattern);
-                if (m) return formatSalary(m[0].trim());
+                if (m) {
+                    const context = text.substring(Math.max(0, m.index - 80), Math.min(text.length, m.index + m[0].length + 80));
+                    return formatSalary(m[0].trim(), context);
+                }
             }
             return '';
         }
@@ -313,6 +396,12 @@ document.addEventListener('DOMContentLoaded', () => {
             return null;
         }
 
+        function hasSpecialtyCertificationSignal(text) {
+            if (!text) return false;
+            return /\bboard[\s-]+certified\b/i.test(text) ||
+                /\bresidenc(?:y|e)[\s-]+trained\b/i.test(text);
+        }
+
         // Determine Area of Practice
         // Priority: 1) Title-specific overrides (urgent care), 2) Industry/Category from JSON-LD, 3) title keywords, 4) description qualifications
         function determineAreaOfPractice(positionText, descriptionText) {
@@ -323,6 +412,9 @@ document.addEventListener('DOMContentLoaded', () => {
             // e.g. "Urgent Care Veterinarian" is categorized as "Veterinarian (ER)" on Jobvite,
             // but "urgent care" in the title is a more precise signal than the broad ER bucket.
             if (title.includes('urgent care')) return 'Urgent Care';
+
+            // Board-certified or residency-trained roles are specialty roles even if Jobvite category is broad.
+            if (hasSpecialtyCertificationSignal(descriptionText)) return 'Specialty Care';
 
             // STEP 1: Use industry/category - most reliable signal for broad categories
             if (category) {
@@ -500,10 +592,12 @@ document.addEventListener('DOMContentLoaded', () => {
         // Extract locations from stored description (which now includes JSON-LD data)
         function extractLocations(text) {
             const locations = [];
+            const listingLoc = parseListingLocation(listingLocation);
+            if (listingLoc) locations.push(listingLoc);
 
             // First try to extract from structured JSON-LD data in the text
             // Format from description-scraper: "  - City, ST, Country" or "  - City, State"
-            const locationsSection = text.match(/Locations:\n((?:\s*-\s*[^\n]+\n?)+)/i);
+            const locationsSection = locations.length === 0 ? text.match(/Locations:\n((?:\s*-\s*[^\n]+\n?)+)/i) : null;
             if (locationsSection) {
                 const locationLines = locationsSection[1].split('\n');
                 for (const line of locationLines) {
@@ -512,7 +606,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Remove leading "- " and split by comma
                     const parts = trimmed.replace(/^-\s*/, '').split(',').map(s => s.trim()).filter(s => s);
                     if (parts.length >= 2) {
-                        const city = parts[0];
+                        const city = normalizeCityName(parts[0]);
                         let state = parts[1];
                         // Try to find a 2-letter state abbreviation elsewhere in the text for this city
                         if (state.length > 2) {
@@ -521,7 +615,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                 state = stateAbbrev[1];
                             }
                         }
-                        locations.push({ city, state, location: `${city}, ${state}` });
+                        if (city && /^[A-Z]{2}$/.test(state)) {
+                            locations.push({ city, state, location: `${city}, ${state}` });
+                        }
                     }
                 }
             }
@@ -536,11 +632,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Match patterns like "City, ST"
                 const matches = searchText.matchAll(/\b([A-Za-z][\w\s.'()-]*[A-Za-z])\s*,\s*([A-Z]{2})\b/g);
                 for (const match of matches) {
-                    let city = match[1].trim();
+                    let city = normalizeCityName(match[1]);
                     const state = match[2].trim();
 
-                    const invalidWords = ['description', 'position', 'associate', 'veterinarian', 'hospital', 'care', 'center', 'clinic', 'location'];
-                    if (!invalidWords.some(word => city.toLowerCase().includes(word)) && city.length > 1 && city.length < 50) {
+                    if (city && /^[A-Z]{2}$/.test(state)) {
                         locations.push({ city, state, location: `${city}, ${state}` });
                     }
                 }
@@ -615,15 +710,19 @@ document.addEventListener('DOMContentLoaded', () => {
             return 'Full-Time';
         }
 
+        const savedTitle = getSavedDescriptionField(descriptionText, 'Title');
+        const effectiveTitle = savedTitle || positionTitle || '';
+
         // Run all extractions
         const salary = extractSalary(descriptionText);
-        const areaOfPractice = determineAreaOfPractice(positionTitle, descriptionText);
-        const position = determinePosition(positionTitle, descriptionText, areaOfPractice);
+        const areaOfPractice = determineAreaOfPractice(effectiveTitle, descriptionText);
+        const position = determinePosition(effectiveTitle, descriptionText, areaOfPractice);
         const locations = extractLocations(descriptionText);
         const hospitalName = extractHospitalName(descriptionText);
         const jobType = extractJobType(descriptionText);
 
         return {
+            title: effectiveTitle,
             salary,
             areaOfPractice,
             position,
@@ -648,24 +747,36 @@ document.addEventListener('DOMContentLoaded', () => {
         // Inner function: open a tab, wait for load, inject scraper, get results
         function scrapeGoogleMapsTab(url, queryLabel) {
             return new Promise((resolve) => {
+                let tabId = null;
+                let listener = null;
+                let settled = false;
+
+                const finish = (value) => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timeout);
+                    if (listener) chrome.tabs.onUpdated.removeListener(listener);
+                    if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+                    resolve(value);
+                };
                 // Safety timeout — 30 seconds max
                 const timeout = setTimeout(() => {
                     console.warn(`✗ Google Maps timeout for: "${queryLabel}"`);
-                    resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
+                    finish({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
                 }, 30000);
 
                 chrome.tabs.create({ url: url, active: false }, (tab) => {
                     if (!tab) {
-                        clearTimeout(timeout);
-                        resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
+                        finish({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
                         return;
                     }
 
-                    const tabId = tab.id;
+                    tabId = tab.id;
 
-                    const listener = (updatedTabId, info) => {
+                    listener = (updatedTabId, info) => {
                         if (updatedTabId === tabId && info.status === 'complete') {
                             chrome.tabs.onUpdated.removeListener(listener);
+                            listener = null;
 
                             // Wait 2s for Google Maps SPA to start rendering,
                             // then inject the scraper which handles its own polling + clicking
@@ -674,11 +785,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                     target: { tabId: tabId },
                                     files: ['google-maps-scraper.js']
                                 }).then((results) => {
-                                    clearTimeout(timeout);
-                                    chrome.tabs.remove(tabId).catch(() => {});
-
                                     const data = results?.[0]?.result || {};
-                                    resolve({
+                                    finish({
                                         streetAddress: data.streetAddress || '',
                                         zipCode: data.zipCode || '',
                                         city: data.city || '',
@@ -689,9 +797,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     });
                                 }).catch((err) => {
                                     console.error(`Google Maps script error for "${queryLabel}":`, err);
-                                    clearTimeout(timeout);
-                                    chrome.tabs.remove(tabId).catch(() => {});
-                                    resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
+                                    finish({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
                                 });
                             }, 2000);
                         }
@@ -804,12 +910,12 @@ document.addEventListener('DOMContentLoaded', () => {
             jobIdCell.style.fontFamily = "'Consolas', 'Monaco', monospace";
             jobIdCell.style.fontSize = '12px';
             jobIdCell.style.color = '#64748b';
-            row.insertCell(3).textContent = job.hospital;
-            row.insertCell(4).textContent = 'Alliance Animal Health (Parent Client)';
-            row.insertCell(5).textContent = job.streetAddress || '-';
-            row.insertCell(6).textContent = job.city;
-            row.insertCell(7).textContent = job.state;
-            row.insertCell(8).textContent = job.zipCode || '-';
+            row.insertCell(3).textContent = 'United Veterinary Care (Parent Client)';
+            row.insertCell(4).textContent = job.streetAddress || '-';
+            row.insertCell(5).textContent = job.city;
+            row.insertCell(6).textContent = job.state;
+            row.insertCell(7).textContent = job.zipCode || '-';
+            row.insertCell(8).textContent = job.hospital;
 
             // Phone column
             row.insertCell(9).textContent = job.phone || '-';
@@ -900,19 +1006,19 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Aggregator', 'Street Address', 'City', 'State', 'Zip Code', 'Phone', 'Website', 'Location', 'Area of Practice', 'Position', 'Salary', 'Job Type', 'Link', 'Description'];
+        const headers = ['#', 'Job Title', 'Job ID', 'Aggregator', 'Street Address', 'City', 'State', 'Zip Code', 'Hospital', 'Phone', 'Website', 'Location', 'Area of Practice', 'Position', 'Salary', 'Job Type', 'Link', 'Description'];
         const csvContent = [
             headers.join(','),
             ...allJobs.map((job, index) => [
                 index + 1,
                 `"${(job.title || '').replace(/"/g, '""')}"`,
                 `"${(job.jobId || '').replace(/"/g, '""')}"`,
-                `"${(job.hospital || '').replace(/"/g, '""')}"`,
-                `"Alliance Animal Health (Parent Client)"`,
+                `"United Veterinary Care (Parent Client)"`,
                 `"${(job.streetAddress || '').replace(/"/g, '""')}"`,
                 `"${(job.city || '').replace(/"/g, '""')}"`,
                 `"${(job.state || '').replace(/"/g, '""')}"`,
                 `"${(job.zipCode || '').replace(/"/g, '""')}"`,
+                `"${(job.hospital || '').replace(/"/g, '""')}"`,
                 `"${(job.phone || '').replace(/"/g, '""')}"`,
                 `"${(job.website || '').replace(/"/g, '""')}"`,
                 `"${(job.location || '').replace(/"/g, '""')}"`,
@@ -930,7 +1036,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const url = URL.createObjectURL(blob);
 
         link.setAttribute('href', url);
-        link.setAttribute('download', `alliance_animal_jobs_${new Date().toISOString().split('T')[0]}.csv`);
+        link.setAttribute('download', `uvc_jobs_${new Date().toISOString().split('T')[0]}.csv`);
         link.style.visibility = 'hidden';
 
         document.body.appendChild(link);
@@ -1021,6 +1127,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         job.description = '';
                         clearedCount++;
                     }
+                    delete job.descriptionFetchFailed;
+                    delete job.descriptionError;
                 });
 
                 chrome.storage.local.set({ scrapedJobs: jobs }, () => {
@@ -1104,9 +1212,9 @@ document.addEventListener('DOMContentLoaded', () => {
             job_id: job.jobId || '',
             department_id: job.jobId || '',
             hospital: job.hospital,
-            aggregator: "Alliance Animal Health (Parent Client)",
+            aggregator: "United Veterinary Care (Parent Client)",
             street_address: job.streetAddress || '',
-            parent_client: "Alliance Animal Health (Parent Client)",
+            parent_client: "United Veterinary Care (Parent Client)",
             city: job.city,
             state: job.state,
             zip_code: job.zipCode || '',
@@ -1151,8 +1259,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const batchNumber = i + 1;
 
             const payload = {
-                source: 'Alliance Animal Health Job Scraper',
-                parentClientName: 'Alliance Animal Health (Parent Client)',
+                source: 'United Veterinary Job Scraper',
+                parentClientName: 'United Veterinary Care (Parent Client)',
                 syncId: syncId,
                 timestamp: new Date().toISOString(),
                 batchNumber: batchNumber,
@@ -1221,7 +1329,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await chrome.storage.local.get(['scrapedJobs']);
         const jobs = data.scrapedJobs || [];
 
-        const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
+        jobs.forEach(job => {
+            if (!job.description) {
+                delete job.descriptionFetchFailed;
+                delete job.descriptionError;
+            }
+        });
+        await chrome.storage.local.set({ scrapedJobs: jobs });
+
+        const jobsWithoutDesc = jobs.filter(job => !job.description && !job.descriptionFetchFailed && job.link);
         if (jobsWithoutDesc.length === 0) {
             showToast('All jobs already have descriptions!', 'success');
             return;
@@ -1250,7 +1366,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await chrome.storage.local.get(['scrapedJobs']);
         const jobs = data.scrapedJobs || [];
 
-        const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
+        const jobsWithoutDesc = jobs.filter(job => !job.description && !job.descriptionFetchFailed && job.link);
         const totalOriginal = jobs.filter(job => job.link).length;
         const totalWithoutDesc = jobsWithoutDesc.length;
         const processed = totalOriginal - totalWithoutDesc;
@@ -1258,7 +1374,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update progress
         const progressBar = document.getElementById('progressBar');
         const progressText = document.getElementById('progressText');
-        const totalToProcess = allJobs.filter(job => !job.description && job.link).length;
+        const totalToProcess = jobs.filter(job => !job.description && !job.descriptionFetchFailed && job.link).length;
         progressText.textContent = `${processed} / ${totalToProcess + processed}`;
         progressBar.style.width = `${(processed / (totalToProcess + processed)) * 100}%`;
 
@@ -1296,7 +1412,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // Listen for description saved messages from background.js
+    // Listen for description saved/failed messages from background.js
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.action === 'descriptionSaved') {
             chrome.storage.local.get(['scrapedJobs'], (data) => {
@@ -1307,6 +1423,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (isGettingDescriptions) {
                     setTimeout(() => processNextJob(), 1500);
                 }
+            });
+        } else if (message.action === 'descriptionFailed') {
+            chrome.storage.local.get(['scrapedJobs'], (data) => {
+                const jobs = data.scrapedJobs || [];
+                if (jobs[message.jobIndex]) {
+                    jobs[message.jobIndex].descriptionFetchFailed = true;
+                    jobs[message.jobIndex].descriptionError = message.message || 'Failed to fetch description.';
+                }
+
+                chrome.storage.local.set({ scrapedJobs: jobs }, () => {
+                    allJobs = jobs;
+                    displayRecords(allJobs);
+
+                    if (isGettingDescriptions) {
+                        showToast(`Skipped one description: ${message.message || 'failed to fetch'}`, 'error');
+                        setTimeout(() => processNextJob(), 500);
+                    }
+                });
             });
         }
     });
@@ -1327,19 +1461,36 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Find jobs that need details (no areaOfPractice or position)
-        // Can work with job title even if no description exists
+        // Find jobs that need details and already have saved descriptions.
+        // Details are derived from the saved job description, not from a fresh tab scrape.
         const jobsToFetch = jobs.map((job, index) => ({ job, index }))
             .filter(item => {
-                if (!item.job.title) return false;
+                if (shouldSkipFetchDetails(item.job)) return false;
+                if (!item.job.description) return false;
                 const needsDetails = !item.job.areaOfPractice || !item.job.position;
-                return needsDetails;
+                const normalizedLocation = normalizeLocationText(item.job.location);
+                const needsLocationCleanup = normalizedLocation && normalizedLocation !== item.job.location;
+                const description = item.job.description || '';
+                const salary = item.job.salary || '';
+                const descriptionHasSalary = /\$[\d,]+(?:\.\d{2})?/.test(description) && /salary|pay|compensation|\$/i.test(description);
+                const salaryLooksWrongHourly = /(?:per\s+)?(?:hour|hr)|\/\s*hr|hourly/i.test(description) && /per year/i.test(salary);
+                const needsSalaryCleanup = (!salary && descriptionHasSalary) || salaryLooksWrongHourly;
+                const needsSpecialtyAOPCleanup = item.job.areaOfPractice !== 'Specialty Care' &&
+                    (/\bboard[\s-]+certified\b/i.test(description) || /\bresidenc(?:y|e)[\s-]+trained\b/i.test(description));
+                return needsDetails || needsLocationCleanup || needsSalaryCleanup || needsSpecialtyAOPCleanup;
             });
 
+        const jobsWithDescriptions = jobs.map((job, index) => ({ job, index }))
+            .filter(item => item.job.description && !shouldSkipFetchDetails(item.job));
+
+        if (jobsWithDescriptions.length === 0) {
+            showToast('No saved descriptions found. Click "Get Descriptions" first, then Fetch Details.', 'error');
+            return;
+        }
+
         if (jobsToFetch.length === 0) {
-            if (confirm('All jobs already have details. Do you want to re-analyze all jobs?')) {
-                detailsQueue = jobs.map((job, index) => ({ job, index }))
-                    .filter(item => item.job.title);
+            if (confirm('All jobs with saved descriptions already have details. Do you want to re-analyze them?')) {
+                detailsQueue = jobsWithDescriptions;
             } else {
                 return;
             }
@@ -1350,7 +1501,7 @@ document.addEventListener('DOMContentLoaded', () => {
         isFetchingDetails = true;
         currentDetailsIndex = 0;
         fetchDetailsBtn.disabled = true;
-        fetchDetailsBtn.textContent = 'Fetching Details...';
+        fetchDetailsBtn.textContent = 'Analyzing Descriptions...';
 
         // Show progress
         const progressSection = document.getElementById('progressSection');
@@ -1358,7 +1509,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const progressText = document.getElementById('progressText');
         const progressLabel = document.getElementById('progressLabel');
         progressSection.classList.remove('hidden');
-        progressLabel.textContent = 'Analyzing Job Details';
+        progressLabel.textContent = 'Analyzing Saved Descriptions';
         progressText.textContent = `0 / ${detailsQueue.length}`;
         progressBar.style.width = '0%';
 
@@ -1452,12 +1603,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const job = currentJobs[currentIndex];
         let detailsList = [];
 
-        // Extract details locally from job title + already-fetched description
+        // Extract details locally from the already-saved description.
         const positionTitle = job.title || '';
         const description = job.description || '';
 
-        if (positionTitle) {
-            const extracted = extractDetailsFromDescription(positionTitle, description);
+        if (description) {
+            const extracted = extractDetailsFromDescription(positionTitle, description, job.location || '');
 
             // Build detailsList with ALL locations for multi-location jobs
             if (extracted.locations && extracted.locations.length > 0) {
@@ -1523,7 +1674,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 let finalAOP = detailAOP || getAOPFromTitle(listingTitle) || 'General Practice Care';
 
                 // Step 2: Match position from listing title
-                let finalPosition = getPositionFromTitle(listingTitle);
+                let finalPosition = firstDetail.position || getPositionFromTitle(listingTitle);
 
                 // Step 3: If listing title had no match but AOP is Specialty, try qualifications from description
                 if (!finalPosition && finalAOP === 'Specialty Care') {
@@ -1563,11 +1714,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 originalJob.areaOfPractice = finalAOP;
                 originalJob.position = finalPosition;
                 originalJob.salary = firstDetail.salary || originalJob.salary || '';
-                originalJob.hospital = firstDetail.hospitalName || originalJob.hospital || '';
+                if (isUsableHospitalName(firstDetail.hospitalName)) {
+                    originalJob.hospital = firstDetail.hospitalName;
+                    originalJob.hospitalName = firstDetail.hospitalName;
+                } else if (originalJob.hospital) {
+                    originalJob.hospitalName = originalJob.hospital;
+                }
                 originalJob.jobType = firstDetail.jobType || originalJob.jobType || 'Full-Time';
-                if (firstDetail.city) originalJob.city = firstDetail.city;
-                if (firstDetail.state) originalJob.state = firstDetail.state;
-                if (firstDetail.location) originalJob.location = firstDetail.location;
+                const normalizedOriginalCity = normalizeCityName(originalJob.city);
+                const normalizedDetailCity = normalizeCityName(firstDetail.city);
+                if (!normalizedOriginalCity && normalizedDetailCity) originalJob.city = normalizedDetailCity;
+                else if (normalizedOriginalCity && normalizedOriginalCity !== originalJob.city) originalJob.city = normalizedOriginalCity;
+                if (!originalJob.state && firstDetail.state) originalJob.state = firstDetail.state;
+                const normalizedOriginalLocation = normalizeLocationText(originalJob.location);
+                const normalizedDetailLocation = normalizeLocationText(firstDetail.location);
+                if (normalizedOriginalLocation && normalizedOriginalLocation !== originalJob.location) {
+                    originalJob.location = normalizedOriginalLocation;
+                } else if (!originalJob.location && normalizedDetailLocation) {
+                    originalJob.location = normalizedDetailLocation;
+                }
+                if (originalJob.city && originalJob.state && originalJob.location && originalJob.location !== `${originalJob.city}, ${originalJob.state}`) {
+                    originalJob.location = `${originalJob.city}, ${originalJob.state}`;
+                }
                 // Update description if we got a better one
                 if (firstDetail.description && firstDetail.description.length > (originalJob.description || '').length) {
                     originalJob.description = firstDetail.description;
@@ -1595,7 +1763,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const newJobs = [];
                     for (let i = 1; i < detailsList.length; i++) {
                         const loc = detailsList[i];
-                        const baseJobId = originalJob.jobId.split('-')[0];
+                        const baseJobId = originalJob.jobId || `UVC-${Date.now()}`;
                         // Only build city-specific hospital name if the original had a city suffix
                         let childHospital = currentHospital;
                         if (hasCitySuffix) {
@@ -1608,8 +1776,9 @@ document.addEventListener('DOMContentLoaded', () => {
                             ...originalJob,
                             jobId: `${baseJobId}-${i + 1}`,
                             hospital: childHospital,
-                            city: '',
-                            state: '',
+                            hospitalName: childHospital,
+                            city: normalizeCityName(loc.city) || '',
+                            state: loc.state || '',
                             location: loc.location || `${loc.city}, ${loc.state}`,
                             streetAddress: '',
                             zipCode: '',

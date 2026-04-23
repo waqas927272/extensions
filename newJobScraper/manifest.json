@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "United Veterinary Job Scraper",
+  "version": "1.7",
+  "description": "Scrapes job data from the current page and saves it.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "webNavigation",
+    "tabs"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["description-scraper.js", "detail-extractor.js", "google-maps-scraper.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

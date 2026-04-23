@@ -1,6 +1,30 @@
+function toUnitedRecords(jobs) {
+  return (jobs || []).map(job => {
+    const city = job.city && job.city !== 'N/A' ? job.city : '';
+    const state = job.state && job.state !== 'N/A' ? job.state : '';
+    const zipCode = job.zipCode || job.postalCode || '';
+    const hospital = job.hospital || job.hospitalName || '';
+    return {
+      ...job,
+      hospital,
+      hospitalName: hospital,
+      zipCode,
+      postalCode: zipCode,
+      location: job.location || [city, state].filter(Boolean).join(', '),
+      city,
+      state
+    };
+  });
+}
+
+function saveJobsForBothPages(jobs, callback) {
+  const normalizedJobs = toUnitedRecords(jobs);
+  chrome.storage.local.set({ jobs: normalizedJobs, scrapedJobs: normalizedJobs }, callback);
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'storeJobs') {
-    chrome.storage.local.set({ jobs: request.data }, () => {
+    saveJobsForBothPages(request.data, () => {
       console.log('Jobs data stored.');
     });
     return false;
@@ -101,6 +125,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               // Update address fields
               jobs[jobIndex].streetAddress = extractedData.streetAddress || '';
               jobs[jobIndex].postalCode = extractedData.postalCode || '';
+              jobs[jobIndex].zipCode = extractedData.postalCode || '';
               jobs[jobIndex].country = extractedData.country || '';
 
               // Update city if missing or empty
@@ -113,7 +138,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 jobs[jobIndex].state = extractedData.detailState || jobs[jobIndex].state || '';
               }
 
-              chrome.storage.local.set({ jobs: jobs }, () => {
+              saveJobsForBothPages(jobs, () => {
                 console.log(`Details saved for job ${jobIndex + 1}`);
                 // Close the tab after extracting
                 chrome.tabs.remove(tabId);
