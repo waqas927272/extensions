@@ -4,6 +4,35 @@
             return (value || '').replace(/\s+/g, ' ').trim();
         }
 
+        function normalizeMultilineText(value) {
+            const lines = (value || '')
+                .replace(/\r/g, '')
+                .split('\n')
+                .map(line => line.replace(/[ \t]+/g, ' ').trim());
+
+            const cleanedLines = [];
+            let previousBlank = false;
+
+            for (const line of lines) {
+                if (!line) {
+                    if (!previousBlank && cleanedLines.length > 0) {
+                        cleanedLines.push('');
+                    }
+                    previousBlank = true;
+                    continue;
+                }
+
+                cleanedLines.push(line);
+                previousBlank = false;
+            }
+
+            while (cleanedLines.length > 0 && cleanedLines[cleanedLines.length - 1] === '') {
+                cleanedLines.pop();
+            }
+
+            return cleanedLines.join('\n').trim();
+        }
+
         function extractSectionContent() {
             const root = document.querySelector('.grid__item.grid__item--main section.section.js_views');
             if (!root) return null;
@@ -29,17 +58,24 @@
                     );
                     const valueEl = field.querySelector('.article__content__view__field__value');
                     const valueText = normalizeWhitespace(valueEl?.innerText || '');
-                    if (!valueText) continue;
+                    const valueBlockText = normalizeMultilineText(valueEl?.innerText || '');
+                    if (!valueText && !valueBlockText) continue;
 
-                    if (sectionTitle.toLowerCase().includes('description') && /job description/i.test(label)) {
-                        descriptionParts.push(valueText);
+                    if (sectionTitle.toLowerCase().includes('description')) {
+                        if (/job description/i.test(label)) {
+                            descriptionParts.push(valueBlockText || valueText);
+                        } else if (label) {
+                            descriptionParts.push(`${label}: ${valueText}`);
+                        } else if (valueText) {
+                            descriptionParts.push(valueBlockText || valueText);
+                        }
                         continue;
                     }
 
                     if (label) {
                         metadataLines.push(`${label}: ${valueText}`);
-                    } else if (sectionTitle.toLowerCase().includes('description')) {
-                        descriptionParts.push(valueText);
+                    } else if (valueText) {
+                        metadataLines.push(valueText);
                     }
                 }
             }

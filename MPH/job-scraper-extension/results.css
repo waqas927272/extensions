@@ -384,7 +384,10 @@ body::before {
   white-space: nowrap;
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 3;
+  background: linear-gradient(135deg, #0369a1 0%, #0284c7 100%);
+  background-clip: padding-box;
+  box-shadow: 0 1px 0 rgba(186, 230, 253, 0.18);
 }
 
 #jobsTable td {

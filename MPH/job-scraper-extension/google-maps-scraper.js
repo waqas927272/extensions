@@ -63,7 +63,11 @@
             console.log('No exact match found, trying first result');
         }
 
-        const targetLink = bestMatch || resultLinks[0];
+        if (!bestMatch) {
+            return emptyResult();
+        }
+
+        const targetLink = bestMatch;
         console.log(`Clicking result: "${targetLink.getAttribute('aria-label')}"`);
 
         // Click the matching result to open place details
@@ -96,7 +100,12 @@
         const url = window.location.href;
         const searchMatch = url.match(/\/maps\/search\/([^?#]+)/);
         if (searchMatch) {
-            return decodeURIComponent(searchMatch[1]).replace(/\+/g, ' ').trim();
+            const decoded = decodeURIComponent(searchMatch[1]).replace(/\+/g, ' ').trim();
+            const quotedMatch = decoded.match(/"([^"]+)"/);
+            if (quotedMatch) {
+                return quotedMatch[1].trim();
+            }
+            return decoded.split(',')[0].trim();
         }
         return '';
     }
@@ -115,6 +124,13 @@
 
         const queryNorm = normalize(searchQuery);
         const queryWords = queryNorm.split(' ').filter(w => w.length > 2); // Skip short words
+
+        for (const link of links) {
+            const label = (link.getAttribute('aria-label') || '').replace(/Â·.*$/, '').trim();
+            if (normalize(label) === queryNorm) {
+                return link;
+            }
+        }
 
         let bestLink = null;
         let bestScore = 0;
@@ -140,8 +156,8 @@
             }
         }
 
-        // Require at least 50% word overlap to consider it a match
-        return bestScore >= 0.5 ? bestLink : null;
+        // Require a very strong fallback match when exact equality is not available.
+        return bestScore >= 0.95 ? bestLink : null;
     }
 
     // ===== Extract website URL from place detail panel =====

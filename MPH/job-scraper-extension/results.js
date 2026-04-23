@@ -105,6 +105,60 @@ const SPECIALTY_SERVICE_KEYWORDS = [
     'specialty care'
 ];
 
+const STATE_NAMES_BY_ABBR = {
+    AL: 'Alabama',
+    AK: 'Alaska',
+    AZ: 'Arizona',
+    AR: 'Arkansas',
+    CA: 'California',
+    CO: 'Colorado',
+    CT: 'Connecticut',
+    DE: 'Delaware',
+    FL: 'Florida',
+    GA: 'Georgia',
+    HI: 'Hawaii',
+    ID: 'Idaho',
+    IL: 'Illinois',
+    IN: 'Indiana',
+    IA: 'Iowa',
+    KS: 'Kansas',
+    KY: 'Kentucky',
+    LA: 'Louisiana',
+    ME: 'Maine',
+    MD: 'Maryland',
+    MA: 'Massachusetts',
+    MI: 'Michigan',
+    MN: 'Minnesota',
+    MS: 'Mississippi',
+    MO: 'Missouri',
+    MT: 'Montana',
+    NE: 'Nebraska',
+    NV: 'Nevada',
+    NH: 'New Hampshire',
+    NJ: 'New Jersey',
+    NM: 'New Mexico',
+    NY: 'New York',
+    NC: 'North Carolina',
+    ND: 'North Dakota',
+    OH: 'Ohio',
+    OK: 'Oklahoma',
+    OR: 'Oregon',
+    PA: 'Pennsylvania',
+    RI: 'Rhode Island',
+    SC: 'South Carolina',
+    SD: 'South Dakota',
+    TN: 'Tennessee',
+    TX: 'Texas',
+    UT: 'Utah',
+    VT: 'Vermont',
+    VA: 'Virginia',
+    WA: 'Washington',
+    WV: 'West Virginia',
+    WI: 'Wisconsin',
+    WY: 'Wyoming',
+    DC: 'District of Columbia'
+};
+
 document.addEventListener('DOMContentLoaded', async () => {
     await loadJobs();
     setupEventListeners();
@@ -114,6 +168,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 function normalizeWhitespace(value) {
     return (value || '').replace(/\s+/g, ' ').trim();
+}
+
+function normalizeStateName(value) {
+    const normalized = normalizeWhitespace(value);
+    if (!normalized) return '';
+
+    const upper = normalized.toUpperCase();
+    if (STATE_NAMES_BY_ABBR[upper]) return STATE_NAMES_BY_ABBR[upper];
+
+    const lower = normalized.toLowerCase();
+    const matchedFullName = Object.values(STATE_NAMES_BY_ABBR).find(stateName => stateName.toLowerCase() === lower);
+    return matchedFullName || normalized;
 }
 
 function normalizeTitleForComparison(title) {
@@ -406,6 +472,7 @@ function extractDetailsFromDescription(positionTitle, descriptionText) {
                             state = stateAbbrev[1];
                         }
                     }
+                    state = normalizeStateName(state);
                     locations.push({ city, state, location: `${city}, ${state}` });
                 }
             }
@@ -417,7 +484,7 @@ function extractDetailsFromDescription(positionTitle, descriptionText) {
             const matches = searchText.matchAll(/\b([A-Za-z][\w\s.'()-]*[A-Za-z])\s*,\s*([A-Z]{2})\b/g);
             for (const match of matches) {
                 const city = match[1].trim();
-                const state = match[2].trim();
+                const state = normalizeStateName(match[2].trim());
                 const invalidWords = ['description', 'position', 'associate', 'veterinarian', 'hospital', 'care', 'center', 'clinic', 'location'];
                 if (!invalidWords.some(word => city.toLowerCase().includes(word)) && city.length > 1 && city.length < 50) {
                     locations.push({ city, state, location: `${city}, ${state}` });
@@ -466,11 +533,15 @@ function extractDetailsFromDescription(positionTitle, descriptionText) {
         const empTypeMatch = lower.match(/employment type:\s*([^\n]+)/i);
         if (empTypeMatch) {
             const empType = empTypeMatch[1].trim().toLowerCase();
+            if (/\bpt(?:\d+)?\b/.test(empType)) return 'Part-Time';
+            if (/\bft(?:\d+)?\b/.test(empType)) return 'Full-Time';
             if (empType.includes('part') && empType.includes('full')) return 'Full-Time';
             if (empType.includes('part')) return 'Part-Time';
             return 'Full-Time';
         }
 
+        if (/\bpt(?:\d+)?\b/i.test(lower)) return 'Part-Time';
+        if (/\bft(?:\d+)?\b/i.test(lower)) return 'Full-Time';
         const hasPartTime = /\bpart[\s-]?time\b/i.test(lower);
         const hasFullTime = /\bfull[\s-]?time\b/i.test(lower);
 
@@ -637,8 +708,8 @@ function determineAreaOfPractice(jobTitle, descriptionText, hospitalName) {
     if (
         title.includes('emergency') ||
         /\ber\b/.test(title) ||
-        title.includes('er vet') ||
-        title.includes('er dvm') ||
+        /\ber\s+vet\b/.test(title) ||
+        /\ber\s+dvm\b/.test(title) ||
         description.includes('veterinarian (er)')
     ) {
         return 'Emergency Care';
@@ -753,6 +824,8 @@ function normalizeJobType(rawValue) {
     const lowerValue = value.toLowerCase();
 
     if (!value) return '';
+    if (/\bpt(?:\d+)?\b/.test(lowerValue)) return 'Part Time';
+    if (/\bft(?:\d+)?\b/.test(lowerValue)) return 'Full Time';
     if (/part[\s-]?time/.test(lowerValue)) return 'Part Time';
     if (/full[\s-]?time/.test(lowerValue)) return 'Full Time';
     if (/per[\s-]?diem/.test(lowerValue)) return 'Per Diem';
@@ -772,6 +845,8 @@ function extractJobType(descriptionText) {
 
     const text = (descriptionText || '').toLowerCase();
 
+    if (/\bpt(?:\d+)?\b/.test(text)) return 'Part Time';
+    if (/\bft(?:\d+)?\b/.test(text)) return 'Full Time';
     if (/part[\s-]?time/.test(text) && !/full[\s-]?time/.test(text)) return 'Part Time';
     if (/full[\s-]?time/.test(text)) return 'Full Time';
     if (/per[\s-]?diem/.test(text)) return 'Per Diem';
@@ -780,6 +855,18 @@ function extractJobType(descriptionText) {
     if (/contract/.test(text)) return 'Contract';
     if (/temporary|temp\b/.test(text)) return 'Temporary';
     if (/intern(ship)?/.test(text)) return 'Internship';
+
+    return '';
+}
+
+function extractState(descriptionText) {
+    const explicitState = extractStructuredMetadataValue(descriptionText, ['State']);
+    if (explicitState) return normalizeStateName(explicitState);
+
+    const locations = extractLocations(descriptionText);
+    if (locations.length > 0 && locations[0].state) {
+        return normalizeStateName(locations[0].state);
+    }
 
     return '';
 }
@@ -903,6 +990,7 @@ function deriveDetailsFromDescription(job) {
     const salary = extractRobustSalary(description) || extracted.salary || job.salary || '';
     const experience = extractExperience(description) || job.experience || '';
     const jobType = extractJobType(description) || extracted.jobType || job.jobType || 'Full-Time';
+    const state = extractState(description) || normalizeStateName(job.state || firstLocation?.state || '');
 
     return {
         areaOfPractice: areaOfPractice || extracted.areaOfPractice || job.areaOfPractice || '',
@@ -912,7 +1000,7 @@ function deriveDetailsFromDescription(job) {
         jobType,
         hospitalName,
         city: job.city || firstLocation?.city || '',
-        state: job.state || firstLocation?.state || ''
+        state
     };
 }
 
@@ -1094,6 +1182,7 @@ function setupEventListeners() {
     document.getElementById('fetchDetailsBtn').addEventListener('click', fetchDetails);
     document.getElementById('clearDetailsBtn').addEventListener('click', clearDetails);
     document.getElementById('fetchAddressesBtn').addEventListener('click', startFetchAddresses);
+    document.getElementById('clearAddressesBtn').addEventListener('click', clearAddresses);
     document.getElementById('exportCSV').addEventListener('click', exportToCSV);
     document.getElementById('exportJSON').addEventListener('click', exportToJSON);
     document.getElementById('delete-selected-btn').addEventListener('click', deleteSelected);
@@ -1488,14 +1577,13 @@ async function processNextAddress() {
 
     try {
         const searchHospital = (job.hospitalName || '').trim();
-        const searchLocation = [job.city || '', job.state || ''].filter(Boolean).join(', ');
-        const addressData = await fetchAddressFromGoogleMaps(searchHospital, searchLocation);
+        const searchCity = (job.city || '').trim();
+        const searchState = (job.state || '').trim();
+        const addressData = await fetchAddressFromGoogleMaps(searchHospital, searchCity, searchState);
 
         if (allJobs[index]) {
             if (addressData.streetAddress) allJobs[index].streetAddress = addressData.streetAddress;
             if (addressData.zipCode) allJobs[index].postalCode = addressData.zipCode;
-            if (addressData.city) allJobs[index].city = addressData.city;
-            if (addressData.state) allJobs[index].state = addressData.state;
             if (addressData.website) allJobs[index].website = addressData.website;
             if (addressData.phone) allJobs[index].phone = addressData.phone;
             await chrome.storage.local.set({ scrapedJobs: allJobs });
@@ -1520,8 +1608,37 @@ function finishAddressFetching() {
     alert('Address fetching completed.');
 }
 
-function fetchAddressFromGoogleMaps(hospitalName, location) {
-    const searchQuery = location ? `${hospitalName}, ${location}` : hospitalName;
+async function clearAddresses() {
+    if (isAnyBackgroundTaskRunning()) {
+        alert('Wait for the current task to finish before clearing addresses.');
+        return;
+    }
+
+    const jobsWithAddresses = allJobs.filter(job => job.streetAddress || job.postalCode || job.phone || job.website);
+    if (jobsWithAddresses.length === 0) {
+        alert('No fetched address details found to clear.');
+        return;
+    }
+
+    if (!confirm(`Clear fetched address details from ${jobsWithAddresses.length} job(s)?`)) return;
+
+    allJobs = allJobs.map(job => ({
+        ...job,
+        streetAddress: '',
+        postalCode: '',
+        phone: '',
+        website: ''
+    }));
+
+    await chrome.storage.local.set({ scrapedJobs: allJobs });
+    applyFilters();
+    alert(`Cleared address details from ${jobsWithAddresses.length} job(s).`);
+}
+
+function fetchAddressFromGoogleMaps(hospitalName, city, state) {
+    const locationParts = [city, state].filter(Boolean).join(', ');
+    const quotedHospitalName = hospitalName ? `"${hospitalName}"` : '';
+    const searchQuery = [quotedHospitalName, locationParts].filter(Boolean).join(' ');
     const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
 
     function scrapeTab(url) {
