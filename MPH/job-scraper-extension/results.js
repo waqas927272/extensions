@@ -49,6 +49,27 @@ const SPECIALTY_POSITIONS = new Set([
     'Theriogenologist'
 ]);
 
+const ALLOWED_POSITIONS = new Set([
+    'Medical Director',
+    'Associate Veterinarian',
+    'Partner Veterinarian',
+    'Anesthesiologist',
+    'Cardiologist',
+    'Credentialed Veterinary Technician Specialist',
+    'DABVP Specialist',
+    'Dental Specialist',
+    'Dermatologist',
+    'ECC Specialist',
+    'Internal Medicine Specialist',
+    'Lead Veterinarian',
+    'Medical Oncologist',
+    'Neurologist & Neurosurgeon',
+    'Ophthalmologist',
+    'Radiation Oncologist',
+    'Radiologist',
+    'Surgeon'
+]);
+
 const SPECIALTY_CERTIFICATIONS = [
     'board certified',
     'residency trained',
@@ -115,6 +136,22 @@ function isNonClinicalTitle(title) {
 
 function sanitizeJobs(jobs) {
     return jobs.filter(job => !isExcludedJobTitle(job.jobTitle));
+}
+
+function containsSpecialtyRequirement(text) {
+    const normalized = normalizeWhitespace(text).toLowerCase();
+    if (!normalized) return false;
+
+    return (
+        /\bboard[\s-]?certified\b/.test(normalized) ||
+        /\bresidency[\s-]?trained\b/.test(normalized) ||
+        /\bboard[\s-]?certified\s+or\s+residency[\s-]?trained\b/.test(normalized)
+    );
+}
+
+function normalizeDetectedPosition(position) {
+    const normalized = normalizeWhitespace(position);
+    return ALLOWED_POSITIONS.has(normalized) ? normalized : '';
 }
 
 function extractDetailsFromDescription(positionTitle, descriptionText) {
@@ -547,44 +584,36 @@ function matchPositionFromQualifications(descriptionText) {
     return '';
 }
 
+function matchPositionFromDescription(descriptionText) {
+    const description = (descriptionText || '').toLowerCase();
+    if (!description) return '';
+
+    const condensed = description.substring(0, 2500);
+
+    if (/regional medical director/.test(condensed)) return 'Medical Director';
+    if (/founding partner\s*(?:&|and)\s*lead veterinarian/.test(condensed)) return 'Lead Veterinarian';
+    if (/medical lead veterinarian|medical lead\b/.test(condensed)) return 'Medical Director';
+    if (/lead veterinarian|lead vet\b/.test(condensed)) return 'Lead Veterinarian';
+    if (/dental specialist/.test(condensed)) return 'Dental Specialist';
+    if (/radiation oncolog/.test(condensed)) return 'Radiation Oncologist';
+    if (/medical oncolog/.test(condensed)) return 'Medical Oncologist';
+    if (/cardiolog/.test(condensed)) return 'Cardiologist';
+    if (/neurolog|neurosurg/.test(condensed)) return 'Neurologist & Neurosurgeon';
+    if (/dermatolog/.test(condensed)) return 'Dermatologist';
+    if (/ophthalmolog/.test(condensed)) return 'Ophthalmologist';
+    if (/anesthesiolog/.test(condensed)) return 'Anesthesiologist';
+    if (/internist|internal medicine specialist/.test(condensed)) return 'Internal Medicine Specialist';
+    if (/radiolog|diagnostic imaging/.test(condensed)) return 'Radiologist';
+    if (/\becc specialist\b|criticalist|emergency and critical care/.test(condensed)) return 'ECC Specialist';
+    if (/\bdabvp\b/.test(condensed)) return 'DABVP Specialist';
+    if (/\bcredentialed veterinary technician specialist\b|\bvts\b/.test(condensed)) return 'Credentialed Veterinary Technician Specialist';
+    if (/\bsurgeon\b/.test(condensed) && !/neurosurg|dental/.test(condensed)) return 'Surgeon';
+
+    return '';
+}
+
 function validatePositionForAOP(position, aop) {
-    const validPositions = {
-        'Emergency Care': ['Associate Veterinarian'],
-        'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
-        'Specialty Care': [
-            'Anesthesiologist',
-            'Cardiologist',
-            'Credentialed Veterinary Technician Specialist',
-            'DABVP Specialist',
-            'Dental Specialist',
-            'Dermatologist',
-            'ECC Specialist',
-            'Internal Medicine Specialist',
-            'Medical Director',
-            'Medical Oncologist',
-            'Neurologist & Neurosurgeon',
-            'Ophthalmologist',
-            'Radiation Oncologist',
-            'Radiologist',
-            'Surgeon',
-            'Theriogenologist'
-        ],
-        'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
-    };
-
-    const aopParts = (aop || '').split('/').map(part => part.trim()).filter(Boolean);
-    for (const part of aopParts) {
-        const allowed = validPositions[part];
-        if (allowed && allowed.includes(position)) return position;
-    }
-
-    const hasKnownAOP = aopParts.some(part => validPositions[part]);
-    if (hasKnownAOP) return 'Associate Veterinarian';
-
-    const allKnownPositions = new Set(Object.values(validPositions).flat());
-    if (allKnownPositions.has(position)) return position;
-
-    return 'Associate Veterinarian';
+    return normalizeDetectedPosition(position);
 }
 
 function determineAreaOfPractice(jobTitle, descriptionText, hospitalName) {
@@ -601,6 +630,7 @@ function determineAreaOfPractice(jobTitle, descriptionText, hospitalName) {
     const descriptionSpecialtySignals = countSpecialtySignals(description);
 
     if (title.includes('urgent care') || hospital.includes('urgent care')) return 'Urgent Care';
+    if (containsSpecialtyRequirement(descriptionText)) return 'Specialty Care';
     if (SPECIALTY_POSITIONS.has(titlePosition) || SPECIALTY_POSITIONS.has(qualificationsPosition)) return 'Specialty Care';
     if (hasSpecialtyCertification(`${title} ${qualifications}`)) return 'Specialty Care';
     if ((title.includes('specialist') && !title.includes('technician specialist')) || /\bsurgeon\b/.test(title)) return 'Specialty Care';
@@ -641,26 +671,17 @@ function determineAreaOfPractice(jobTitle, descriptionText, hospitalName) {
 function determinePosition(jobTitle, descriptionText, areaOfPractice) {
     if (isNonClinicalTitle(jobTitle)) return '';
 
-    const title = (jobTitle || '').toLowerCase();
     let position = matchPositionFromTitle(jobTitle);
+
+    if (!position) {
+        position = matchPositionFromDescription(descriptionText);
+    }
 
     if (!position && areaOfPractice === 'Specialty Care') {
         position = matchPositionFromQualifications(descriptionText);
     }
 
-    if (position) {
-        position = validatePositionForAOP(position, areaOfPractice);
-    }
-
-    if (position === 'Associate Veterinarian' && title.includes('medical director')) {
-        position = 'Medical Director';
-    }
-
-    if (!position) {
-        position = 'Associate Veterinarian';
-    }
-
-    return position;
+    return validatePositionForAOP(position, areaOfPractice);
 }
 
 function formatSalary(raw) {
@@ -745,7 +766,7 @@ function normalizeJobType(rawValue) {
 }
 
 function extractJobType(descriptionText) {
-    const explicitType = extractStructuredMetadataValue(descriptionText, ['Employment Type', 'Job Type', 'Schedule']);
+    const explicitType = extractStructuredMetadataValue(descriptionText, ['Employment Type', 'Job Type', 'Schedule', 'Pay Class']);
     const normalizedExplicitType = normalizeJobType(explicitType);
     if (normalizedExplicitType) return normalizedExplicitType;
 
@@ -763,18 +784,133 @@ function extractJobType(descriptionText) {
     return '';
 }
 
+function formatExtractedSalary(raw) {
+    if (!raw) return '';
+
+    const amounts = [];
+    const amountRegex = /\$?\s*([\d,]+(?:\.\d{2})?)\s*(k)?\b/gi;
+    let match;
+
+    while ((match = amountRegex.exec(raw)) !== null) {
+        let amount = parseFloat(match[1].replace(/,/g, ''));
+        if (!Number.isFinite(amount)) continue;
+        if (match[2]) amount *= 1000;
+        if (amount > 0) amounts.push(amount);
+    }
+
+    if (amounts.length === 0) return normalizeWhitespace(raw);
+
+    const formatAmount = (value) => (
+        Number.isInteger(value)
+            ? `$${value.toLocaleString('en-US')}`
+            : `$${value.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+    );
+
+    let unit = 'yearly';
+    if (/(?:per\s+)?(?:hour|hr|\/hr)|hourly/i.test(raw)) unit = 'hourly';
+    else if (/(?:per\s+)?shift|per-shift/i.test(raw)) unit = 'per shift';
+    else if (/(?:per\s+)?day|daily|per[\s-]?diem/i.test(raw)) unit = 'daily';
+    else if (/(?:per\s+)?week|weekly|\/wk/i.test(raw)) unit = 'weekly';
+    else if (/(?:per\s+)?month|monthly/i.test(raw)) unit = 'monthly';
+
+    if (/up to/i.test(raw) && amounts.length >= 1) {
+        return `Up to ${formatAmount(amounts[0])} ${unit}`;
+    }
+
+    if (amounts.length >= 2 || /\b(?:to|through)\b|[-–—]/.test(raw)) {
+        const min = Math.min(amounts[0], amounts[1]);
+        const max = Math.max(amounts[0], amounts[1]);
+        return `${formatAmount(min)} - ${formatAmount(max)} ${unit}`;
+    }
+
+    return `${formatAmount(amounts[0])} ${unit}`;
+}
+
+function extractRobustSalary(descriptionText) {
+    const explicitSalary = extractStructuredMetadataValue(descriptionText, ['Salary Range', 'Salary', 'Base Salary']);
+    if (explicitSalary) return formatExtractedSalary(explicitSalary);
+
+    const candidates = (descriptionText || '')
+        .split('\n')
+        .map(line => normalizeWhitespace(line))
+        .filter(Boolean)
+        .filter(line => /\$/.test(line));
+
+    const salaryPatterns = [
+        /(?:base\s+salary|salary|compensation|pay|earning)[^.\n]{0,80}\$[\d,]+(?:\.\d{2})?\s*(?:k)?\s*(?:to|[-–—])\s*\$?[\d,]+(?:\.\d{2})?\s*(?:k)?[^.\n]{0,40}(?:year|annual|annually|annum|yearly|hour|hr|hourly|shift|daily|weekly|monthly)?/i,
+        /\$[\d,]+(?:\.\d{2})?\s*(?:k)?\s*(?:to|[-–—])\s*\$?[\d,]+(?:\.\d{2})?\s*(?:k)?[^.\n]{0,40}(?:year|annual|annually|annum|yearly|hour|hr|hourly|shift|daily|weekly|monthly)?/i,
+        /(?:salary|compensation|pay|base\s+salary|earning)[^.\n]{0,60}\$[\d,]+(?:\.\d{2})?\s*(?:k)?[^.\n]{0,30}(?:per\s+shift|shift|per\s+hour|hourly|hour|hr|\/hr|per\s+year|annually|annual|annum|yearly|per\s+day|daily|per\s+week|weekly|per\s+month|monthly)/i,
+        /\$[\d,]+(?:\.\d{2})?\s*(?:k)?\s*(?:per\s+shift|shift|per\s+hour|hourly|hour|hr|\/hr|per\s+year|annually|annual|annum|yearly|per\s+day|daily|per\s+week|weekly|per\s+month|monthly)/i,
+        /up to\s+\$[\d,]+(?:\.\d{2})?\s*(?:k)?[^.\n]{0,20}(?:year|annual|annually|annum|yearly|hour|hr|hourly|shift|daily|weekly|monthly)?/i
+    ];
+
+    for (const candidate of [...candidates, descriptionText || '']) {
+        for (const pattern of salaryPatterns) {
+            const match = candidate.match(pattern);
+            if (match) return formatExtractedSalary(match[0].trim());
+        }
+    }
+
+    return '';
+}
+
+function extractExperience(descriptionText) {
+    const segments = (descriptionText || '')
+        .split(/\n|(?<=[.!?])\s+/)
+        .map(segment => normalizeWhitespace(segment))
+        .filter(Boolean);
+
+    const relevantSegments = segments.filter(segment => /\bexperience\b|\bexperienced\b/i.test(segment));
+    const prioritizedSegments = [
+        ...relevantSegments.filter(segment => /\brequired|requireds?|must have|needs?|minimum|at least|should have|should be|requires?\b/i.test(segment)),
+        ...relevantSegments.filter(segment => !/\brequired|requireds?|must have|needs?|minimum|at least|should have|should be|requires?\b/i.test(segment))
+    ];
+
+    const patterns = [
+        /\b(?:minimum of\s+|at least\s+|requires?\s+|required[:\s]+|must have\s+|needs?\s+|should have\s+|should be\s+)?(\d+(?:\.\d+)?)\s*(?:\+)?\s*(?:-|to|–|—)\s*(\d+(?:\.\d+)?)\s+years?\s+(?:of\s+)?experience\b/i,
+        /\bexperience\s+(?:required|requires?|should be|must be|must have|needed|needs?|of)?[:\s]+(\d+(?:\.\d+)?)\s*(?:\+)?\s*(?:-|to|–|—)\s*(\d+(?:\.\d+)?)\s+years?\b/i,
+        /\b(?:minimum of\s+|at least\s+|requires?\s+|required[:\s]+|must have\s+|needs?\s+|should have\s+|should be\s+)?(\d+(?:\.\d+)?)\s*(\+)?\s+years?\s+(?:of\s+)?experience\b/i,
+        /\bexperience\s+(?:required|requires?|should be|must be|must have|needed|needs?|of)?[:\s]+(\d+(?:\.\d+)?)\s*(\+)?\s+years?\b/i,
+        /\b(\d+(?:\.\d+)?)\s*(\+)?\s+years?\b(?=[^.\n]{0,40}\bexperience\b)/i
+    ];
+
+    for (const segment of prioritizedSegments) {
+        if (/\bpreferred|preferably|nice to have\b/i.test(segment)) continue;
+
+        for (const pattern of patterns) {
+            const match = segment.match(pattern);
+            if (!match) continue;
+
+            if (match[2] && /^\d/.test(match[2])) {
+                return `${match[1]}-${match[2]} years`;
+            }
+
+            return match[2] === '+' ? `${match[1]}+ years` : `${match[1]} years`;
+        }
+    }
+
+    return '';
+}
+
 function deriveDetailsFromDescription(job) {
     const description = job.description || '';
     const jobTitle = job.jobTitle || '';
     const extracted = extractDetailsFromDescription(jobTitle, description);
     const firstLocation = extracted.locations && extracted.locations.length > 0 ? extracted.locations[0] : null;
+    const hospitalName = job.hospitalName || extracted.hospitalName || '';
+    const areaOfPractice = determineAreaOfPractice(jobTitle, description, hospitalName);
+    const position = determinePosition(jobTitle, description, areaOfPractice);
+    const salary = extractRobustSalary(description) || extracted.salary || job.salary || '';
+    const experience = extractExperience(description) || job.experience || '';
+    const jobType = extractJobType(description) || extracted.jobType || job.jobType || 'Full-Time';
 
     return {
-        areaOfPractice: extracted.areaOfPractice || job.areaOfPractice || '',
-        position: extracted.position || job.position || '',
-        salary: extracted.salary || job.salary || '',
-        jobType: extracted.jobType || job.jobType || 'Full-Time',
-        hospitalName: job.hospitalName || extracted.hospitalName || '',
+        areaOfPractice: areaOfPractice || extracted.areaOfPractice || job.areaOfPractice || '',
+        position,
+        salary,
+        experience,
+        jobType,
+        hospitalName,
         city: job.city || firstLocation?.city || '',
         state: job.state || firstLocation?.state || ''
     };
@@ -885,6 +1021,7 @@ function displayJobs(jobs) {
             <td class="col-phone">${escapeHtml(job.phone || '')}</td>
             <td class="col-website">${job.website ? `<a href="${escapeHtml(job.website)}" target="_blank">Visit</a>` : ''}</td>
             <td class="col-salary">${escapeHtml(job.salary || '')}</td>
+            <td class="col-experience">${escapeHtml(job.experience || '')}</td>
             <td class="col-jobtype">${escapeHtml(job.jobType || '')}</td>
             <td class="col-link">${job.link ? `<a href="${escapeHtml(job.link)}" target="_blank">Open</a>` : ''}</td>
             <td class="col-description">${descHtml}</td>
@@ -953,7 +1090,9 @@ function setupEventListeners() {
 
     document.getElementById('select-duplicates-btn').addEventListener('click', selectDuplicates);
     document.getElementById('getDescriptionsBtn').addEventListener('click', getJobDescriptions);
+    document.getElementById('clearDescriptionsBtn').addEventListener('click', clearDescriptions);
     document.getElementById('fetchDetailsBtn').addEventListener('click', fetchDetails);
+    document.getElementById('clearDetailsBtn').addEventListener('click', clearDetails);
     document.getElementById('fetchAddressesBtn').addEventListener('click', startFetchAddresses);
     document.getElementById('exportCSV').addEventListener('click', exportToCSV);
     document.getElementById('exportJSON').addEventListener('click', exportToJSON);
@@ -993,6 +1132,7 @@ function applyFilters() {
             (job.phone || '').toLowerCase().includes(searchTerm) ||
             (job.website || '').toLowerCase().includes(searchTerm) ||
             (job.salary || '').toLowerCase().includes(searchTerm) ||
+            (job.experience || '').toLowerCase().includes(searchTerm) ||
             (job.jobType || '').toLowerCase().includes(searchTerm) ||
             (job.link || '').toLowerCase().includes(searchTerm) ||
             (job.description || '').toLowerCase().includes(searchTerm);
@@ -1038,6 +1178,16 @@ function sortJobs(field, direction) {
             };
 
             const difference = salaryValue(a[field]) - salaryValue(b[field]);
+            return direction === 'asc' ? difference : -difference;
+        }
+
+        if (field === 'experience') {
+            const experienceValue = (value) => {
+                const match = (value || '').match(/(\d+(?:\.\d+)?)/);
+                return match ? parseFloat(match[1]) : 0;
+            };
+
+            const difference = experienceValue(a[field]) - experienceValue(b[field]);
             return direction === 'asc' ? difference : -difference;
         }
 
@@ -1113,6 +1263,30 @@ async function getJobDescriptions() {
     isGettingDescriptions = true;
     showProgress('Getting Descriptions', 0, jobsWithoutDescription.length);
     processNextDescriptionJob();
+}
+
+async function clearDescriptions() {
+    if (isAnyBackgroundTaskRunning()) {
+        alert('Wait for the current task to finish before clearing descriptions.');
+        return;
+    }
+
+    const jobsWithDescriptions = allJobs.filter(job => job.description);
+    if (jobsWithDescriptions.length === 0) {
+        alert('No saved descriptions found to clear.');
+        return;
+    }
+
+    if (!confirm(`Clear saved descriptions from ${jobsWithDescriptions.length} job(s)?`)) return;
+
+    allJobs = allJobs.map(job => ({
+        ...job,
+        description: ''
+    }));
+
+    await chrome.storage.local.set({ scrapedJobs: allJobs });
+    applyFilters();
+    alert(`Cleared descriptions from ${jobsWithDescriptions.length} job(s).`);
 }
 
 async function processNextDescriptionJob() {
@@ -1227,6 +1401,39 @@ function finishDetailsFetching() {
     button.textContent = 'Fetch Details';
     hideProgress();
     alert('Details fetched from stored descriptions.');
+}
+
+async function clearDetails() {
+    if (isAnyBackgroundTaskRunning()) {
+        alert('Wait for the current task to finish before clearing details.');
+        return;
+    }
+
+    const jobsWithDetails = allJobs.filter(job => job.detailsFetched);
+    if (jobsWithDetails.length === 0) {
+        alert('No analyzed details found to clear.');
+        return;
+    }
+
+    if (!confirm(`Clear analyzed details from ${jobsWithDetails.length} job(s)?`)) return;
+
+    allJobs = allJobs.map(job => {
+        if (!job.detailsFetched) return job;
+
+        return {
+            ...job,
+            areaOfPractice: '',
+            position: '',
+            salary: '',
+            experience: '',
+            jobType: '',
+            detailsFetched: false
+        };
+    });
+
+    await chrome.storage.local.set({ scrapedJobs: allJobs });
+    applyFilters();
+    alert(`Cleared analyzed details from ${jobsWithDetails.length} job(s).`);
 }
 
 async function startFetchAddresses() {
@@ -1399,6 +1606,7 @@ function exportToCSV() {
         'Phone',
         'Website',
         'Salary',
+        'Experience',
         'Job Type',
         'Job URL',
         'Description'
@@ -1418,6 +1626,7 @@ function exportToCSV() {
         `"${escapeCSV(job.phone)}"`,
         `"${escapeCSV(job.website)}"`,
         `"${escapeCSV(job.salary)}"`,
+        `"${escapeCSV(job.experience)}"`,
         `"${escapeCSV(job.jobType)}"`,
         `"${escapeCSV(job.link)}"`,
         `"${escapeCSV(job.description)}"`
@@ -1497,6 +1706,7 @@ async function sendToWebhook() {
         phone: job.phone || '',
         website: job.website || '',
         salary: job.salary || '',
+        experience: job.experience || '',
         job_type: job.jobType || '',
         url: job.link || '',
         description: job.description || ''
@@ -1557,6 +1767,7 @@ function showJobDetails(job) {
         <p><strong>Phone:</strong> ${escapeHtml(job.phone || 'N/A')}</p>
         <p><strong>Website:</strong> ${job.website ? `<a href="${escapeHtml(job.website)}" target="_blank">${escapeHtml(job.website)}</a>` : 'N/A'}</p>
         <p><strong>Salary:</strong> ${escapeHtml(job.salary || 'N/A')}</p>
+        <p><strong>Experience:</strong> ${escapeHtml(job.experience || 'N/A')}</p>
         <p><strong>Job Type:</strong> ${escapeHtml(job.jobType || 'N/A')}</p>
         <p><strong>Job URL:</strong> ${job.link ? `<a href="${escapeHtml(job.link)}" target="_blank">${escapeHtml(job.link)}</a>` : 'N/A'}</p>
         <hr>
