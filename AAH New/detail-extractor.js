@@ -176,65 +176,6 @@
         return completeData.trim();
     }
 
-    const APPROVED_POSITIONS = [
-        'Medical Director',
-        'Anesthesiologist',
-        'Cardiologist',
-        'Credentialed Veterinary Technician Specialist',
-        'DABVP Specialist',
-        'Dental Specialist',
-        'Dermatologist',
-        'ECC Specialist',
-        'Internal Medicine Specialist',
-        'Lead Veterinarian',
-        'Medical Oncologist',
-        'Neurologist & Neurosurgeon',
-        'Ophthalmologist',
-        'Radiation Oncologist',
-        'Radiologist',
-        'Surgeon'
-    ];
-    const APPROVED_POSITION_SET = new Set(APPROVED_POSITIONS);
-
-    function hasSpecialtyTrainingSignal(text) {
-        return /\bboard certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b/i.test(text || '');
-    }
-
-    function matchApprovedPositionFromText(text) {
-        if (!text) return '';
-
-        const rules = [
-            ['Medical Director', [/\bmedical director\b/i]],
-            ['Lead Veterinarian', [/\blead veterinarian\b/i, /\blead vet\b/i]],
-            ['Neurologist & Neurosurgeon', [/\bneurologist\b/i, /\bneurosurgeon\b/i, /\bneurology\b/i]],
-            ['Dermatologist', [/\bdermatologist\b/i, /\bdermatology\b/i, /\bdacvd\b/i]],
-            ['Cardiologist', [/\bcardiologist\b/i, /\bcardiology\b/i, /\bdacvim\b.*\bcardiolog/i]],
-            ['Radiation Oncologist', [/\bradiation oncolog/i, /\bdacvr[-\s]?ro\b/i, /\bdacvr\b.*\bradiation\b/i]],
-            ['Medical Oncologist', [/\bmedical oncolog/i, /\boncologist\b/i, /\boncology\b/i, /\bdacvim\b.*\boncology\b/i]],
-            ['Radiologist', [/\bradiologist\b/i, /\bradiology\b/i, /\bdiagnostic imaging\b/i, /\bdacvr\b/i]],
-            ['Ophthalmologist', [/\bophthalmologist\b/i, /\bophthalmology\b/i, /\bdacvo\b/i]],
-            ['Anesthesiologist', [/\banesthesiologist\b/i, /\banesthesia\b/i, /\bdacvaa\b/i]],
-            ['Internal Medicine Specialist', [/\binternist\b/i, /\binternal medicine\b/i, /\bdacvim\b/i]],
-            ['ECC Specialist', [/\bcriticalist\b/i, /\becc specialist\b/i, /\becc\b/i, /\bemergency\s*(?:&|and)?\s*critical care\b/i, /\bdacvecc\b/i]],
-            ['DABVP Specialist', [/\bdabvp\b/i]],
-            ['Dental Specialist', [/\bdental specialist\b/i, /\bdentist\b/i, /\bdentistry\b/i, /\bdental\b/i, /\bdavdc\b/i]],
-            ['Surgeon', [/\bsurgeon\b/i, /\bsurgery\b/i, /\bdacvs\b/i, /\bacvs\b/i]],
-            ['Credentialed Veterinary Technician Specialist', [/\bcredentialed veterinary technician specialist\b/i, /\btechnician specialist\b/i, /\bvts\b/i]]
-        ];
-
-        for (const [position, patterns] of rules) {
-            if (patterns.some(pattern => pattern.test(text))) {
-                if (position === 'Medical Oncologist' && /\bradiation oncolog/i.test(text)) continue;
-                if (position === 'Radiologist' && /\bradiation oncolog/i.test(text)) continue;
-                if (position === 'Surgeon' && /\bneuro(?:logy|surgeon)\b/i.test(text)) continue;
-                if (position === 'Dental Specialist' && /\bassistant\b/i.test(text)) continue;
-                return position;
-            }
-        }
-
-        return '';
-    }
-
     // ===== Map category string to Area of Practice =====
     function categoryToAOP(category) {
         if (!category) return '';
@@ -248,7 +189,6 @@
 
     // ===== Determine Area of Practice =====
     function determineAreaOfPractice(title, category, descriptionText) {
-        if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
         // STEP 1: Use category from page (most reliable — directly from jobvite)
         const aopFromCategory = categoryToAOP(category);
         if (aopFromCategory) return aopFromCategory;
@@ -337,6 +277,7 @@
         if (t.includes('radiologist') || t.includes('diagnostic imaging') || t.includes('radiology')) return 'Radiologist';
         if (t.includes('ophthalmologist') || t.includes('ophthalmology')) return 'Ophthalmologist';
         if (t.includes('anesthesiologist') || t.includes('anesthesia')) return 'Anesthesiologist';
+        if (t.includes('theriogenologist') || t.includes('theriogenology')) return 'Theriogenologist';
         if (t.includes('internist') || t.includes('internal medicine')) return 'Internal Medicine Specialist';
         if (t.includes('criticalist') || t.match(/\becc\b/) || t.includes('emergency medicine')) return 'ECC Specialist';
         if (t.includes('dabvp')) return 'DABVP Specialist';
@@ -347,13 +288,38 @@
         // === VTS/CREDENTIALED SPECIALIST (check before generic technician) ===
         if (t.includes('technician specialist') || (t.match(/\bvts\b/) && t.includes('specialist'))) return 'Credentialed Veterinary Technician Specialist';
 
+        // === ANIMAL TYPE & PRACTICE SCOPE ===
+        if (t.includes('equine') || t.includes('bovine') || t.includes('large animal')) return 'Equine/Bovine Veterinarian/Large Animal';
+        if (t.includes('avian') || t.includes('exotics')) return 'Avian & Exotics Veterinarian / Associate Exotics';
+
+        // === GENERAL VETERINARY ROLES ===
+        if (t.includes('partner veterinarian')) return 'Partner Veterinarian';
+
         return '';
     }
 
     // ===== Match position from qualifications section (for generic titles) =====
     function matchPositionFromQualifications(descriptionText) {
-        const qualSection = extractQualificationsSection(descriptionText) || '';
-        return matchApprovedPositionFromText(`${qualSection}\n${descriptionText}`);
+        const qualSection = extractQualificationsSection(descriptionText);
+        if (!qualSection) return '';
+        const q = qualSection.toLowerCase();
+
+        if (q.includes('dacvecc')) return 'ECC Specialist';
+        if (q.includes('dacvim') && q.includes('oncology')) return 'Medical Oncologist';
+        if (q.includes('dacvr') && q.includes('radiation')) return 'Radiation Oncologist';
+        if (q.includes('dacvim') && q.includes('neurology')) return 'Neurologist & Neurosurgeon';
+        if (q.includes('dacvim') && q.includes('cardiology')) return 'Cardiologist';
+        if (q.includes('dacvim')) return 'Internal Medicine Specialist';
+        if (q.includes('davdc')) return 'Dental Specialist';
+        if (q.includes('dacvd')) return 'Dermatologist';
+        if (q.includes('dacvs') || q.includes('acvs')) return 'Surgeon';
+        if (q.includes('dacvr')) return 'Radiologist';
+        if (q.includes('dacvo')) return 'Ophthalmologist';
+        if (q.includes('dacvaa')) return 'Anesthesiologist';
+        if (q.includes('dact')) return 'Theriogenologist';
+        if (q.includes('dabvp')) return 'DABVP Specialist';
+
+        return '';
     }
 
     // ===== Determine Position =====
@@ -370,22 +336,27 @@
         let position = matchPositionFromTitle(title);
 
         // 2. If no match from title and AOP is Specialty Care, try qualifications
-        if (!position) {
+        if (!position && areaOfPractice === 'Specialty Care') {
             position = matchPositionFromQualifications(descriptionText);
         }
 
         // 3. Validate position against AOP — ensure it's a valid combo
         if (position) {
-            position = APPROVED_POSITION_SET.has(position) ? position : '';
+            position = validatePositionForAOP(position, areaOfPractice);
         }
 
         // 4. Special case: if title explicitly says "Medical Director" but AOP validation
         //    downgraded it (e.g., ER category), keep it as Medical Director — it's valid in GP and Specialty
-        if (!APPROVED_POSITION_SET.has(position)) {
-            position = '';
+        if (position === 'Associate Veterinarian' && title.toLowerCase().includes('medical director')) {
+            position = 'Medical Director';
         }
 
-        return position || '';
+        // 5. Default based on AOP
+        if (!position) {
+            position = 'Associate Veterinarian';
+        }
+
+        return position;
     }
 
     // ===== Validate that position is allowed for the given AOP =====
@@ -524,62 +495,6 @@
         return '';
     }
 
-    function extractExperience(descriptionText) {
-        if (!descriptionText) return '';
-
-        const yearToken = '(?:years?|yrs?\\.?)';
-        const qualificationsSection = extractQualificationsSection(descriptionText);
-        const candidateLines = [];
-
-        if (qualificationsSection) {
-            candidateLines.push(...qualificationsSection.split('\n'));
-        }
-        candidateLines.push(...descriptionText.split('\n'));
-
-        const prioritizedLines = candidateLines
-            .map(line => line.trim())
-            .filter(Boolean)
-            .filter(line => /\b(?:experience|experienced|practice setting|in practice|working)\b/i.test(line));
-
-        const patterns = [
-            new RegExp(`\\b(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
-            new RegExp(`\\b(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
-            new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
-            new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\b`, 'i'),
-            new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
-            new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
-            new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
-            new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
-            new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:in\\s+(?:practice|a\\s+practice\\s+setting)|working(?:\\s+in|\\s+at)?|practice\\s+setting)\\b`, 'i')
-        ];
-
-        function formatExperience(match) {
-            const minYears = match[1];
-            const maxYears = match[2];
-            if (minYears && maxYears) {
-                return `${minYears}-${maxYears} years`;
-            }
-
-            const years = minYears || maxYears;
-            if (!years) return '';
-
-            if (/\+/.test(match[0]) || /\b(?:minimum|min\.?|at least)\b/i.test(match[0])) {
-                return `${years}+ years`;
-            }
-
-            return `${years} ${years === '1' ? 'year' : 'years'}`;
-        }
-
-        for (const source of prioritizedLines) {
-            for (const pattern of patterns) {
-                const match = source.match(pattern);
-                if (match) return formatExperience(match);
-            }
-        }
-
-        return '';
-    }
-
     // ===== Extract locations =====
     function extractLocations(jsonLd, domData) {
         const locations = [];
@@ -665,8 +580,8 @@
     if (!hospitalName && jsonLd?.hiringOrganization?.name) {
         hospitalName = jsonLd.hiringOrganization.name;
     }
-    // If generic UVC name, try to find specific hospital in description
-    if (hospitalName.toLowerCase().includes('united veterinary care')) {
+    // If a generic parent-client name appears, try to find the specific hospital in the description.
+    if (/united veterinary care|alliance animal health/i.test(hospitalName)) {
         const hospitalMatch = fullDescription.match(/at\s+((?:[\w'.&-]+\s+){1,5}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)))\b/i);
         if (hospitalMatch) hospitalName = hospitalMatch[1].trim();
     }
@@ -675,7 +590,6 @@
     const areaOfPractice = determineAreaOfPractice(positionTitle, category, fullDescription);
     const position = determinePosition(positionTitle, areaOfPractice, fullDescription);
     const salary = extractSalary(jsonLd, fullDescription);
-    const experience = extractExperience(fullDescription);
     const locations = extractLocations(jsonLd, domData);
 
     // Build results
@@ -683,7 +597,6 @@
         areaOfPractice,
         position,
         salary,
-        experience,
         hospitalName,
         description: fullDescription
     };
