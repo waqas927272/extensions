@@ -103,6 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const APPROVED_POSITIONS = [
+        'Associate Veterinarian',
         'Medical Director',
         'Anesthesiologist',
         'Cardiologist',
@@ -118,9 +119,22 @@ document.addEventListener('DOMContentLoaded', () => {
         'Ophthalmologist',
         'Radiation Oncologist',
         'Radiologist',
-        'Surgeon'
+        'Surgeon',
+        'Partner Veterinarian'
     ];
     const APPROVED_POSITION_SET = new Set(APPROVED_POSITIONS);
+    const VALID_POSITIONS_BY_AOP = {
+        'Emergency Care': ['Associate Veterinarian'],
+        'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
+        'Specialty Care': [
+            'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
+            'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
+            'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
+            'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
+            'Radiologist', 'Surgeon'
+        ],
+        'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
+    };
 
     function hasSpecialtyTrainingSignal(text) {
         return /\bboard certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b/i.test(text || '');
@@ -132,19 +146,19 @@ document.addEventListener('DOMContentLoaded', () => {
         const rules = [
             ['Medical Director', [/\bmedical director\b/i]],
             ['Lead Veterinarian', [/\blead veterinarian\b/i, /\blead vet\b/i]],
-            ['Neurologist & Neurosurgeon', [/\bneurologist\b/i, /\bneurosurgeon\b/i, /\bneurology\b/i]],
-            ['Dermatologist', [/\bdermatologist\b/i, /\bdermatology\b/i, /\bdacvd\b/i]],
-            ['Cardiologist', [/\bcardiologist\b/i, /\bcardiology\b/i, /\bdacvim\b.*\bcardiolog/i]],
+            ['Neurologist & Neurosurgeon', [/\bneurologist\b/i, /\bneurosurgeon\b/i, /\bboard certified\b.*\bneurolog/i, /\bresidency[-\s]+trained\b.*\bneurolog/i, /\bdacvim\b.*\bneurolog/i]],
+            ['Dermatologist', [/\bdermatologist\b/i, /\bboard certified\b.*\bdermatolog/i, /\bresidency[-\s]+trained\b.*\bdermatolog/i, /\bdacvd\b/i]],
+            ['Cardiologist', [/\bcardiologist\b/i, /\bboard certified\b.*\bcardiolog/i, /\bresidency[-\s]+trained\b.*\bcardiolog/i, /\bdacvim\b.*\bcardiolog/i]],
             ['Radiation Oncologist', [/\bradiation oncolog/i, /\bdacvr[-\s]?ro\b/i, /\bdacvr\b.*\bradiation\b/i]],
-            ['Medical Oncologist', [/\bmedical oncolog/i, /\boncologist\b/i, /\boncology\b/i, /\bdacvim\b.*\boncology\b/i]],
-            ['Radiologist', [/\bradiologist\b/i, /\bradiology\b/i, /\bdiagnostic imaging\b/i, /\bdacvr\b/i]],
-            ['Ophthalmologist', [/\bophthalmologist\b/i, /\bophthalmology\b/i, /\bdacvo\b/i]],
-            ['Anesthesiologist', [/\banesthesiologist\b/i, /\banesthesia\b/i, /\bdacvaa\b/i]],
-            ['Internal Medicine Specialist', [/\binternist\b/i, /\binternal medicine\b/i, /\bdacvim\b/i]],
-            ['ECC Specialist', [/\bcriticalist\b/i, /\becc specialist\b/i, /\becc\b/i, /\bemergency\s*(?:&|and)?\s*critical care\b/i, /\bdacvecc\b/i]],
+            ['Medical Oncologist', [/\bmedical oncolog/i, /\bboard certified\b.*\boncolog/i, /\bresidency[-\s]+trained\b.*\boncolog/i, /\bdacvim\b.*\boncology\b/i]],
+            ['Radiologist', [/\bradiologist\b/i, /\bdiagnostic imaging specialist\b/i, /\bboard certified\b.*\bradiolog/i, /\bresidency[-\s]+trained\b.*\bradiolog/i, /\bdacvr\b/i]],
+            ['Ophthalmologist', [/\bophthalmologist\b/i, /\bboard certified\b.*\bophthalmolog/i, /\bresidency[-\s]+trained\b.*\bophthalmolog/i, /\bdacvo\b/i]],
+            ['Anesthesiologist', [/\banesthesiologist\b/i, /\bboard certified\b.*\banesth/i, /\bresidency[-\s]+trained\b.*\banesth/i, /\bdacvaa\b/i]],
+            ['Internal Medicine Specialist', [/\binternist\b/i, /\binternal medicine specialist\b/i, /\bboard certified\b.*\binternal medicine\b/i, /\bresidency[-\s]+trained\b.*\binternal medicine\b/i, /\bdacvim\b(?!.*oncology)(?!.*cardiology)(?!.*neurology)/i]],
+            ['ECC Specialist', [/\bcriticalist\b/i, /\becc specialist\b/i, /\bemergency\s*(?:&|and)?\s*critical care specialist\b/i, /\bboard certified\b.*\bcritical/i, /\bresidency[-\s]+trained\b.*\bcritical/i, /\bdacvecc\b/i]],
             ['DABVP Specialist', [/\bdabvp\b/i]],
-            ['Dental Specialist', [/\bdental specialist\b/i, /\bdentist\b/i, /\bdentistry\b/i, /\bdental\b/i, /\bdavdc\b/i]],
-            ['Surgeon', [/\bsurgeon\b/i, /\bsurgery\b/i, /\bdacvs\b/i, /\bacvs\b/i]],
+            ['Dental Specialist', [/\bdental specialist\b/i, /\bveterinary dentist\b/i, /\boral surgeon\b/i, /\bboard certified\b.*\bdent/i, /\bresidency[-\s]+trained\b.*\bdent/i, /\bdavdc\b/i]],
+            ['Surgeon', [/\bveterinary surgeon\b/i, /\bsurgeon\b/i, /\bboard certified\b.*\bsurgeon\b/i, /\bresidency[-\s]+trained\b.*\bsurgeon\b/i, /\bdacvs\b/i, /\bacvs\b/i]],
             ['Credentialed Veterinary Technician Specialist', [/\bcredentialed veterinary technician specialist\b/i, /\btechnician specialist\b/i, /\bvts\b/i]]
         ];
 
@@ -172,7 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // The listing title (e.g. "Veterinary Cardiologist") is always more specific than
     // generic detail page content, so we use it as the primary position signal.
     function getPositionFromTitle(title) {
-        const t = title.toLowerCase();
+        const t = (title || '').toLowerCase();
 
         // === HIGHEST PRIORITY: Leadership positions ===
         // "Group Medical Director - The Oncology Service" → Medical Director, NOT Medical Oncologist
@@ -197,12 +211,46 @@ document.addEventListener('DOMContentLoaded', () => {
         // === VTS/CREDENTIALED SPECIALIST ===
         if (t.includes('technician specialist') || (t.match(/\bvts\b/) && t.includes('specialist'))) return 'Credentialed Veterinary Technician Specialist';
 
+        // === GENERIC VETERINARIAN ROLES ===
+        if (t.includes('partner veterinarian') || t.includes('partner vet')) return 'Partner Veterinarian';
+        if (/\b(?:associate\s+)?(?:emergency|er|urgent care|urgent)?\s*(?:veterinarian|vet|dvm)\b/.test(t)) return 'Associate Veterinarian';
+        if (/\bassociate veterinarian\b|\bassociate vet\b/.test(t)) return 'Associate Veterinarian';
+
         return '';
+    }
+
+    function getAOPParts(aop) {
+        return (aop || '').split('/').map(part => part.trim()).filter(Boolean);
     }
 
     // Validate that a position is allowed for the given AOP
     function getValidatedPosition(position, aop) {
-        return APPROVED_POSITION_SET.has(position) ? position : '';
+        if (!APPROVED_POSITION_SET.has(position)) return '';
+
+        const aopParts = getAOPParts(aop);
+        if (aopParts.length === 0) return position;
+
+        for (const part of aopParts) {
+            const allowed = VALID_POSITIONS_BY_AOP[part];
+            if (allowed && allowed.includes(position)) return position;
+        }
+
+        return '';
+    }
+
+    function getDefaultPositionForAOP(aop, title = '') {
+        const aopParts = getAOPParts(aop);
+        const t = (title || '').toLowerCase();
+
+        if (aopParts.includes('Urgent Care') && (t.includes('partner veterinarian') || t.includes('partner vet'))) {
+            return 'Partner Veterinarian';
+        }
+
+        if (aopParts.some(part => ['General Practice Care', 'Emergency Care', 'Urgent Care'].includes(part))) {
+            return 'Associate Veterinarian';
+        }
+
+        return '';
     }
 
     // Determine AOP from the Jobvite category string
@@ -344,6 +392,30 @@ document.addEventListener('DOMContentLoaded', () => {
             return null;
         }
 
+        function extractRoleSignalText(text) {
+            if (!text) return '';
+
+            const rolePattern = /\b(?:medical director|lead veterinarian|lead vet|board certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
+            const blockedPattern = /\b(?:our services|services include|specialties include|benefits|medical(?:,\s*|\s+)dental|dental insurance|our hospital|our team has|state[-\s]?of[-\s]?the[-\s]?art|we offer|years of experience in specialty and emergency services)\b/i;
+            const qualificationsSection = extractQualificationsSection(text);
+            const collected = [];
+            const seen = new Set();
+
+            if (qualificationsSection) {
+                seen.add(qualificationsSection);
+                collected.push(qualificationsSection);
+            }
+
+            for (const rawLine of text.split('\n')) {
+                const line = rawLine.trim();
+                if (!line || !rolePattern.test(line) || blockedPattern.test(line) || seen.has(line)) continue;
+                seen.add(line);
+                collected.push(line);
+            }
+
+            return collected.join('\n');
+        }
+
         // Determine Area of Practice
         // Priority: 1) Title-specific overrides (urgent care), 2) Industry/Category from JSON-LD, 3) title keywords, 4) description qualifications
         function determineAreaOfPractice(positionText, descriptionText) {
@@ -418,7 +490,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Match position from title keywords
         // PRIORITY ORDER: Leadership first (to avoid false matches on service names), then specialty, then generic
         function matchPositionFromTitle(title) {
-            const t = title.toLowerCase();
+            const t = (title || '').toLowerCase();
 
             // === HIGHEST PRIORITY: Leadership positions ===
             // Must be checked FIRST — "Group Medical Director - The Oncology Service" should be
@@ -445,13 +517,17 @@ document.addEventListener('DOMContentLoaded', () => {
             // === VTS/CREDENTIALED SPECIALIST (check before generic technician) ===
             if (t.includes('technician specialist') || (t.match(/\bvts\b/) && t.includes('specialist'))) return 'Credentialed Veterinary Technician Specialist';
 
+            // === GENERIC VETERINARIAN ROLES ===
+            if (t.includes('partner veterinarian') || t.includes('partner vet')) return 'Partner Veterinarian';
+            if (/\b(?:associate\s+)?(?:emergency|er|urgent care|urgent)?\s*(?:veterinarian|vet|dvm)\b/.test(t)) return 'Associate Veterinarian';
+            if (/\bassociate veterinarian\b|\bassociate vet\b/.test(t)) return 'Associate Veterinarian';
+
             return '';
         }
 
         // Match position from qualifications section
         function matchPositionFromQualifications(descriptionText) {
-            const qualSection = extractQualificationsSection(descriptionText) || '';
-            return getPositionFromDescription(`${qualSection}\n${descriptionText}`);
+            return getPositionFromDescription(extractRoleSignalText(descriptionText));
         }
 
         // Validate position is allowed for given AOP per CorrectJobNames.txt
@@ -630,7 +706,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const prioritizedLines = candidateLines
                 .map(line => line.trim())
                 .filter(Boolean)
-                .filter(line => /\b(?:experience|experienced|practice setting|in practice|working)\b/i.test(line));
+                .filter(line => /\b(?:experience|experienced|minimum|min\.?|at least|required|requirements?|qualifications?|practice setting|years in practice)\b/i.test(line))
+                .filter(line => !/\b(?:our team has|over\s+\d+\s+years of experience|years of experience in specialty and emergency services|serving\s+the\s+community|we offer|benefits|medical(?:,\s*|\s+)dental)\b/i.test(line));
 
             const patterns = [
                 new RegExp(`\\b(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
@@ -641,7 +718,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
                 new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
                 new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
-                new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:in\\s+(?:practice|a\\s+practice\\s+setting)|working(?:\\s+in|\\s+at)?|practice\\s+setting)\\b`, 'i')
+                new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:in\\s+(?:practice|a\\s+practice\\s+setting)|practice\\s+setting)\\b`, 'i')
             ];
 
             function formatExperience(match) {
@@ -702,6 +779,22 @@ document.addEventListener('DOMContentLoaded', () => {
         // Build search query: "Hospital Name, City, State"
         const searchQuery = `${hospitalName}, ${location}`;
         const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
+
+        function mergeMapsData(primary, secondary) {
+            return {
+                streetAddress: primary.streetAddress || secondary.streetAddress || '',
+                zipCode: primary.zipCode || secondary.zipCode || '',
+                city: primary.city || secondary.city || '',
+                state: primary.state || secondary.state || '',
+                fullAddress: primary.fullAddress || secondary.fullAddress || '',
+                website: primary.website || secondary.website || '',
+                phone: primary.phone || secondary.phone || ''
+            };
+        }
+
+        function needsMapsRetry(data) {
+            return !data.streetAddress || !data.zipCode || !data.website || !data.phone;
+        }
 
         // Inner function: open a tab, wait for load, inject scraper, get results
         function scrapeGoogleMapsTab(url, queryLabel) {
@@ -765,7 +858,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let data = await scrapeGoogleMapsTab(mapsUrl, searchQuery);
 
         // Attempt 2: if failed, try with & → and, remove dashes/parens
-        if (!data.streetAddress && !data.zipCode) {
+        if (needsMapsRetry(data)) {
             const simplifiedName = hospitalName
                 .replace(/&/g, 'and')
                 .replace(/[-–—()]/g, ' ')
@@ -775,7 +868,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (altQuery !== searchQuery) {
                 console.log(`↻ Retry with: "${altQuery}"`);
                 const altUrl = `https://www.google.com/maps/search/${encodeURIComponent(altQuery)}`;
-                data = await scrapeGoogleMapsTab(altUrl, altQuery);
+                const altData = await scrapeGoogleMapsTab(altUrl, altQuery);
+                data = mergeMapsData(data, altData);
             }
         }
 
@@ -1591,7 +1685,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     : (detailAOP || getAOPFromTitle(listingTitle) || 'General Practice Care');
 
                 // Step 2: Match position from listing title
-                let finalPosition = getPositionFromTitle(listingTitle) || getPositionFromDescription(descText);
+                let finalPosition = getPositionFromTitle(listingTitle) || firstDetail.position || '';
 
                 // Step 3: If listing title had no match but AOP is Specialty, try qualifications from description
                 if (!finalPosition && finalAOP === 'Specialty Care') {
@@ -1601,6 +1695,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Step 4: Validate position against AOP
                 if (finalPosition) {
                     finalPosition = getValidatedPosition(finalPosition, finalAOP);
+                }
+                if (!finalPosition) {
+                    finalPosition = getDefaultPositionForAOP(finalAOP, listingTitle);
                 }
 
                 // Step 5: Medical Director override — if title says "Medical Director", keep it
@@ -1708,12 +1805,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await chrome.storage.local.get(['scrapedJobs']);
         const jobs = data.scrapedJobs || [];
 
-        // Find jobs that need addresses (using LOCATION column)
+        // Find jobs that need address/contact data (using LOCATION column)
         const jobsNeedingAddresses = jobs.map((job, index) => ({ job, index }))
             .filter(item => {
-                // Jobs that don't have street address or zip code
+                // Jobs missing any core location/contact field
                 return item.job.hospital && item.job.location &&
-                    (!item.job.streetAddress || !item.job.zipCode);
+                    (!item.job.streetAddress || !item.job.zipCode || !item.job.website || !item.job.phone);
             });
 
         if (jobsNeedingAddresses.length === 0) {
@@ -1743,7 +1840,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const progressText = document.getElementById('progressText');
         const progressLabel = document.getElementById('progressLabel');
         progressSection.classList.remove('hidden');
-        progressLabel.textContent = 'Fetching Street Addresses & Zip Codes';
+        progressLabel.textContent = 'Fetching Addresses, Websites & Phones';
         progressText.textContent = `0 / ${addressQueue.length}`;
         progressBar.style.width = '0%';
 
@@ -1774,9 +1871,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!searchHospital) searchHospital = job.hospital;
             }
 
-            // If hospital name doesn't contain "Hospital" or "Clinic", append "Hospital"
-            // so Google Maps finds the actual veterinary place
-            if (searchHospital && !/hospital|clinic/i.test(searchHospital)) {
+            // Only append "Hospital" when the name does not already look like a veterinary facility.
+            if (searchHospital && !/\b(?:hospital|clinic|center|centre|specialists?|specialty|service|services|care|emergency|referral|veterinary|animal|pet)\b/i.test(searchHospital)) {
                 searchHospital = searchHospital + ' Hospital';
             }
 
