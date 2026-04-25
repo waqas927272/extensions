@@ -480,8 +480,14 @@
         // 2. Extract from description text
         if (!descriptionText) return '';
         const text = descriptionText;
+        const normalizedText = text
+            .replace(/\u00e2\u20ac\u201c|\u00e2\u20ac\u201d|\u00e2\u02c6\u2019/g, '-')
+            .replace(/[\u2012\u2013\u2014\u2212]/g, '-');
 
         const salaryPatterns = [
+            /(?:compensation|salary|pay)\s+range\s*[-:]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*-\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*,?\s*(?:depending|based)\s+on[^\n.]*)?/i,
+            /(?:base\s+)?(?:salary|compensation|pay)\s+range(?:\s+can\s+vary)?\s*(?:from|of|is|:)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|to)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual|hour|hr|hourly))?/i,
+            /(?:base\s+)?(?:salary|compensation|pay)\s+range(?:\s+can\s+vary)?\s*between\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*and\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual|hour|hr|hourly))?/i,
             /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|\u2013|\u2014)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
             /(?:(?:pay|salary|compensation)\s+range)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|\u2013|\u2014)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
             /(?:salary|compensation|pay)[:\s]+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|\u2013|\u2014)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual|hour|hr))?/i,
@@ -510,11 +516,18 @@
             /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hour|hr|\/hr)/i,
         ];
         for (const pattern of salaryPatterns) {
-            const m = text.match(pattern);
+            const m = normalizedText.match(pattern);
             if (m) {
-                const context = text.substring(Math.max(0, m.index - 80), Math.min(text.length, m.index + m[0].length + 80));
+                const context = normalizedText.substring(Math.max(0, m.index - 80), Math.min(normalizedText.length, m.index + m[0].length + 80));
                 return formatSalary(m[0].trim(), context);
             }
+        }
+
+        // Last-resort fallback for messy formatting like:
+        // "Compensation Range- $175,000-250,000, depending on ..."
+        const keywordWindow = normalizedText.match(/(?:compensation|salary|pay)[\s\S]{0,80}\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|to|and)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i);
+        if (keywordWindow) {
+            return formatSalary(keywordWindow[0].trim(), keywordWindow[0]);
         }
         return '';
     }

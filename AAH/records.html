@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Scraped Job Records - United Veterinary</title>
+  <title>Scraped Job Records - Alliance Animal</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     * {
@@ -13,7 +13,7 @@
 
     body {
       font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: linear-gradient(135deg, #fffbf5 0%, #fef3e2 50%, #fff7ed 100%);
+      background: linear-gradient(135deg, #f5f9fd 0%, #eaf2fb 50%, #eef5fc 100%);
       min-height: 100vh;
       color: #1e293b;
     }
@@ -27,22 +27,22 @@
       right: 0;
       bottom: 0;
       background:
-        radial-gradient(circle at 20% 80%, rgba(249, 161, 27, 0.08) 0%, transparent 50%),
-        radial-gradient(circle at 80% 20%, rgba(251, 191, 36, 0.06) 0%, transparent 50%),
-        radial-gradient(circle at 40% 40%, rgba(245, 158, 11, 0.05) 0%, transparent 40%);
+        radial-gradient(circle at 20% 80%, rgba(0, 60, 113, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(0, 84, 158, 0.06) 0%, transparent 50%),
+        radial-gradient(circle at 40% 40%, rgba(0, 47, 89, 0.05) 0%, transparent 40%);
       pointer-events: none;
       z-index: 0;
     }
 
     .header {
-      background: linear-gradient(135deg, #F9A11B 0%, #e8920f 40%, #d4850d 100%);
+      background: linear-gradient(135deg, #003c71 0%, #00549e 40%, #002f59 100%);
       padding: 40px 48px;
       color: white;
       position: relative;
       overflow: hidden;
       box-shadow:
-        0 4px 30px rgba(249, 161, 27, 0.3),
-        0 10px 60px rgba(232, 146, 15, 0.2);
+        0 4px 30px rgba(0, 60, 113, 0.3),
+        0 10px 60px rgba(0, 84, 158, 0.2);
     }
 
     /* Decorative header elements */
@@ -196,7 +196,7 @@
       display: flex;
       flex-direction: column;
       gap: 20px;
-      border: 1px solid rgba(249, 161, 27, 0.1);
+      border: 1px solid rgba(0, 60, 113, 0.1);
       transition: all 0.3s ease;
     }
 
@@ -241,8 +241,8 @@
     }
 
     .webhook-input-group input:focus {
-      border-color: #F9A11B;
-      box-shadow: 0 0 0 4px rgba(249, 161, 27, 0.12);
+      border-color: #003c71;
+      box-shadow: 0 0 0 4px rgba(0, 60, 113, 0.12);
       background: white;
     }
 
@@ -269,8 +269,8 @@
     }
 
     .search-box:focus-within {
-      border-color: #F9A11B;
-      box-shadow: 0 0 0 4px rgba(249, 161, 27, 0.12), 0 4px 20px rgba(249, 161, 27, 0.1);
+      border-color: #003c71;
+      box-shadow: 0 0 0 4px rgba(0, 60, 113, 0.12), 0 4px 20px rgba(0, 60, 113, 0.1);
     }
 
     .search-box svg {
@@ -282,7 +282,7 @@
     }
 
     .search-box:focus-within svg {
-      fill: #F9A11B;
+      fill: #003c71;
     }
 
     .search-box input {
@@ -351,21 +351,21 @@
     }
 
     .btn-primary {
-      background: linear-gradient(135deg, #F9A11B 0%, #e8920f 50%, #d4850d 100%);
+      background: linear-gradient(135deg, #003c71 0%, #00549e 50%, #002f59 100%);
       color: white;
     }
 
     .btn-primary:hover {
-      box-shadow: 0 8px 32px rgba(249, 161, 27, 0.45);
+      box-shadow: 0 8px 32px rgba(0, 60, 113, 0.45);
     }
 
     .btn-webhook {
-      background: linear-gradient(135deg, #F9A11B 0%, #e8920f 50%, #d4850d 100%);
+      background: linear-gradient(135deg, #003c71 0%, #00549e 50%, #002f59 100%);
       color: white;
     }
 
     .btn-webhook:hover {
-      box-shadow: 0 8px 32px rgba(249, 161, 27, 0.45);
+      box-shadow: 0 8px 32px rgba(0, 60, 113, 0.45);
     }
 
     .btn-danger {
@@ -394,7 +394,7 @@
       box-shadow:
         0 4px 24px rgba(0, 0, 0, 0.06),
         0 1px 2px rgba(0, 0, 0, 0.04);
-      border: 1px solid rgba(249, 161, 27, 0.1);
+      border: 1px solid rgba(0, 60, 113, 0.1);
     }
 
     /* Wrapper handles horizontal scroll — sticky bottom keeps scrollbar visible on screen */
@@ -413,12 +413,12 @@
       border-radius: 7px;
     }
     .table-scroll-wrapper::-webkit-scrollbar-thumb {
-      background: linear-gradient(135deg, #F9A11B 0%, #e8920f 100%);
+      background: linear-gradient(135deg, #003c71 0%, #00549e 100%);
       border-radius: 7px;
       border: 2px solid #f1f5f9;
     }
     .table-scroll-wrapper::-webkit-scrollbar-thumb:hover {
-      background: #e8920f;
+      background: #00549e;
     }
 
     table {
@@ -428,7 +428,7 @@
     }
 
     thead {
-      background: linear-gradient(135deg, #F9A11B 0%, #e8920f 100%);
+      background: linear-gradient(135deg, #003c71 0%, #00549e 100%);
     }
 
     th {
@@ -491,7 +491,7 @@
     }
 
     tbody tr:hover {
-      background-color: #fef3e2;
+      background-color: #eaf2fb;
       transform: scale(1.002);
     }
 
@@ -510,14 +510,14 @@
     }
 
     td a {
-      color: #F9A11B;
+      color: #003c71;
       text-decoration: none;
       font-weight: 600;
       transition: color 0.2s ease;
     }
 
     td a:hover {
-      color: #d4850d;
+      color: #002f59;
       text-decoration: underline;
     }
 
@@ -535,20 +535,20 @@
     .empty-state-icon {
       width: 120px;
       height: 120px;
-      background: linear-gradient(135deg, #fef3e2 0%, #fffbf5 100%);
+      background: linear-gradient(135deg, #eaf2fb 0%, #f5f9fd 100%);
       border-radius: 32px;
       display: flex;
       align-items: center;
       justify-content: center;
       margin: 0 auto 32px;
-      border: 2px solid #fcd34d;
-      box-shadow: 0 8px 32px rgba(249, 161, 27, 0.15);
+      border: 2px solid #4a89c2;
+      box-shadow: 0 8px 32px rgba(0, 60, 113, 0.15);
     }
 
     .empty-state svg {
       width: 56px;
       height: 56px;
-      fill: #F9A11B;
+      fill: #003c71;
     }
 
     .empty-state h2 {
@@ -575,7 +575,7 @@
       padding: 24px 32px;
       margin-bottom: 28px;
       box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-      border: 1px solid rgba(249, 161, 27, 0.1);
+      border: 1px solid rgba(0, 60, 113, 0.1);
     }
 
     .progress-info {
@@ -594,7 +594,7 @@
     .progress-text {
       font-size: 14px;
       font-weight: 700;
-      color: #F9A11B;
+      color: #003c71;
     }
 
     .progress-bar-container {
@@ -607,7 +607,7 @@
 
     .progress-bar {
       height: 100%;
-      background: linear-gradient(90deg, #F9A11B, #e8920f);
+      background: linear-gradient(90deg, #003c71, #00549e);
       border-radius: 5px;
       transition: width 0.3s ease;
       width: 0%;
@@ -658,7 +658,7 @@
     }
 
     .toast.success {
-      background: linear-gradient(135deg, #F9A11B 0%, #e8920f 100%);
+      background: linear-gradient(135deg, #003c71 0%, #00549e 100%);
       color: white;
     }
 
@@ -685,17 +685,17 @@
     }
 
     ::-webkit-scrollbar-track {
-      background: #fef3e2;
+      background: #eaf2fb;
       border-radius: 8px;
     }
 
     ::-webkit-scrollbar-thumb {
-      background: linear-gradient(135deg, #fcd34d 0%, #F9A11B 100%);
+      background: linear-gradient(135deg, #4a89c2 0%, #003c71 100%);
       border-radius: 8px;
     }
 
     ::-webkit-scrollbar-thumb:hover {
-      background: linear-gradient(135deg, #F9A11B 0%, #e8920f 100%);
+      background: linear-gradient(135deg, #003c71 0%, #00549e 100%);
     }
 
     @media (max-width: 1024px) {
@@ -765,7 +765,7 @@
         </div>
         <div>
           <h1>Scraped Job Records</h1>
-          <p>United Veterinary Care Job Listings</p>
+          <p>Alliance Animal Job Listings</p>
         </div>
       </div>
       <div class="stats-badge">
@@ -823,6 +823,12 @@
           </svg>
           Export CSV
         </button>
+        <button class="btn btn-danger" id="deleteSelectedBtn">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z"/>
+          </svg>
+          Delete Selected
+        </button>
         <button class="btn btn-danger" id="clearDetailsBtn">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M7,15H17V13H7V15M7,11H17V9H7V11Z"/>
@@ -865,6 +871,7 @@
       <table id="jobRecordsTable">
         <thead>
           <tr>
+            <th id="selectAllHeader">Sel</th>
             <th>#</th>
             <th data-sort="title">Job Title</th>
             <th data-sort="jobId">Job ID</th>
@@ -897,7 +904,7 @@
           </svg>
         </div>
         <h2>No Jobs Scraped Yet</h2>
-        <p>Visit the United Veterinary Care careers page and use the extension to scrape available job listings.</p>
+        <p>Visit the Alliance Animal careers page and use the extension to scrape available job listings.</p>
       </div>
     </div>
   </div>
@@ -906,3 +913,4 @@
   <script src="records.js"></script>
 </body>
 </html>
+

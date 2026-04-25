@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "United Veterinary Job Scraper",
+  "name": "Alliance Animal Job Scraper",
   "version": "1.7",
   "description": "Scrapes job data from the current page and saves it.",
   "permissions": [
