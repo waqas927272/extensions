@@ -8,6 +8,13 @@ let uniqueJobLinks = new Set();
 
 const IFRAME_ID = "jv_careersite_iframe_id";
 const IFRAME_PARTIAL_SRC = "jobs.jobvite.com/unitedveterinarycare/";
+const EXCLUDED_JOB_TITLE_PATTERN = /\b(?:mentor(?:ship|ing|ed|s)?|locum(?:s)?|relie(?:f|ver|vers)|releif)\b/i;
+
+function isExcludedJobListing(job) {
+    const title = job?.title || '';
+    const jobType = job?.jobType || job?.employmentType || '';
+    return EXCLUDED_JOB_TITLE_PATTERN.test(`${title} ${jobType}`);
+}
 
 function sendStatusToPopup(status, message = '', scrapedCount = 0) {
   chrome.runtime.sendMessage({
@@ -96,6 +103,7 @@ async function scrapeAndGoToNext() {
     if (scrapedJobsOnPage.length > 0) {
         for (const job of scrapedJobsOnPage) {
             if (!isScraping) break;
+            if (isExcludedJobListing(job)) continue;
             if (job.link && !uniqueJobLinks.has(job.link)) {
                 // Just add the job without fetching details
                 allScrapedJobs.push(job);

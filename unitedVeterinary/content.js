@@ -1,4 +1,10 @@
 // content.js
+const EXCLUDED_JOB_TITLE_PATTERN = /\b(?:mentor(?:ship|ing|ed|s)?|locum(?:s)?|relie(?:f|ver|vers)|releif)\b/i;
+
+function isExcludedJobListing(title, jobType = '') {
+    return EXCLUDED_JOB_TITLE_PATTERN.test(`${title || ''} ${jobType || ''}`);
+}
+
 function scrapeCurrentPage() {
     const scrapedJobs = [];
     // Each job listing is an <a> tag with class 'job-item'
@@ -12,6 +18,10 @@ function scrapeCurrentPage() {
       const title = titleElement ? titleElement.innerText.trim() : 'N/A';
       const hospital = companyElement ? companyElement.innerText.trim() : 'N/A';
       const link = jobItem.href;
+
+      if (isExcludedJobListing(title)) {
+        return;
+      }
 
       // Extract job ID from URL
       let jobId = '';
