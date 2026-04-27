@@ -53,11 +53,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   if (/associate veterinarian|associate vet\b/.test(t))    return 'Associate Veterinarian';
 
                   // 2. Leadership
-                  if (/medical lead veterinarian|medical lead vet\b/.test(t)) return 'Lead Veterinarian';
-                  if (/medical director|medical lead/.test(t))              return 'Medical Director';
+                  if (/regional medical director/.test(t))                  return 'Medical Director';
+                  if (/medical lead veterinarian|medical lead vet\b|medical lead\b/.test(t)) return 'Lead Veterinarian';
+                  if (/medical director/.test(t))                           return 'Medical Director';
                   if (/lead veterinarian|lead vet\b/.test(t))              return 'Lead Veterinarian';
                   // "Partner Veterinarian" is not a real position — treat as Associate Vet
                   // (partner/founding are ownership terms, not clinical titles)
+                  if (/founding partner|partner veterinarian/.test(t))      return 'Associate Veterinarian';
 
                   // 3. ECC Specialist — BEFORE generic "emergency"
                   if (/criticalist|dacvecc|\becc specialist\b/.test(t) ||

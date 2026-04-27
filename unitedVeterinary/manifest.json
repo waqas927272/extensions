@@ -23,7 +23,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["description-scraper.js", "detail-extractor.js", "google-maps-scraper.js"],
+      "resources": ["description-scraper.js", "detail-extractor.js", "google-maps-scraper.js", "gemini-address-scraper.js"],
       "matches": ["<all_urls>"]
     }
   ]

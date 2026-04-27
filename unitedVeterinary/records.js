@@ -775,25 +775,122 @@ document.addEventListener('DOMContentLoaded', () => {
     //   3. Clicks the matching result
     //   4. Waits for place detail panel and extracts address
     // Retries with simplified search query if first attempt fails.
-    async function fetchAddressFromGoogleMaps(hospitalName, location) {
+    async function fetchAddressFromGoogleMaps(hospitalName, location, originalHospitalName = '') {
         // Build search query: "Hospital Name, City, State"
         const searchQuery = `${hospitalName}, ${location}`;
         const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
 
-        function mergeMapsData(primary, secondary) {
+        function emptyAddressResult() {
+            return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
+        }
+
+        const expectedLocation = parseExpectedLocation(location);
+
+        function normalizeForCompare(value) {
+            return (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        }
+
+        function normalizeStateForCompare(value) {
+            const state = (value || '').trim();
+            if (!state) return '';
+            if (/^[A-Z]{2}$/i.test(state)) return state.toUpperCase();
+
+            const normalizedState = normalizeForCompare(state);
+            const match = Object.entries(stateAbbreviations).find(([, fullName]) => {
+                return normalizeForCompare(fullName) === normalizedState;
+            });
+            return match ? match[0] : state.toUpperCase();
+        }
+
+        function parseExpectedLocation(locationText) {
+            const parts = (locationText || '').split(',').map(part => part.trim()).filter(Boolean);
             return {
-                streetAddress: primary.streetAddress || secondary.streetAddress || '',
-                zipCode: primary.zipCode || secondary.zipCode || '',
-                city: primary.city || secondary.city || '',
-                state: primary.state || secondary.state || '',
-                fullAddress: primary.fullAddress || secondary.fullAddress || '',
-                website: primary.website || secondary.website || '',
-                phone: primary.phone || secondary.phone || ''
+                city: parts[0] || '',
+                state: parts.length >= 2 ? normalizeStateForCompare(parts[1]) : ''
+            };
+        }
+
+        function resultMatchesExpectedLocation(result) {
+            const resultCity = normalizeForCompare(result.city || '');
+            const resultState = normalizeStateForCompare(result.state || '');
+            const expectedCity = normalizeForCompare(expectedLocation.city);
+            const expectedState = expectedLocation.state;
+
+            if (expectedCity && resultCity && resultCity !== expectedCity) return false;
+            if (expectedState && resultState && resultState !== expectedState) return false;
+            return true;
+        }
+
+        function filterDataForExpectedLocation(data, sourceLabel) {
+            const result = data || emptyAddressResult();
+            const hasLocationSignal = !!(result.streetAddress || result.zipCode || result.fullAddress || result.city || result.state);
+
+            if (hasLocationSignal && !resultMatchesExpectedLocation(result)) {
+                console.warn(`Ignoring address result outside requested location "${location}" from "${sourceLabel}": ${result.fullAddress || [result.city, result.state, result.zipCode].filter(Boolean).join(', ')}`);
+                return emptyAddressResult();
+            }
+
+            return result;
+        }
+
+        function mergeMapsData(primary, secondary, sourceLabel = '') {
+            const safeSecondary = filterDataForExpectedLocation(secondary, sourceLabel);
+            return {
+                streetAddress: primary.streetAddress || safeSecondary.streetAddress || '',
+                zipCode: primary.zipCode || safeSecondary.zipCode || '',
+                city: primary.city || safeSecondary.city || '',
+                state: primary.state || safeSecondary.state || '',
+                fullAddress: primary.fullAddress || safeSecondary.fullAddress || '',
+                website: primary.website || safeSecondary.website || '',
+                phone: primary.phone || safeSecondary.phone || ''
             };
         }
 
         function needsMapsRetry(data) {
             return !data.streetAddress || !data.zipCode || !data.website || !data.phone;
+        }
+
+        function uniqueQueries(names) {
+            const seen = new Set();
+            const queries = [];
+            for (const name of names) {
+                const normalizedName = (name || '').replace(/\s+/g, ' ').replace(/\s+,/g, ',').trim();
+                if (!normalizedName) continue;
+                const query = `${normalizedName}, ${location}`.replace(/\s+/g, ' ').trim();
+                const key = query.toLowerCase();
+                if (seen.has(key)) continue;
+                seen.add(key);
+                queries.push(query);
+            }
+            return queries;
+        }
+
+        function buildHospitalNameVariants() {
+            const rawNames = [hospitalName, originalHospitalName].filter(Boolean);
+            const city = (location || '').split(',')[0]?.trim() || '';
+            const names = [];
+
+            for (const rawName of rawNames) {
+                const base = rawName.replace(/\s+/g, ' ').trim();
+                if (!base) continue;
+
+                const withoutLocationSuffix = base.replace(/\s*[-–—]\s*[A-Z][a-zA-Z\s.'-]+$/, '').trim();
+                const withoutParens = base.replace(/\s*\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+                const expandedParens = base.replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim();
+                const plain = base.replace(/&/g, 'and').replace(/[-–—()]/g, ' ').replace(/\s+/g, ' ').trim();
+
+                names.push(base, withoutLocationSuffix, withoutParens, expandedParens, plain);
+
+                if (city) {
+                    for (const candidate of [withoutLocationSuffix, withoutParens, plain]) {
+                        if (candidate && !candidate.toLowerCase().includes(city.toLowerCase())) {
+                            names.push(`${candidate} ${city}`);
+                        }
+                    }
+                }
+            }
+
+            return names;
         }
 
         // Inner function: open a tab, wait for load, inject scraper, get results
@@ -853,9 +950,92 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
+        function scrapeGeminiAddressTab(prompt, queryLabel) {
+            return new Promise((resolve) => {
+                let settled = false;
+                let geminiTabId = null;
+
+                const finish = (result) => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timeout);
+                    if (geminiTabId) chrome.tabs.remove(geminiTabId).catch(() => {});
+                    resolve(result || emptyAddressResult());
+                };
+
+                const timeout = setTimeout(() => {
+                    console.warn(`Gemini timeout for: "${queryLabel}"`);
+                    finish(emptyAddressResult());
+                }, 90000);
+
+                chrome.tabs.create({ url: 'https://gemini.google.com/app', active: true }, (tab) => {
+                    if (!tab) {
+                        finish(emptyAddressResult());
+                        return;
+                    }
+
+                    const tabId = tab.id;
+                    geminiTabId = tabId;
+                    const listener = (updatedTabId, info) => {
+                        if (updatedTabId === tabId && info.status === 'complete') {
+                            chrome.tabs.onUpdated.removeListener(listener);
+
+                            setTimeout(() => {
+                                chrome.scripting.executeScript({
+                                    target: { tabId: tabId },
+                                    func: (addressPrompt) => {
+                                        document.documentElement.setAttribute('data-uvc-gemini-address-prompt', addressPrompt);
+                                    },
+                                    args: [prompt]
+                                }).then(() => {
+                                    return chrome.scripting.executeScript({
+                                        target: { tabId: tabId },
+                                        files: ['gemini-address-scraper.js']
+                                    });
+                                }).then((results) => {
+                                    const data = results?.[0]?.result || {};
+                                    finish({
+                                        streetAddress: data.streetAddress || '',
+                                        zipCode: data.zipCode || '',
+                                        city: data.city || '',
+                                        state: data.state || '',
+                                        fullAddress: data.fullAddress || '',
+                                        website: data.website || '',
+                                        phone: data.phone || ''
+                                    });
+                                }).catch((err) => {
+                                    console.error(`Gemini script error for "${queryLabel}":`, err);
+                                    finish(emptyAddressResult());
+                                });
+                            }, 1500);
+                        }
+                    };
+
+                    chrome.tabs.onUpdated.addListener(listener);
+                });
+            });
+        }
+
+        function buildGeminiPrompt(query) {
+            return `Provide me the complete address of the hospital in city and state.
+
+Hospital: ${hospitalName}
+City and state: ${location}
+Search query context: ${query}
+
+Return only this exact JSON object, with no markdown:
+{"street_address":"","city":"","state":"","zip_code":"","phone":"","website":""}
+
+Rules:
+- The hospital must be in ${location}.
+- Use a physical street address, not a mailing address.
+- Use a 2-letter state abbreviation.
+- If you are not sure the hospital is in ${location}, return NOT FOUND.`;
+        }
+
         // Attempt 1: search with exact hospital name + city, state
         console.log(`🔍 Google Maps search: "${searchQuery}"`);
-        let data = await scrapeGoogleMapsTab(mapsUrl, searchQuery);
+        let data = mergeMapsData(emptyAddressResult(), await scrapeGoogleMapsTab(mapsUrl, searchQuery), searchQuery);
 
         // Attempt 2: if failed, try with & → and, remove dashes/parens
         if (needsMapsRetry(data)) {
@@ -869,7 +1049,29 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log(`↻ Retry with: "${altQuery}"`);
                 const altUrl = `https://www.google.com/maps/search/${encodeURIComponent(altQuery)}`;
                 const altData = await scrapeGoogleMapsTab(altUrl, altQuery);
-                data = mergeMapsData(data, altData);
+                data = mergeMapsData(data, altData, altQuery);
+            }
+        }
+
+        // Additional Maps attempts for names with location suffixes or parenthetical acronyms.
+        if (needsMapsRetry(data)) {
+            for (const query of uniqueQueries(buildHospitalNameVariants())) {
+                if (!needsMapsRetry(data)) break;
+                if (query === searchQuery) continue;
+                console.log(`Maps variant search: "${query}"`);
+                const variantUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}`;
+                const variantData = await scrapeGoogleMapsTab(variantUrl, query);
+                data = mergeMapsData(data, variantData, query);
+            }
+        }
+
+        // Last resort: ask Gemini for the exact hospital address in the row's city/state.
+        if (needsMapsRetry(data)) {
+            for (const query of uniqueQueries(buildHospitalNameVariants())) {
+                if (!needsMapsRetry(data)) break;
+                console.log(`Gemini address fallback: "${query}"`);
+                const geminiData = await scrapeGeminiAddressTab(buildGeminiPrompt(query), query);
+                data = mergeMapsData(data, geminiData, query);
             }
         }
 
@@ -1891,8 +2093,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Build search: "Hospital Name, City, State"
             const searchLocation = [searchCity, searchState].filter(Boolean).join(', ');
+            const normalizeLocationValue = (value) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const existingLocationMismatch =
+                (searchCity && job.city && normalizeLocationValue(job.city) !== normalizeLocationValue(searchCity)) ||
+                (searchState && job.state && normalizeLocationValue(getFullStateName(job.state)) !== normalizeLocationValue(getFullStateName(searchState)));
 
-            const addressData = await fetchAddressFromGoogleMaps(searchHospital, searchLocation);
+            const addressData = await fetchAddressFromGoogleMaps(searchHospital, searchLocation, job.hospital || '');
 
             // Update job with address data from Google Maps
             const data = await chrome.storage.local.get(['scrapedJobs']);
@@ -1901,14 +2107,19 @@ document.addEventListener('DOMContentLoaded', () => {
             if (jobs[index]) {
                 if (addressData.streetAddress) {
                     jobs[index].streetAddress = addressData.streetAddress;
+                } else if (existingLocationMismatch) {
+                    jobs[index].streetAddress = '';
                 }
                 if (addressData.zipCode) {
                     jobs[index].zipCode = addressData.zipCode;
+                } else if (existingLocationMismatch) {
+                    jobs[index].zipCode = '';
                 }
 
-                // City and state: prefer Google Maps data, fall back to location field
-                jobs[index].city = addressData.city || searchCity || jobs[index].city || '';
-                jobs[index].state = getFullStateName(addressData.state || searchState || jobs[index].state || '');
+                // City and state come from the row's Location column. Fetched address data
+                // is accepted only when it matches this location.
+                jobs[index].city = searchCity || addressData.city || jobs[index].city || '';
+                jobs[index].state = getFullStateName(searchState || addressData.state || jobs[index].state || '');
 
                 // Try to extract zip from fullAddress if parsing missed it
                 if (!jobs[index].zipCode && addressData.fullAddress) {
@@ -1919,9 +2130,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Website and phone from Google Maps
                 if (addressData.website) {
                     jobs[index].website = addressData.website;
+                } else if (existingLocationMismatch) {
+                    jobs[index].website = '';
                 }
                 if (addressData.phone) {
                     jobs[index].phone = addressData.phone;
+                } else if (existingLocationMismatch) {
+                    jobs[index].phone = '';
                 }
 
                 await chrome.storage.local.set({ scrapedJobs: jobs });

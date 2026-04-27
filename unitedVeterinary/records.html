@@ -36,7 +36,7 @@
 
     .header {
       background: linear-gradient(135deg, #F9A11B 0%, #e8920f 40%, #d4850d 100%);
-      padding: 40px 48px;
+      padding: 12px 20px;
       color: white;
       position: relative;
       overflow: hidden;
@@ -75,12 +75,12 @@
 
     .version-tag {
       position: absolute;
-      top: 20px;
-      right: 28px;
+      top: 8px;
+      right: 12px;
       background: rgba(255, 255, 255, 0.25);
-      padding: 8px 16px;
-      border-radius: 24px;
-      font-size: 12px;
+      padding: 4px 9px;
+      border-radius: 12px;
+      font-size: 10px;
       font-weight: 700;
       letter-spacing: 0.5px;
       backdrop-filter: blur(10px);
@@ -101,14 +101,14 @@
     .header-left {
       display: flex;
       align-items: center;
-      gap: 24px;
+      gap: 12px;
     }
 
     .logo-icon {
-      width: 72px;
-      height: 72px;
-      background: rgba(255, 255, 255, 0.2);
-      border-radius: 20px;
+      width: 38px;
+      height: 38px;
+      background: rgba(255, 255, 255, 0.18);
+      border-radius: 10px;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -124,22 +124,22 @@
     }
 
     .logo-icon svg {
-      width: 38px;
-      height: 38px;
+      width: 22px;
+      height: 22px;
       fill: white;
       filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.1));
     }
 
     .header h1 {
-      font-size: 32px;
+      font-size: 20px;
       font-weight: 800;
-      margin-bottom: 6px;
+      margin-bottom: 2px;
       text-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
       letter-spacing: -0.5px;
     }
 
     .header p {
-      font-size: 15px;
+      font-size: 11px;
       opacity: 0.95;
       font-weight: 500;
       letter-spacing: 0.3px;
@@ -147,8 +147,8 @@
 
     .stats-badge {
       background: rgba(255, 255, 255, 0.2);
-      padding: 24px 48px;
-      border-radius: 24px;
+      padding: 8px 18px;
+      border-radius: 12px;
       backdrop-filter: blur(12px);
       text-align: center;
       border: 1px solid rgba(255, 255, 255, 0.25);
@@ -163,14 +163,14 @@
 
     .stats-badge strong {
       display: block;
-      font-size: 48px;
+      font-size: 24px;
       font-weight: 800;
-      margin-bottom: 4px;
+      margin-bottom: 0;
       text-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
     }
 
     .stats-badge span {
-      font-size: 14px;
+      font-size: 10px;
       opacity: 0.95;
       font-weight: 600;
       letter-spacing: 1px;
@@ -180,22 +180,22 @@
     .container {
       max-width: auto;
       margin: 0 auto;
-      padding: 40px 48px;
+      padding: 10px 14px;
       position: relative;
       z-index: 1;
     }
 
     .webhook-bar {
       background: white;
-      border-radius: 24px;
-      padding: 28px 32px;
-      margin-bottom: 28px;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
       box-shadow:
         0 4px 24px rgba(0, 0, 0, 0.06),
         0 1px 2px rgba(0, 0, 0, 0.04);
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 8px;
       border: 1px solid rgba(249, 161, 27, 0.1);
       transition: all 0.3s ease;
     }
@@ -209,31 +209,31 @@
     .webhook-row {
       display: flex;
       align-items: center;
-      gap: 20px;
+      gap: 8px;
       flex-wrap: wrap;
     }
 
     .webhook-bar label {
-      font-size: 14px;
+      font-size: 11px;
       font-weight: 700;
       color: #475569;
-      min-width: 120px;
+      min-width: 82px;
       letter-spacing: 0.3px;
     }
 
     .webhook-input-group {
       display: flex;
       flex: 1;
-      gap: 14px;
+      gap: 8px;
       min-width: 300px;
     }
 
     .webhook-input-group input {
       flex: 1;
-      padding: 16px 20px;
-      border: 2px solid #e2e8f0;
-      border-radius: 14px;
-      font-size: 14px;
+      padding: 7px 10px;
+      border: 1px solid #e2e8f0;
+      border-radius: 7px;
+      font-size: 12px;
       font-weight: 500;
       outline: none;
       transition: all 0.25s ease;
@@ -250,20 +250,19 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 28px;
+      margin-bottom: 8px;
       flex-wrap: wrap;
-      gap: 20px;
+      gap: 8px;
     }
-
     .search-box {
       display: flex;
       align-items: center;
       background: white;
-      border: 2px solid #e2e8f0;
-      border-radius: 16px;
-      padding: 16px 24px;
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 7px 10px;
       flex: 1;
-      max-width: 450px;
+      max-width: 360px;
       transition: all 0.25s ease;
       box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
     }
@@ -274,10 +273,10 @@
     }
 
     .search-box svg {
-      width: 22px;
-      height: 22px;
+      width: 15px;
+      height: 15px;
       fill: #94a3b8;
-      margin-right: 14px;
+      margin-right: 8px;
       transition: fill 0.2s ease;
     }
 
@@ -288,7 +287,7 @@
     .search-box input {
       border: none;
       outline: none;
-      font-size: 15px;
+      font-size: 12px;
       font-weight: 500;
       width: 100%;
       color: #1e293b;
@@ -303,11 +302,11 @@
     .btn {
       display: inline-flex;
       align-items: center;
-      gap: 10px;
-      padding: 16px 28px;
-      border-radius: 14px;
+      gap: 6px;
+      padding: 7px 10px;
+      border-radius: 7px;
       border: none;
-      font-size: 14px;
+      font-size: 11px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
@@ -341,8 +340,8 @@
     }
 
     .btn svg {
-      width: 18px;
-      height: 18px;
+      width: 14px;
+      height: 14px;
       transition: transform 0.3s ease;
     }
 
@@ -383,14 +382,14 @@
 
     .button-group {
       display: flex;
-      gap: 14px;
+      gap: 6px;
       flex-wrap: wrap;
       justify-content: center;
     }
 
     .table-container {
       background: white;
-      border-radius: 24px;
+      border-radius: 8px;
       box-shadow:
         0 4px 24px rgba(0, 0, 0, 0.06),
         0 1px 2px rgba(0, 0, 0, 0.04);
@@ -400,7 +399,7 @@
     /* Wrapper handles horizontal scroll — sticky bottom keeps scrollbar visible on screen */
     .table-scroll-wrapper {
       overflow-x: auto;
-      max-height: calc(100vh - 100px);
+      max-height: calc(100vh - 146px);
       overflow-y: auto;
     }
 
@@ -423,9 +422,30 @@
 
     table {
       width: 100%;
-      min-width: 1900px;
+      min-width: 1780px;
       border-collapse: collapse;
+      table-layout: fixed;
     }
+
+    th:nth-child(1), td:nth-child(1) { width: 34px; }
+    th:nth-child(2), td:nth-child(2) { width: 120px; }
+    th:nth-child(3), td:nth-child(3) { width: 84px; }
+    th:nth-child(4), td:nth-child(4) { width: 155px; }
+    th:nth-child(5), td:nth-child(5) { width: 130px; }
+    th:nth-child(6), td:nth-child(6) { width: 150px; }
+    th:nth-child(7), td:nth-child(7) { width: 75px; }
+    th:nth-child(8), td:nth-child(8) { width: 70px; }
+    th:nth-child(9), td:nth-child(9) { width: 68px; }
+    th:nth-child(10), td:nth-child(10) { width: 92px; }
+    th:nth-child(11), td:nth-child(11) { width: 60px; }
+    th:nth-child(12), td:nth-child(12) { width: 95px; }
+    th:nth-child(13), td:nth-child(13) { width: 110px; }
+    th:nth-child(14), td:nth-child(14) { width: 110px; }
+    th:nth-child(15), td:nth-child(15) { width: 105px; }
+    th:nth-child(16), td:nth-child(16) { width: 72px; }
+    th:nth-child(17), td:nth-child(17) { width: 70px; }
+    th:nth-child(18), td:nth-child(18) { width: 55px; }
+    th:nth-child(19), td:nth-child(19) { width: 225px; }
 
     thead {
       background: linear-gradient(135deg, #F9A11B 0%, #e8920f 100%);
@@ -435,18 +455,24 @@
       color: white;
       font-weight: 700;
       text-align: left;
-      padding: 20px 28px;
-      font-size: 12px;
+      padding: 6px 7px;
+      font-size: 10px;
       text-transform: uppercase;
-      letter-spacing: 1px;
+      letter-spacing: 0.35px;
       cursor: pointer;
       transition: background 0.2s ease;
       user-select: none;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     th:first-child {
       text-align: center;
-      width: 60px;
+      width: 34px;
       cursor: default;
     }
 
@@ -469,12 +495,19 @@
     }
 
     td {
-      padding: 20px 28px;
+      padding: 4px 7px;
       border-bottom: 1px solid #f1f5f9;
-      font-size: 14px;
+      font-size: 11px;
       color: #475569;
       font-weight: 500;
       transition: background-color 0.2s ease;
+      line-height: 1.25;
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+      height: auto;
+      min-height: 30px;
+      word-break: break-word;
     }
 
     td:first-child {
@@ -492,7 +525,6 @@
 
     tbody tr:hover {
       background-color: #fef3e2;
-      transform: scale(1.002);
     }
 
     tbody tr:last-child td {
@@ -514,6 +546,8 @@
       text-decoration: none;
       font-weight: 600;
       transition: color 0.2s ease;
+      white-space: normal;
+      word-break: break-word;
     }
 
     td a:hover {
@@ -571,9 +605,9 @@
     /* Progress Bar */
     .progress-section {
       background: white;
-      border-radius: 24px;
-      padding: 24px 32px;
-      margin-bottom: 28px;
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
       box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
       border: 1px solid rgba(249, 161, 27, 0.1);
     }
@@ -582,52 +616,57 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 12px;
+      margin-bottom: 6px;
     }
 
     .progress-label {
-      font-size: 14px;
+      font-size: 11px;
       font-weight: 700;
       color: #475569;
     }
 
     .progress-text {
-      font-size: 14px;
+      font-size: 11px;
       font-weight: 700;
       color: #F9A11B;
     }
 
     .progress-bar-container {
       width: 100%;
-      height: 10px;
+      height: 6px;
       background: #f1f5f9;
-      border-radius: 5px;
+      border-radius: 3px;
       overflow: hidden;
     }
 
     .progress-bar {
       height: 100%;
       background: linear-gradient(90deg, #F9A11B, #e8920f);
-      border-radius: 5px;
+      border-radius: 3px;
       transition: width 0.3s ease;
       width: 0%;
     }
 
     /* Description Column */
     .description-cell {
-      max-height: 100px;
+      max-height: 32px;
       overflow-y: auto;
-      font-size: 12px;
-      line-height: 1.5;
+      font-size: 10px;
+      line-height: 1.25;
       white-space: pre-wrap;
       word-break: break-word;
       color: #475569;
-      padding: 8px 10px;
+      padding: 3px 5px;
       background: #fafaf9;
-      border-radius: 8px;
+      border-radius: 4px;
       border: 1px solid #f1f5f9;
-      min-width: 250px;
-      max-width: 400px;
+      min-width: 160px;
+      max-width: 220px;
+    }
+
+    td:has(.description-cell) {
+      overflow: hidden;
+      vertical-align: top;
     }
 
     .hidden {
