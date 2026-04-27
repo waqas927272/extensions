@@ -950,32 +950,33 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        function scrapeGeminiAddressTab(prompt, queryLabel) {
+        function scrapeGoogleSearchTab(queryLabel) {
             return new Promise((resolve) => {
                 let settled = false;
-                let geminiTabId = null;
+                let searchTabId = null;
 
                 const finish = (result) => {
                     if (settled) return;
                     settled = true;
                     clearTimeout(timeout);
-                    if (geminiTabId) chrome.tabs.remove(geminiTabId).catch(() => {});
+                    if (searchTabId) chrome.tabs.remove(searchTabId).catch(() => {});
                     resolve(result || emptyAddressResult());
                 };
 
                 const timeout = setTimeout(() => {
-                    console.warn(`Gemini timeout for: "${queryLabel}"`);
+                    console.warn(`Google Search timeout for: "${queryLabel}"`);
                     finish(emptyAddressResult());
-                }, 90000);
+                }, 45000);
 
-                chrome.tabs.create({ url: 'https://gemini.google.com/app', active: true }, (tab) => {
+                const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(queryLabel)}`;
+                chrome.tabs.create({ url: searchUrl, active: false }, (tab) => {
                     if (!tab) {
                         finish(emptyAddressResult());
                         return;
                     }
 
                     const tabId = tab.id;
-                    geminiTabId = tabId;
+                    searchTabId = tabId;
                     const listener = (updatedTabId, info) => {
                         if (updatedTabId === tabId && info.status === 'complete') {
                             chrome.tabs.onUpdated.removeListener(listener);
@@ -983,15 +984,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             setTimeout(() => {
                                 chrome.scripting.executeScript({
                                     target: { tabId: tabId },
-                                    func: (addressPrompt) => {
-                                        document.documentElement.setAttribute('data-uvc-gemini-address-prompt', addressPrompt);
-                                    },
-                                    args: [prompt]
-                                }).then(() => {
-                                    return chrome.scripting.executeScript({
-                                        target: { tabId: tabId },
-                                        files: ['gemini-address-scraper.js']
-                                    });
+                                    files: ['google-search-scraper.js']
                                 }).then((results) => {
                                     const data = results?.[0]?.result || {};
                                     finish({
@@ -1004,33 +997,16 @@ document.addEventListener('DOMContentLoaded', () => {
                                         phone: data.phone || ''
                                     });
                                 }).catch((err) => {
-                                    console.error(`Gemini script error for "${queryLabel}":`, err);
+                                    console.error(`Google Search script error for "${queryLabel}":`, err);
                                     finish(emptyAddressResult());
                                 });
-                            }, 1500);
+                            }, 2500);
                         }
                     };
 
                     chrome.tabs.onUpdated.addListener(listener);
                 });
             });
-        }
-
-        function buildGeminiPrompt(query) {
-            return `Provide me the complete address of the hospital in city and state.
-
-Hospital: ${hospitalName}
-City and state: ${location}
-Search query context: ${query}
-
-Return only this exact JSON object, with no markdown:
-{"street_address":"","city":"","state":"","zip_code":"","phone":"","website":""}
-
-Rules:
-- The hospital must be in ${location}.
-- Use a physical street address, not a mailing address.
-- Use a 2-letter state abbreviation.
-- If you are not sure the hospital is in ${location}, return NOT FOUND.`;
         }
 
         // Attempt 1: search with exact hospital name + city, state
@@ -1065,13 +1041,13 @@ Rules:
             }
         }
 
-        // Last resort: ask Gemini for the exact hospital address in the row's city/state.
+        // Last resort: use regular Google Search and read the right-side knowledge panel.
         if (needsMapsRetry(data)) {
             for (const query of uniqueQueries(buildHospitalNameVariants())) {
                 if (!needsMapsRetry(data)) break;
-                console.log(`Gemini address fallback: "${query}"`);
-                const geminiData = await scrapeGeminiAddressTab(buildGeminiPrompt(query), query);
-                data = mergeMapsData(data, geminiData, query);
+                console.log(`Google Search fallback: "${query}"`);
+                const searchData = await scrapeGoogleSearchTab(query);
+                data = mergeMapsData(data, searchData, query);
             }
         }
 
