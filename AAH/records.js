@@ -10,10 +10,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('searchInput');
     const exportCsvButton = document.getElementById('exportCsv');
     const toastContainer = document.getElementById('toastContainer');
+    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
+    const selectAllHeader = document.getElementById('selectAllHeader');
 
     let currentSortColumn = null;
     let currentSortDirection = 'asc';
     let allJobs = [];
+    let selectedJobKeys = new Set();
     let isGettingDescriptions = false;
     let isFetchingDetails = false;
     let isFetchingAddresses = false;
@@ -165,10 +168,66 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function shouldSkipFetchDetails(job) {
         const title = (job?.title || '').toLowerCase();
+        const hasProtectedRole = /\bassociate\s+veterinarian\b/.test(title) ||
+            /\bmedical\s+director\b/.test(title);
+        if (hasProtectedRole) return false;
+
         return /\bveterinary\s+receptionist\b/.test(title) ||
             /\bveterinary\s+customer\s+service\s+representative\b/.test(title) ||
-            /\blicensed\s+veterinary\s+technician\b/.test(title) ||
-            /\blicensed\s+vet(?:erinary)?\s+tech(?:nician)?\b/.test(title);
+            /\bveterinary\s+technician\b/.test(title) ||
+            /\bvet(?:erinary)?\s+tech(?:nician)?\b/.test(title) ||
+            /\bkennel\b/.test(title) ||
+            /\bveterinary\s+assistant\b/.test(title) ||
+            /\bvet(?:erinary)?\s+assistant\b/.test(title) ||
+            /\bveterinary\s+practice\s+manager\b/.test(title) ||
+            /\bveterinary\s+laboratory\s+technician\b/.test(title) ||
+            /\bpet\s+bather\b/.test(title) ||
+            /\bveterinary\s+surgery\s+technician\b/.test(title) ||
+            /\bveterinary\s+groomer\b/.test(title) ||
+            /\banimal\s+care\s+technician\b/.test(title) ||
+            /\bveterinary\s+student\s+ambassador\b/.test(title) ||
+            /\bexternship\b/.test(title) ||
+            /\brelief\s+veterinarian\b/.test(title) ||
+            /\bdvm\s+veterinary\s+partner\s*(?:&|and)\s*hospital\s+equity\s+owner\b/.test(title) ||
+            /\bseasonal\s+veterinarian\b/.test(title);
+    }
+
+    function getJobSelectionKey(job) {
+        return [
+            job?.jobId || '',
+            job?.link || '',
+            job?.title || '',
+            job?.hospital || '',
+            job?.location || ''
+        ].join('|');
+    }
+
+    function refreshDisplayedJobs() {
+        const searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
+        let jobsToDisplay = [...allJobs];
+
+        if (searchTerm) {
+            jobsToDisplay = jobsToDisplay.filter(job =>
+                (job.title || '').toLowerCase().includes(searchTerm) ||
+                (job.hospital || '').toLowerCase().includes(searchTerm) ||
+                (job.city || '').toLowerCase().includes(searchTerm) ||
+                (job.state || '').toLowerCase().includes(searchTerm) ||
+                (job.location || '').toLowerCase().includes(searchTerm) ||
+                (job.streetAddress || '').toLowerCase().includes(searchTerm) ||
+                (job.zipCode || '').toLowerCase().includes(searchTerm) ||
+                (job.phone || '').toLowerCase().includes(searchTerm) ||
+                (job.website || '').toLowerCase().includes(searchTerm) ||
+                (job.areaOfPractice || '').toLowerCase().includes(searchTerm) ||
+                (job.position || '').toLowerCase().includes(searchTerm) ||
+                (job.jobType || '').toLowerCase().includes(searchTerm)
+            );
+        }
+
+        if (currentSortColumn) {
+            jobsToDisplay = sortRecords(currentSortColumn, currentSortDirection, jobsToDisplay);
+        }
+
+        displayRecords(jobsToDisplay);
     }
 
     // ============ TOP-LEVEL POSITION MATCHING (used by both detail extraction and save) ============
@@ -331,15 +390,27 @@ document.addEventListener('DOMContentLoaded', () => {
         // Extract salary from stored description (which now includes JSON-LD data)
         function extractSalary(text) {
             if (!text) return '';
+            const normalizedText = text
+                .replace(/\u00e2\u20ac\u201c|\u00e2\u20ac\u201d|\u00e2\u02c6\u2019/g, '-')
+                .replace(/[\u2012\u2013\u2014\u2212]/g, '-');
 
             // Try to extract from JSON-LD data in the text
-            const jsonLdMatch = text.match(/Salary Range:\s*([^\n]+)/i);
+            const jsonLdMatch = normalizedText.match(/Salary Range:\s*([^\n]+)/i);
             if (jsonLdMatch) {
-                return formatSalary(jsonLdMatch[1].trim());
+                const salaryLine = (jsonLdMatch[1] || '').trim();
+                // Only trust this fast path when it actually contains numeric salary data.
+                // Otherwise, continue to broader fallback matching below.
+                if (/\d/.test(salaryLine)) {
+                    const formatted = formatSalary(salaryLine);
+                    if (/\d/.test(formatted)) return formatted;
+                }
             }
 
             // Fallback to text pattern matching
             const salaryPatterns = [
+                /(?:compensation|salary|pay)\s+range\s*[-:]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*-\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*,?\s*(?:depending|based)\s+on[^\n.]*)?/i,
+                /(?:base\s+)?(?:salary|compensation|pay)\s+range(?:\s+can\s+vary)?\s*(?:from|of|is|:)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|to)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual|hour|hr|hourly))?/i,
+                /(?:base\s+)?(?:salary|compensation|pay)\s+range(?:\s+can\s+vary)?\s*between\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*and\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual|hour|hr|hourly))?/i,
                 /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|\u2013|\u2014)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
                 /(?:(?:pay|salary|compensation)\s+range)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|\u2013|\u2014)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
                 /(?:salary|compensation|pay)[:\s]+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|\u2013|\u2014)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual|hour|hr))?/i,
@@ -368,11 +439,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hour|hr|\/hr)/i,
             ];
             for (const pattern of salaryPatterns) {
-                const m = text.match(pattern);
+                const m = normalizedText.match(pattern);
                 if (m) {
-                    const context = text.substring(Math.max(0, m.index - 80), Math.min(text.length, m.index + m[0].length + 80));
+                    const context = normalizedText.substring(Math.max(0, m.index - 80), Math.min(normalizedText.length, m.index + m[0].length + 80));
                     return formatSalary(m[0].trim(), context);
                 }
+            }
+
+            // Last-resort fallback for messy formatting like:
+            // "Compensation Range- $175,000-250,000, depending on ..."
+            const keywordWindow = normalizedText.match(/(?:compensation|salary|pay)[\s\S]{0,80}\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|to|and)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i);
+            if (keywordWindow) {
+                return formatSalary(keywordWindow[0].trim(), keywordWindow[0]);
             }
             return '';
         }
@@ -891,37 +969,49 @@ document.addEventListener('DOMContentLoaded', () => {
 
         jobs.forEach((job, index) => {
             const row = tableBody.insertRow();
+            const jobKey = getJobSelectionKey(job);
 
             // Mark new jobs with green background
             if (job.isNewLocation) {
                 row.style.backgroundColor = '#d1fae5';
             }
 
+            const selectCell = row.insertCell(0);
+            selectCell.style.textAlign = 'center';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = selectedJobKeys.has(jobKey);
+            checkbox.addEventListener('change', () => {
+                if (checkbox.checked) selectedJobKeys.add(jobKey);
+                else selectedJobKeys.delete(jobKey);
+            });
+            selectCell.appendChild(checkbox);
+
             // Serial Number
-            const serialCell = row.insertCell(0);
+            const serialCell = row.insertCell(1);
             serialCell.textContent = index + 1;
             serialCell.style.fontWeight = '600';
             serialCell.style.color = '#475569';
             serialCell.style.textAlign = 'center';
 
-            row.insertCell(1).textContent = job.title;
-            const jobIdCell = row.insertCell(2);
+            row.insertCell(2).textContent = job.title;
+            const jobIdCell = row.insertCell(3);
             jobIdCell.textContent = job.jobId || 'N/A';
             jobIdCell.style.fontFamily = "'Consolas', 'Monaco', monospace";
             jobIdCell.style.fontSize = '12px';
             jobIdCell.style.color = '#64748b';
-            row.insertCell(3).textContent = 'United Veterinary Care (Parent Client)';
-            row.insertCell(4).textContent = job.streetAddress || '-';
-            row.insertCell(5).textContent = job.city;
-            row.insertCell(6).textContent = job.state;
-            row.insertCell(7).textContent = job.zipCode || '-';
-            row.insertCell(8).textContent = job.hospital;
+            row.insertCell(4).textContent = 'Alliance Animal (Parent Client)';
+            row.insertCell(5).textContent = job.streetAddress || '-';
+            row.insertCell(6).textContent = job.city;
+            row.insertCell(7).textContent = job.state;
+            row.insertCell(8).textContent = job.zipCode || '-';
+            row.insertCell(9).textContent = job.hospital;
 
             // Phone column
-            row.insertCell(9).textContent = job.phone || '-';
+            row.insertCell(10).textContent = job.phone || '-';
 
             // Website column — show as clickable link if available
-            const websiteCell = row.insertCell(10);
+            const websiteCell = row.insertCell(11);
             if (job.website) {
                 const websiteLink = document.createElement('a');
                 websiteLink.href = job.website;
@@ -933,22 +1023,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 websiteCell.textContent = '-';
             }
 
-            row.insertCell(11).textContent = job.location;
+            row.insertCell(12).textContent = job.location;
 
             // Detail Columns
-            row.insertCell(12).textContent = job.areaOfPractice || '-';
-            row.insertCell(13).textContent = job.position || '-';
-            row.insertCell(14).textContent = job.salary || '-';
-            row.insertCell(15).textContent = job.jobType || '-';
+            row.insertCell(13).textContent = job.areaOfPractice || '-';
+            row.insertCell(14).textContent = job.position || '-';
+            row.insertCell(15).textContent = job.salary || '-';
+            row.insertCell(16).textContent = job.jobType || '-';
 
-            const linkCell = row.insertCell(16);
+            const linkCell = row.insertCell(17);
             const link = document.createElement('a');
             link.href = job.link;
             link.textContent = 'View Job';
             link.target = '_blank';
             linkCell.appendChild(link);
 
-            const descCell = row.insertCell(17);
+            const descCell = row.insertCell(18);
             if (job.description) {
                 const descDiv = document.createElement('div');
                 descDiv.className = 'description-cell';
@@ -1013,7 +1103,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 index + 1,
                 `"${(job.title || '').replace(/"/g, '""')}"`,
                 `"${(job.jobId || '').replace(/"/g, '""')}"`,
-                `"United Veterinary Care (Parent Client)"`,
+                `"Alliance Animal (Parent Client)"`,
                 `"${(job.streetAddress || '').replace(/"/g, '""')}"`,
                 `"${(job.city || '').replace(/"/g, '""')}"`,
                 `"${(job.state || '').replace(/"/g, '""')}"`,
@@ -1174,11 +1264,70 @@ document.addEventListener('DOMContentLoaded', () => {
         if (confirm('Are you sure you want to clear all scraped job records?')) {
             chrome.storage.local.set({ scrapedJobs: [] }, () => {
                 allJobs = [];
+                selectedJobKeys.clear();
                 displayRecords([]);
                 showToast('All records cleared!', 'success');
             });
         }
     });
+
+    if (selectAllHeader) {
+        selectAllHeader.addEventListener('click', () => {
+            const searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
+            let visibleJobs = [...allJobs];
+
+            if (searchTerm) {
+                visibleJobs = visibleJobs.filter(job =>
+                    (job.title || '').toLowerCase().includes(searchTerm) ||
+                    (job.hospital || '').toLowerCase().includes(searchTerm) ||
+                    (job.city || '').toLowerCase().includes(searchTerm) ||
+                    (job.state || '').toLowerCase().includes(searchTerm) ||
+                    (job.location || '').toLowerCase().includes(searchTerm) ||
+                    (job.streetAddress || '').toLowerCase().includes(searchTerm) ||
+                    (job.zipCode || '').toLowerCase().includes(searchTerm) ||
+                    (job.phone || '').toLowerCase().includes(searchTerm) ||
+                    (job.website || '').toLowerCase().includes(searchTerm) ||
+                    (job.areaOfPractice || '').toLowerCase().includes(searchTerm) ||
+                    (job.position || '').toLowerCase().includes(searchTerm) ||
+                    (job.jobType || '').toLowerCase().includes(searchTerm)
+                );
+            }
+
+            if (currentSortColumn) {
+                visibleJobs = sortRecords(currentSortColumn, currentSortDirection, visibleJobs);
+            }
+
+            if (visibleJobs.length === 0) return;
+
+            const allVisibleSelected = visibleJobs.every(job => selectedJobKeys.has(getJobSelectionKey(job)));
+            visibleJobs.forEach(job => {
+                const key = getJobSelectionKey(job);
+                if (allVisibleSelected) selectedJobKeys.delete(key);
+                else selectedJobKeys.add(key);
+            });
+            refreshDisplayedJobs();
+        });
+    }
+
+    if (deleteSelectedBtn) {
+        deleteSelectedBtn.addEventListener('click', () => {
+            const selectedCount = allJobs.filter(job => selectedJobKeys.has(getJobSelectionKey(job))).length;
+            if (!selectedCount) {
+                showToast('No jobs selected.', 'error');
+                return;
+            }
+
+            if (!confirm(`Delete ${selectedCount} selected job(s)?`)) return;
+
+            const remainingJobs = allJobs.filter(job => !selectedJobKeys.has(getJobSelectionKey(job)));
+            chrome.storage.local.set({ scrapedJobs: remainingJobs }, () => {
+                allJobs = remainingJobs;
+                selectedJobKeys.clear();
+                refreshDisplayedJobs();
+                showToast(`Deleted ${selectedCount} selected jobs.`, 'success');
+            });
+        });
+    }
 
     // Send to webhook (batch sending)
     sendToWebhookButton.addEventListener('click', async () => {
@@ -1212,9 +1361,9 @@ document.addEventListener('DOMContentLoaded', () => {
             job_id: job.jobId || '',
             department_id: job.jobId || '',
             hospital: job.hospital,
-            aggregator: "United Veterinary Care (Parent Client)",
+            aggregator: "Alliance Animal (Parent Client)",
             street_address: job.streetAddress || '',
-            parent_client: "United Veterinary Care (Parent Client)",
+            parent_client: "Alliance Animal (Parent Client)",
             city: job.city,
             state: job.state,
             zip_code: job.zipCode || '',
@@ -1259,8 +1408,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const batchNumber = i + 1;
 
             const payload = {
-                source: 'United Veterinary Job Scraper',
-                parentClientName: 'United Veterinary Care (Parent Client)',
+                source: 'Alliance Animal Job Scraper',
+                parentClientName: 'Alliance Animal (Parent Client)',
                 syncId: syncId,
                 timestamp: new Date().toISOString(),
                 batchNumber: batchNumber,

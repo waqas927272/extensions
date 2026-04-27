@@ -1,6 +1,37 @@
 // content.js
 function scrapeCurrentPage() {
     const jobs = [];
+    function shouldSkipScrapedJob(jobTitle) {
+      const title = (jobTitle || '').toLowerCase();
+      const hasProtectedRole = /\bassociate\s+veterinarian\b/.test(title) ||
+        /\bmedical\s+director\b/.test(title);
+      if (hasProtectedRole) return false;
+
+      return /\bveterinary\s+receptionist\b/.test(title) ||
+        /\bveterinary\s+customer\s+service\s+representative\b/.test(title) ||
+        /\bveterinary\s+technician\b/.test(title) ||
+        /\bveterinary\s+medical\s+technician\b/.test(title) ||
+        /\blicensed\s+veterinary\s+medical\s+technician\b/.test(title) ||
+        /\bvet(?:erinary)?\s+tech(?:nician)?\b/.test(title) ||
+        /\bkennel\b/.test(title) ||
+        /\bveterinary\s+assistant\b/.test(title) ||
+        /\bvet(?:erinary)?\s+assistant\b/.test(title) ||
+        /\bveterinary\s+office\s+manager\b/.test(title) ||
+        /\bveterinary\s+practice\s+manager\b/.test(title) ||
+        /\bveterinary\s+laboratory\s+technician\b/.test(title) ||
+        /\bpet\s+bather\b/.test(title) ||
+        /\bveterinary\s+surgery\s+technician\b/.test(title) ||
+        /\bveterinary\s+groomer\b/.test(title) ||
+        /\banimal\s+care\s+assistant\b/.test(title) ||
+        /\banimal\s+care\s+coordinator\b/.test(title) ||
+        /\banimal\s+care\s+technician\b/.test(title) ||
+        /\bveterinary\s+student\s+ambassador\b/.test(title) ||
+        /\bexternship\b/.test(title) ||
+        /\brelief\s+veterinarian\b/.test(title) ||
+        /\bdvm\s+veterinary\s+partner\s*(?:&|and)\s*hospital\s+equity\s+owner\b/.test(title) ||
+        /\bseasonal\s+veterinarian\b/.test(title);
+    }
+
     function isCleanCityName(city) {
       if (!city) return false;
       const value = city.trim();
@@ -52,6 +83,9 @@ function scrapeCurrentPage() {
             // Strip it to get just the hospital name
             hospitalName = hospitalName.replace(/\s*[-]\s*[A-Za-z\s.'-]+,\s*[A-Z]{2}\s*$/, '').trim();
             const jobTitle = jobTitleEl.innerText.trim();
+            if (shouldSkipScrapedJob(jobTitle)) {
+              return;
+            }
             const link = jobTitleEl.href;
             const locationText = locationEl.innerText.trim();
             const jobType = jobTypeEl ? jobTypeEl.innerText.trim() : '';
