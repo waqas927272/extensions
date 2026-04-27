@@ -810,19 +810,28 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // Google Maps scraping function to get street address and zip code
-    // Opens a Google Maps search tab, injects scraper that:
-    //   1. Waits for search results to load
-    //   2. Matches the hospital name from aria-labels on search result links
-    //   3. Clicks the matching result
-    //   4. Waits for place detail panel and extracts address
-    // Retries with simplified search query if first attempt fails.
+    function formatPhoneToPlus1(phone) {
+        if (!phone) return '';
+        const digits = String(phone).replace(/[^\d]/g, '');
+        let core = '';
+        if (digits.length === 11 && digits.startsWith('1')) core = digits.slice(1);
+        else if (digits.length === 10) core = digits;
+        if (!core) return '';
+        return `+1 (${core.slice(0, 3)}) ${core.slice(3, 6)}-${core.slice(6)}`;
+    }
+
+    // Google Maps address fetcher:
+    // Opens Google Maps, searches by hospital + city/state, and saves address/zip/phone from the listing.
     async function fetchAddressFromGoogleMaps(hospitalName, location) {
-        // Build search query: "Hospital Name, City, State"
         const searchQuery = `${hospitalName}, ${location}`;
         const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
 
-        // Inner function: open a tab, wait for load, inject scraper, get results
+        const extractZip = (text) => {
+            if (!text) return '';
+            const m = String(text).match(/\b(\d{5}(?:-\d{4})?)\b/);
+            return m ? m[1] : '';
+        };
+
         function scrapeGoogleMapsTab(url, queryLabel) {
             return new Promise((resolve) => {
                 let tabId = null;
@@ -837,27 +846,24 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (tabId) chrome.tabs.remove(tabId).catch(() => {});
                     resolve(value);
                 };
-                // Safety timeout — 30 seconds max
+
                 const timeout = setTimeout(() => {
-                    console.warn(`✗ Google Maps timeout for: "${queryLabel}"`);
-                    finish({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
+                    console.warn(`Google Maps timeout for: "${queryLabel}"`);
+                    finish({ streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' });
                 }, 30000);
 
                 chrome.tabs.create({ url: url, active: false }, (tab) => {
                     if (!tab) {
-                        finish({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
+                        finish({ streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' });
                         return;
                     }
 
                     tabId = tab.id;
-
                     listener = (updatedTabId, info) => {
                         if (updatedTabId === tabId && info.status === 'complete') {
                             chrome.tabs.onUpdated.removeListener(listener);
                             listener = null;
 
-                            // Wait 2s for Google Maps SPA to start rendering,
-                            // then inject the scraper which handles its own polling + clicking
                             setTimeout(() => {
                                 chrome.scripting.executeScript({
                                     target: { tabId: tabId },
@@ -875,7 +881,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                     });
                                 }).catch((err) => {
                                     console.error(`Google Maps script error for "${queryLabel}":`, err);
-                                    finish({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
+                                    finish({ streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' });
                                 });
                             }, 2000);
                         }
@@ -886,45 +892,41 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        // Attempt 1: search with exact hospital name + city, state
-        console.log(`🔍 Google Maps search: "${searchQuery}"`);
+        console.log(`Google Maps search: "${searchQuery}"`);
         let data = await scrapeGoogleMapsTab(mapsUrl, searchQuery);
 
-        // Attempt 2: if failed, try with & → and, remove dashes/parens
-        if (!data.streetAddress && !data.zipCode) {
+        if (!(data.streetAddress || data.fullAddress || data.phone || data.zipCode)) {
             const simplifiedName = hospitalName
                 .replace(/&/g, 'and')
-                .replace(/[-–—()]/g, ' ')
+                .replace(/[-��()]/g, ' ')
                 .replace(/\s+/g, ' ')
                 .trim();
             const altQuery = `${simplifiedName}, ${location}`;
             if (altQuery !== searchQuery) {
-                console.log(`↻ Retry with: "${altQuery}"`);
-                const altUrl = `https://www.google.com/maps/search/${encodeURIComponent(altQuery)}`;
-                data = await scrapeGoogleMapsTab(altUrl, altQuery);
+                const altMapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(altQuery)}`;
+                data = await scrapeGoogleMapsTab(altMapsUrl, altQuery);
             }
         }
 
-        if (data.streetAddress || data.zipCode) {
-            console.log(`✓ SUCCESS: "${searchQuery}"`);
-            console.log(`  → Street="${data.streetAddress}", City="${data.city}", State="${data.state}", Zip="${data.zipCode}"`);
-            if (data.website) console.log(`  → Website="${data.website}"`);
-            if (data.phone) console.log(`  → Phone="${data.phone}"`);
-        } else {
-            console.warn(`✗ No address found for: "${searchQuery}"`);
-        }
-
-        return {
+        const finalData = {
             streetAddress: data.streetAddress || '',
-            zipCode: data.zipCode || '',
             city: data.city || '',
             state: data.state || '',
             fullAddress: data.fullAddress || '',
             website: data.website || '',
-            phone: data.phone || ''
+            phone: formatPhoneToPlus1(data.phone || ''),
+            zipCode: data.zipCode || extractZip(data.fullAddress) || ''
         };
-    }
 
+        if (finalData.streetAddress || finalData.zipCode) {
+            console.log(`Address fetch success: "${searchQuery}"`);
+            console.log(`  Street="${finalData.streetAddress}", City="${finalData.city}", State="${finalData.state}", Zip="${finalData.zipCode}"`);
+        } else {
+            console.warn(`No address found for: "${searchQuery}"`);
+        }
+
+        return finalData;
+    }
     if (!tableBody) {
         console.error('Could not find table body!');
         return;
