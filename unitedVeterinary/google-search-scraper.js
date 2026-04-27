@@ -29,12 +29,12 @@
     }
 
     async function waitForGoogleResults() {
-        const deadline = Date.now() + 30000;
+        const deadline = Date.now() + 15000;
         let lastText = '';
         let stableCount = 0;
 
         while (Date.now() < deadline) {
-            await wait(700);
+            await wait(500);
             const panelText = getKnowledgePanelText();
             const bodyText = cleanText(document.body.innerText || '');
             const text = panelText || bodyText;
@@ -45,7 +45,7 @@
             else stableCount = 0;
             lastText = text;
 
-            if (stableCount >= 4 && (document.querySelector('#search') || document.querySelector('#rhs') || document.querySelector('[role="complementary"]'))) {
+            if (stableCount >= 2 && (document.querySelector('#search') || document.querySelector('#rhs') || document.querySelector('[role="complementary"]'))) {
                 return;
             }
         }

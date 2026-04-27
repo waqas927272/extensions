@@ -22,6 +22,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentDetailsIndex = 0;
     let addressQueue = [];
     let currentAddressIndex = 0;
+    let addressCache = new Map();
     const getDescriptionsBtn = document.getElementById('getDescriptionsBtn');
     const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
     const fetchAddressesBtn = document.getElementById('fetchAddressesBtn');
@@ -847,7 +848,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         function needsMapsRetry(data) {
-            return !data.streetAddress || !data.zipCode || !data.website || !data.phone;
+            return !data.streetAddress || !data.zipCode;
         }
 
         function uniqueQueries(names) {
@@ -950,6 +951,67 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
+        function scrapeGoogleMapsTabSafe(url, queryLabel) {
+            return new Promise((resolve) => {
+                let settled = false;
+                let mapsTabId = null;
+                let listener = null;
+
+                const finish = (result) => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timeout);
+                    if (listener) chrome.tabs.onUpdated.removeListener(listener);
+                    if (mapsTabId) chrome.tabs.remove(mapsTabId).catch(() => {});
+                    resolve(result || emptyAddressResult());
+                };
+
+                const timeout = setTimeout(() => {
+                    console.warn(`Google Maps timeout for: "${queryLabel}"`);
+                    finish(emptyAddressResult());
+                }, 22000);
+
+                chrome.tabs.create({ url: url, active: false }, (tab) => {
+                    if (!tab) {
+                        finish(emptyAddressResult());
+                        return;
+                    }
+
+                    mapsTabId = tab.id;
+                    listener = (updatedTabId, info) => {
+                        if (updatedTabId === mapsTabId && info.status === 'complete') {
+                            chrome.tabs.onUpdated.removeListener(listener);
+                            listener = null;
+
+                            setTimeout(() => {
+                                if (settled) return;
+                                chrome.scripting.executeScript({
+                                    target: { tabId: mapsTabId },
+                                    files: ['google-maps-scraper.js']
+                                }).then((results) => {
+                                    const data = results?.[0]?.result || {};
+                                    finish({
+                                        streetAddress: data.streetAddress || '',
+                                        zipCode: data.zipCode || '',
+                                        city: data.city || '',
+                                        state: data.state || '',
+                                        fullAddress: data.fullAddress || '',
+                                        website: data.website || '',
+                                        phone: data.phone || ''
+                                    });
+                                }).catch((err) => {
+                                    console.error(`Google Maps script error for "${queryLabel}":`, err);
+                                    finish(emptyAddressResult());
+                                });
+                            }, 1400);
+                        }
+                    };
+
+                    chrome.tabs.onUpdated.addListener(listener);
+                });
+            });
+        }
+
         function scrapeGoogleSearchTab(queryLabel) {
             return new Promise((resolve) => {
                 let settled = false;
@@ -1009,9 +1071,71 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
+        function scrapeGoogleSearchTabSafe(queryLabel) {
+            return new Promise((resolve) => {
+                let settled = false;
+                let searchTabId = null;
+                let listener = null;
+
+                const finish = (result) => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timeout);
+                    if (listener) chrome.tabs.onUpdated.removeListener(listener);
+                    if (searchTabId) chrome.tabs.remove(searchTabId).catch(() => {});
+                    resolve(result || emptyAddressResult());
+                };
+
+                const timeout = setTimeout(() => {
+                    console.warn(`Google Search timeout for: "${queryLabel}"`);
+                    finish(emptyAddressResult());
+                }, 26000);
+
+                const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(queryLabel)}`;
+                chrome.tabs.create({ url: searchUrl, active: false }, (tab) => {
+                    if (!tab) {
+                        finish(emptyAddressResult());
+                        return;
+                    }
+
+                    searchTabId = tab.id;
+                    listener = (updatedTabId, info) => {
+                        if (updatedTabId === searchTabId && info.status === 'complete') {
+                            chrome.tabs.onUpdated.removeListener(listener);
+                            listener = null;
+
+                            setTimeout(() => {
+                                if (settled) return;
+                                chrome.scripting.executeScript({
+                                    target: { tabId: searchTabId },
+                                    files: ['google-search-scraper.js']
+                                }).then((results) => {
+                                    const data = results?.[0]?.result || {};
+                                    finish({
+                                        streetAddress: data.streetAddress || '',
+                                        zipCode: data.zipCode || '',
+                                        city: data.city || '',
+                                        state: data.state || '',
+                                        fullAddress: data.fullAddress || '',
+                                        website: data.website || '',
+                                        phone: data.phone || ''
+                                    });
+                                }).catch((err) => {
+                                    console.error(`Google Search script error for "${queryLabel}":`, err);
+                                    finish(emptyAddressResult());
+                                });
+                            }, 1200);
+                        }
+                    };
+
+                    chrome.tabs.onUpdated.addListener(listener);
+                });
+            });
+        }
+
         // Attempt 1: search with exact hospital name + city, state
         console.log(`🔍 Google Maps search: "${searchQuery}"`);
-        let data = mergeMapsData(emptyAddressResult(), await scrapeGoogleMapsTab(mapsUrl, searchQuery), searchQuery);
+        let data = mergeMapsData(emptyAddressResult(), await scrapeGoogleMapsTabSafe(mapsUrl, searchQuery), searchQuery);
 
         // Attempt 2: if failed, try with & → and, remove dashes/parens
         if (needsMapsRetry(data)) {
@@ -1024,29 +1148,29 @@ document.addEventListener('DOMContentLoaded', () => {
             if (altQuery !== searchQuery) {
                 console.log(`↻ Retry with: "${altQuery}"`);
                 const altUrl = `https://www.google.com/maps/search/${encodeURIComponent(altQuery)}`;
-                const altData = await scrapeGoogleMapsTab(altUrl, altQuery);
+                const altData = await scrapeGoogleMapsTabSafe(altUrl, altQuery);
                 data = mergeMapsData(data, altData, altQuery);
             }
         }
 
         // Additional Maps attempts for names with location suffixes or parenthetical acronyms.
         if (needsMapsRetry(data)) {
-            for (const query of uniqueQueries(buildHospitalNameVariants())) {
+            for (const query of uniqueQueries(buildHospitalNameVariants()).slice(0, 6)) {
                 if (!needsMapsRetry(data)) break;
                 if (query === searchQuery) continue;
                 console.log(`Maps variant search: "${query}"`);
                 const variantUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}`;
-                const variantData = await scrapeGoogleMapsTab(variantUrl, query);
+                const variantData = await scrapeGoogleMapsTabSafe(variantUrl, query);
                 data = mergeMapsData(data, variantData, query);
             }
         }
 
         // Last resort: use regular Google Search and read the right-side knowledge panel.
         if (needsMapsRetry(data)) {
-            for (const query of uniqueQueries(buildHospitalNameVariants())) {
+            for (const query of uniqueQueries(buildHospitalNameVariants()).slice(0, 4)) {
                 if (!needsMapsRetry(data)) break;
                 console.log(`Google Search fallback: "${query}"`);
-                const searchData = await scrapeGoogleSearchTab(query);
+                const searchData = await scrapeGoogleSearchTabSafe(query);
                 data = mergeMapsData(data, searchData, query);
             }
         }
@@ -1974,6 +2098,90 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ============ FETCH ADDRESSES ============
 
+    function normalizeAddressCacheValue(value) {
+        return (value || '')
+            .toLowerCase()
+            .replace(/&/g, ' and ')
+            .replace(/\([^)]*\)/g, ' ')
+            .replace(/[-–—]/g, ' ')
+            .replace(/\b(?:hospital|clinic|center|centre|veterinary|animal|pet)\b/g, ' ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+    }
+
+    function makeAddressCacheKey(hospital, location) {
+        const hospitalKey = normalizeAddressCacheValue(hospital);
+        const locationKey = normalizeAddressCacheValue(location);
+        return hospitalKey && locationKey ? `${hospitalKey}|${locationKey}` : '';
+    }
+
+    function getAddressCacheKeys(hospital, location, originalHospital = '') {
+        const keys = new Set();
+        const names = [hospital, originalHospital].filter(Boolean);
+        for (const name of names) {
+            const key = makeAddressCacheKey(name, location);
+            if (key) keys.add(key);
+        }
+        return [...keys];
+    }
+
+    function hasUsableCachedAddress(data) {
+        return !!(data && data.streetAddress && data.zipCode);
+    }
+
+    function parseLocationParts(location) {
+        const parts = (location || '').split(',').map(part => part.trim()).filter(Boolean);
+        return {
+            city: parts[0] || '',
+            state: parts.length >= 2 ? parts[1] : ''
+        };
+    }
+
+    function normalizedLocationPart(value) {
+        return (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+
+    function jobLocationMismatch(job) {
+        const expected = parseLocationParts(job.location);
+        return !!(
+            (expected.city && job.city && normalizedLocationPart(job.city) !== normalizedLocationPart(expected.city)) ||
+            (expected.state && job.state && normalizedLocationPart(getFullStateName(job.state)) !== normalizedLocationPart(getFullStateName(expected.state)))
+        );
+    }
+
+    function rememberAddressData(keys, data) {
+        if (!hasUsableCachedAddress(data)) return;
+        for (const key of keys) {
+            addressCache.set(key, { ...data });
+        }
+    }
+
+    function getRememberedAddress(keys) {
+        for (const key of keys) {
+            const cached = addressCache.get(key);
+            if (hasUsableCachedAddress(cached)) return { ...cached };
+        }
+        return null;
+    }
+
+    function primeAddressCache(jobs) {
+        addressCache = new Map();
+        for (const job of jobs) {
+            if (!job.hospital || !job.location || !job.streetAddress || !job.zipCode) continue;
+            if (jobLocationMismatch(job)) continue;
+            const cached = {
+                streetAddress: job.streetAddress || '',
+                zipCode: job.zipCode || '',
+                city: job.city || '',
+                state: job.state || '',
+                fullAddress: [job.streetAddress, job.city, [job.state, job.zipCode].filter(Boolean).join(' ')].filter(Boolean).join(', '),
+                website: job.website || '',
+                phone: job.phone || ''
+            };
+            rememberAddressData(getAddressCacheKeys(job.hospital, job.location), cached);
+        }
+    }
+
     fetchAddressesBtn.addEventListener('click', async () => {
         if (isFetchingAddresses) {
             showToast('Already fetching addresses. Please wait...', 'error');
@@ -1988,7 +2196,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .filter(item => {
                 // Jobs missing any core location/contact field
                 return item.job.hospital && item.job.location &&
-                    (!item.job.streetAddress || !item.job.zipCode || !item.job.website || !item.job.phone);
+                    (!item.job.streetAddress || !item.job.zipCode || jobLocationMismatch(item.job));
             });
 
         if (jobsNeedingAddresses.length === 0) {
@@ -2007,6 +2215,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        primeAddressCache(jobs);
         isFetchingAddresses = true;
         currentAddressIndex = 0;
         fetchAddressesBtn.disabled = true;
@@ -2074,7 +2283,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 (searchCity && job.city && normalizeLocationValue(job.city) !== normalizeLocationValue(searchCity)) ||
                 (searchState && job.state && normalizeLocationValue(getFullStateName(job.state)) !== normalizeLocationValue(getFullStateName(searchState)));
 
-            const addressData = await fetchAddressFromGoogleMaps(searchHospital, searchLocation, job.hospital || '');
+            const cacheKeys = getAddressCacheKeys(searchHospital, searchLocation, job.hospital || '');
+            let addressData = getRememberedAddress(cacheKeys);
+            if (addressData) {
+                console.log(`Using cached address for "${searchHospital}, ${searchLocation}"`);
+            } else {
+                addressData = await fetchAddressFromGoogleMaps(searchHospital, searchLocation, job.hospital || '');
+                rememberAddressData(cacheKeys, addressData);
+            }
 
             // Update job with address data from Google Maps
             const data = await chrome.storage.local.get(['scrapedJobs']);
@@ -2129,7 +2345,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentAddressIndex++;
 
         // Continue processing — delay for Google Maps tab loading
-        setTimeout(() => processNextAddress(), 1500);
+        setTimeout(() => processNextAddress(), 250);
     }
 
     function finishAddressFetching() {
