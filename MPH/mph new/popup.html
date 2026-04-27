@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Mission Pet Health Job Scraper</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="header">
+    <span class="version-tag">v1.7</span>
+    <div class="header-inner">
+      <div class="logo">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M4.5,9.5C4.5,8.12,5.62,7,7,7C8.38,7,9.5,8.12,9.5,9.5C9.5,10.88,8.38,12,7,12C5.62,12,4.5,10.88,4.5,9.5M7,14C9.21,14,11,12.21,11,10C11,7.79,9.21,6,7,6C4.79,6,3,7.79,3,10C3,12.21,4.79,14,7,14M14.5,9.5C14.5,8.12,15.62,7,17,7C18.38,7,19.5,8.12,19.5,9.5C19.5,10.88,18.38,12,17,12C15.62,12,14.5,10.88,14.5,9.5M17,14C19.21,14,21,12.21,21,10C21,7.79,19.21,6,17,6C14.79,6,13,7.79,13,10C13,12.21,14.79,14,17,14M12,18C10.9,18,10,17.1,10,16C10,14.9,10.9,14,12,14C13.1,14,14,14.9,14,16C14,17.1,13.1,18,12,18M12,12C9.79,12,8,13.79,8,16C8,18.21,9.79,20,12,20C14.21,20,16,18.21,16,16C16,13.79,14.21,12,12,12Z"/>
+        </svg>
+      </div>
+      <div class="title-section">
+        <h1>Mission Pet Health</h1>
+        <p>Job Scraper Extension</p>
+      </div>
+    </div>
+  </div>
+
+  <div id="loadingIndicator" class="loading-card hidden">
+    <div class="spinner"></div>
+    <span>Scraping... Please wait.</span>
+  </div>
+
+  <div class="action-buttons">
+    <button id="startScraping" class="btn-primary">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M8,5.14V19.14L19,12.14L8,5.14Z"/>
+      </svg>
+      <span>Start Scraping</span>
+    </button>
+
+    <button id="stopScraping" class="btn-danger">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M18,18H6V6H18V18Z"/>
+      </svg>
+      <span>Stop Scraping</span>
+    </button>
+
+    <button id="viewRecords" class="btn-success">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zM7 17h10v-2H7v2zm0-4h10v-2H7v2zm0-4h10V7H7v2z"/>
+      </svg>
+      <span>View Records</span>
+    </button>
+  </div>
+
+  <div class="footer">
+    <p>Navigate to <a href="https://missionpethealth.avature.net/careersmarketplace/SearchJobs" target="_blank">MPH Careers</a>, click "Start Scraping", then use "View Records" → "Fetch Details"</p>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

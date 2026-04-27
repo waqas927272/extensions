@@ -1,5 +1,5 @@
-Serial Number,Job ID,Job Title,Area of Practice,Position,Street Address,City,State,Zip Code,Hospital Name,Phone,Website,Salary,Experience,Job Type,Job URL,Description
-"1","MPH-54728","Founding Partner Veterinarian - Bonita","General Practice Care","Partner Veterinarian","","Chula Vista","California","","Livewell Animal Hospital of Bonita","","","","4+ years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54728","=== JOB DETAIL FIELDS ===
+#,Job Title,Job ID,Hospital,Aggregator,Street Address,City,State,Zip Code,Phone,Website,Location,Area of Practice,Position,Salary,Job Type,Experience,Link,Description
+1,"Founding Partner Veterinarian - Bonita","MPH-54728","Livewell Animal Hospital of Bonita","Mission Pet Health (Parent Client)","","","","","","","Chula Vista, California","Emergency Care","Associate Veterinarian","","Full-Time","4+ years","https://missionpethealth.avature.net/agency/JobDetail?jobId=54728","=== JOB DETAIL FIELDS ===
 Job ID: 54728
 Job Title: Founding Partner & Lead Veterinarian
 State: California
@@ -29,7 +29,7 @@ An entrepreneurial spirit and a strong understanding of what it takes to run a s
 Previous formal leadership or management experience is a significant plus.
 
 Will Accept a New Grad?: No"
-"2","MPH-54584","Veterinarian at Countryside Veterinary Clinic in Yorkville, Illinois","General Practice Care","Associate Veterinarian","601 Center Pkwy","Yorkville","Illinois","60560","Countryside Veterinary Clinic","+16305537436","https://countrysidevetpets.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54584","=== JOB DETAIL FIELDS ===
+2,"Veterinarian at Countryside Veterinary Clinic in Yorkville, Illinois","MPH-54584","Countryside Veterinary Clinic","Mission Pet Health (Parent Client)","","","","","","","Yorkville, Illinois","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=54584","=== JOB DETAIL FIELDS ===
 Job ID: 54584
 Job Title: Veterinarian
 State: Illinois
@@ -54,7 +54,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"3","MPH-54355","Veterinarian","General Practice Care","Associate Veterinarian","","Delray Beach","Florida","","Delray Beach Animal Hospital","","","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54355","=== JOB DETAIL FIELDS ===
+3,"Veterinarian","MPH-54355","Delray Beach Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Delray Beach, Florida","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=54355","=== JOB DETAIL FIELDS ===
 Job ID: 54355
 Job Title: Veterinarian
 State: Florida
@@ -79,7 +79,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"4","MPH-53629","Veterinarian","General Practice Care","Associate Veterinarian","135 A Pinnacle Pl","Little River","South Carolina","29566","Waterway Animal Hospital","+18436634500","https://waterwayanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53629","=== JOB DETAIL FIELDS ===
+4,"Veterinarian","MPH-53629","Waterway Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Little River, South Carolina","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53629","=== JOB DETAIL FIELDS ===
 Job ID: 53629
 Job Title: Veterinarian
 State: South Carolina
@@ -104,7 +104,32 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"5","MPH-53106","Veterinarian","General Practice Care","Associate Veterinarian","115 E Euclid Ave","DeLand","Florida","32724","FloridaWild Veterinary Hospital","+13867349899","https://floridawildvethospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53106","=== JOB DETAIL FIELDS ===
+5,"Associate Veterinarian","MPH-53475","Mayde Creek Animal Health Center","Mission Pet Health (Parent Client)","","","","","","","Katy, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53475","=== JOB DETAIL FIELDS ===
+Job ID: 53475
+Job Title: Veterinarian
+State: Texas
+City: Katy
+Hospital Name: Mayde Creek Animal Health Center
+Number of Openings: 1
+Posted Date: 03-18-2026
+Recruiter: Clarissa Martinez
+Clarissa.Martinez@mvetpartners.com
+Pay Class: Full-Time
+
+=== DESCRIPTION & REQUIREMENTS ===
+What Your Day-to-Day Looks Like
+Build Lasting Relationships: Connect with clients and their pets, becoming their trusted partner in a pet's lifelong health.
+Practice Your Best Medicine: From diagnosis to treatment, you'll lead patient care with the freedom to uphold the highest standards.
+Educate and Empower: Clearly communicate findings and treatment plans, empowering clients to make informed decisions.
+Collaborate and Grow: Work alongside a supportive paraprofessional team, contributing to a positive hospital culture.
+Who We're Looking For
+Doctor of Veterinary Medicine (DVM) degree.
+A valid state license and in good standing to practice.
+A collaborative spirit and a dedication to practicing the highest standard of medicine.
+Excellent communication skills with a positive, friendly attitude.
+
+Will Accept a New Grad?: Yes"
+6,"Veterinarian","MPH-53106","FloridaWild Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","DeLand, Florida","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53106","=== JOB DETAIL FIELDS ===
 Job ID: 53106
 Job Title: Veterinarian
 State: Florida
@@ -129,7 +154,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"6","MPH-53081","Medical Lead Veterinarian","General Practice Care","Medical Director","880 A1A N #21","Ponte Vedra Beach","Florida","32082","Animal Care of Ponte Vedra","+19042804544","https://animalcareofpontevedra.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53081","=== JOB DETAIL FIELDS ===
+7,"Medical Lead Veterinarian","MPH-53081","Animal Care of Ponte Vedra","Mission Pet Health (Parent Client)","","","","","","","Ponte Vedra Beach, Florida","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53081","=== JOB DETAIL FIELDS ===
 Job ID: 53081
 Job Title: Medical Lead
 State: Florida
@@ -161,7 +186,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"7","MPH-53063","Medical Lead Veterinarian at Capitol Illini Springfield","General Practice Care","Medical Director","1711 Wabash Ave","Springfield","Illinois","62704","Capitol Illini Veterinary Services - Springfield","+12175461541","https://capitolillinivet.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53063","=== JOB DETAIL FIELDS ===
+8,"Medical Lead Veterinarian at Capitol Illini Springfield","MPH-53063","Capitol Illini Veterinary Services - Springfield","Mission Pet Health (Parent Client)","","","","","","","Springfield, Illinois","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53063","=== JOB DETAIL FIELDS ===
 Job ID: 53063
 Job Title: Medical Lead
 State: Illinois
@@ -195,7 +220,7 @@ Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 #AVMA
 
 Will Accept a New Grad?: No"
-"8","MPH-52923","Medical Lead Veterinarian at Countryside Veterinary Clinic near Chicago, Illinois","General Practice Care","Medical Director","601 Center Pkwy","Yorkville","Illinois","60560","Countryside Veterinary Clinic","+16305537436","https://countrysidevetpets.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52923","=== JOB DETAIL FIELDS ===
+9,"Medical Lead Veterinarian at Countryside Veterinary Clinic near Chicago, Illinois","MPH-52923","Countryside Veterinary Clinic","Mission Pet Health (Parent Client)","","","","","","","Yorkville, Illinois","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52923","=== JOB DETAIL FIELDS ===
 Job ID: 52923
 Job Title: Medical Lead
 State: Illinois
@@ -229,7 +254,7 @@ Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 #AVMA
 
 Will Accept a New Grad?: No"
-"9","MPH-52697","Medical Lead Veterinarian","General Practice Care","Medical Director","1607 Grand Ave #11","Glenwood Springs","Colorado","81601","All Dogs & Cats Veterinary Hospital - Glenwood Springs","+19709456762","https://alldogcatvetgws.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52697","=== JOB DETAIL FIELDS ===
+10,"Medical Lead Veterinarian","MPH-52697","All Dogs & Cats Veterinary Hospital - Glenwood Springs","Mission Pet Health (Parent Client)","","","","","","","Glenwood Springs, Colorado","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52697","=== JOB DETAIL FIELDS ===
 Job ID: 52697
 Job Title: Medical Lead
 State: Colorado
@@ -261,7 +286,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"10","MPH-52673","Associate Veterinarian","General Practice Care","Associate Veterinarian","2707 S Austin Ave","Georgetown","Texas","78626","Georgetown Veterinary Hospital","+15128633563","https://gtvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52673","=== JOB DETAIL FIELDS ===
+11,"Associate Veterinarian","MPH-52673","Georgetown Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Georgetown, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52673","=== JOB DETAIL FIELDS ===
 Job ID: 52673
 Job Title: Veterinarian
 State: Texas
@@ -286,7 +311,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"11","MPH-52143","Associate Veterinarian - Capitol Illini Veterinary Services of Springfield","General Practice Care","Associate Veterinarian","1711 Wabash Ave","Springfield","Illinois","62704","Capitol Illini Veterinary Services - Springfield","+12175461541","https://capitolillinivet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52143","=== JOB DETAIL FIELDS ===
+12,"Associate Veterinarian - Capitol Illini Veterinary Services of Springfield","MPH-52143","Capitol Illini Veterinary Services - Springfield","Mission Pet Health (Parent Client)","","","","","","","Springfield, Illinois","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52143","=== JOB DETAIL FIELDS ===
 Job ID: 52143
 Job Title: Veterinarian
 State: Illinois
@@ -313,7 +338,7 @@ Excellent communication skills with a positive, friendly attitude.
 #AVMA
 
 Will Accept a New Grad?: Yes"
-"12","MPH-51979","Veterinarian","General Practice Care","Associate Veterinarian","12 Healthy Trail","Hillsville","Virginia","24343","Carroll Veterinary Clinic","+12767284841","https://carrollvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51979","=== JOB DETAIL FIELDS ===
+13,"Veterinarian","MPH-51979","Carroll Veterinary Clinic","Mission Pet Health (Parent Client)","","","","","","","Hillsville, Virginia","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51979","=== JOB DETAIL FIELDS ===
 Job ID: 51979
 Job Title: Veterinarian
 State: Virginia
@@ -338,7 +363,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"13","MPH-51902","Medical Lead Veterinarian","General Practice Care","Medical Director","7708 State Rd 52","Florida","Florida","34667","Acupet Veterinary Care","+17278196154","https://acupetvetcare.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51902","=== JOB DETAIL FIELDS ===
+14,"Medical Lead Veterinarian","MPH-51902","Acupet Veterinary Care","Mission Pet Health (Parent Client)","","","","","","","Florida","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51902","=== JOB DETAIL FIELDS ===
 Job ID: 51902
 Job Title: Medical Lead
 State: Florida
@@ -369,7 +394,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"14","MPH-51738","Medical Lead Veterinarian","General Practice Care","Medical Director","4200 Kings Hwy","Port Charlotte","Florida","33980","Charlotte Animal Hospital","+19416256111","https://charlotteanimalhospital.net/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51738","=== JOB DETAIL FIELDS ===
+15,"Medical Lead Veterinarian","MPH-51738","Charlotte Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Port Charlotte, Florida","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51738","=== JOB DETAIL FIELDS ===
 Job ID: 51738
 Job Title: Medical Lead
 State: Florida
@@ -402,7 +427,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"15","MPH-51560","Founding Partner Veterinarian - San Diego","General Practice Care","Partner Veterinarian","","San Diego","California","","Livewell Animal Hospital of Downtown San Diego","","","","4+ years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51560","=== JOB DETAIL FIELDS ===
+16,"Founding Partner Veterinarian - San Diego","MPH-51560","Livewell Animal Hospital of Downtown San Diego","Mission Pet Health (Parent Client)","","","","","","","San Diego, California","Emergency Care","Associate Veterinarian","","Full-Time","4+ years","https://missionpethealth.avature.net/agency/JobDetail?jobId=51560","=== JOB DETAIL FIELDS ===
 Job ID: 51560
 Job Title: Founding Partner & Lead Veterinarian
 State: California
@@ -438,7 +463,7 @@ An entrepreneurial spirit and a strong understanding of what it takes to run a s
 Previous formal leadership or management experience is a significant plus.
 
 Will Accept a New Grad?: No"
-"16","MPH-51075","Urgent Care Veterinarian in Green Bay WI","Urgent Care","Associate Veterinarian","","Green Bay","Wisconsin","","The Animal House Pet Clinic","","","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51075","=== JOB DETAIL FIELDS ===
+17,"Urgent Care Veterinarian in Green Bay WI","MPH-51075","The Animal House Pet Clinic","Mission Pet Health (Parent Client)","","","","","","","Green Bay, Wisconsin","Urgent Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51075","=== JOB DETAIL FIELDS ===
 Job ID: 51075
 Job Title: Veterinarian
 State: Wisconsin
@@ -500,7 +525,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"17","MPH-51074","Medical Lead Veterinarian in Wauwatosa WI at Mayfair Animal Hospital & ER","Specialty Care","Medical Director","11637 W North Ave","Wauwatosa","Wisconsin","53226","Mayfair Animal Hospital & ER","+14148978840","https://mayfairanimalemergency.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51074","=== JOB DETAIL FIELDS ===
+18,"Medical Lead Veterinarian in Wauwatosa WI at Mayfair Animal Hospital & ER","MPH-51074","Mayfair Animal Hospital & ER","Mission Pet Health (Parent Client)","","","","","","","Wauwatosa, Wisconsin","Specialty Care","","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51074","=== JOB DETAIL FIELDS ===
 Job ID: 51074
 Job Title: Veterinarian
 State: Wisconsin
@@ -571,7 +596,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"18","MPH-50744","Emergency Veterinarian in Wauwatosa WI","Emergency Care","Associate Veterinarian","11637 W North Ave","Wauwatosa","Wisconsin","53226","Mayfair Animal Hospital & ER","+14148978840","https://mayfairanimalemergency.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=50744","=== JOB DETAIL FIELDS ===
+19,"Emergency Veterinarian in Wauwatosa WI","MPH-50744","Mayfair Animal Hospital & ER","Mission Pet Health (Parent Client)","","","","","","","Wauwatosa, Wisconsin","Emergency Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=50744","=== JOB DETAIL FIELDS ===
 Job ID: 50744
 Job Title: Veterinarian
 State: Wisconsin
@@ -623,7 +648,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"19","MPH-50421","Veterinarian","General Practice Care","Associate Veterinarian","13431 Beach Blvd","Jacksonville","Florida","32246","Coastal Veterinary Hospital & Pet Resort","+19042234360","https://coastalvethospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=50421","=== JOB DETAIL FIELDS ===
+20,"Veterinarian","MPH-50421","Coastal Veterinary Hospital & Pet Resort","Mission Pet Health (Parent Client)","","","","","","","Jacksonville, Florida","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=50421","=== JOB DETAIL FIELDS ===
 Job ID: 50421
 Job Title: Veterinarian
 State: Florida
@@ -648,7 +673,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"20","MPH-50110","Veterinarian","Urgent Care","Associate Veterinarian","1201 Lake Murray Blvd","Irmo","South Carolina","29063","Well Pets Veterinary Clinic and After Hours Urgent Care","+18037323883","https://wellpetssc.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=50110","=== JOB DETAIL FIELDS ===
+21,"Veterinarian","MPH-50110","Well Pets Veterinary Clinic and After Hours Urgent Care","Mission Pet Health (Parent Client)","","","","","","","Irmo, South Carolina","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=50110","=== JOB DETAIL FIELDS ===
 Job ID: 50110
 Job Title: Veterinarian
 State: South Carolina
@@ -673,7 +698,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"21","MPH-49156","Veterinarian","General Practice Care","Associate Veterinarian","3109 E McKellips Rd #102","Mesa","Arizona","85213","Bark Avenue Animal Hospital","+14808075524","https://barkavevet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=49156","=== JOB DETAIL FIELDS ===
+22,"Veterinarian","MPH-49156","Bark Avenue Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Mesa, Arizona","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=49156","=== JOB DETAIL FIELDS ===
 Job ID: 49156
 Job Title: Veterinarian
 State: Arizona
@@ -698,32 +723,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"22","MPH-48973","Veterinarian Opportunity at Redwood Animal Hospital","General Practice Care","Associate Veterinarian","2702 Artesia Blvd","Redondo Beach","California","90278","Redwood Animal Hospital","+13103760581","https://animalhousedoctor.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=48973","=== JOB DETAIL FIELDS ===
-Job ID: 48973
-Job Title: Veterinarian
-State: California
-City: Redondo Beach
-Hospital Name: Redwood Animal Hospital
-Number of Openings: 1
-Posted Date: 11-05-2025
-Recruiter: Erika Bergman
-Erika.Bergman@mvetpartners.com
-Pay Class: Full-Time
-
-=== DESCRIPTION & REQUIREMENTS ===
-What Your Day-to-Day Looks Like
-Build Lasting Relationships: Connect with clients and their pets, becoming their trusted partner in a pet's lifelong health.
-Practice Your Best Medicine: From diagnosis to treatment, you'll lead patient care with the freedom to uphold the highest standards.
-Educate and Empower: Clearly communicate findings and treatment plans, empowering clients to make informed decisions.
-Collaborate and Grow: Work alongside a supportive paraprofessional team, contributing to a positive hospital culture.
-Who We're Looking For
-Doctor of Veterinary Medicine (DVM) degree.
-A valid state license and in good standing to practice.
-A collaborative spirit and a dedication to practicing the highest standard of medicine.
-Excellent communication skills with a positive, friendly attitude.
-
-Will Accept a New Grad?: Yes"
-"23","MPH-48956","Associate Veterinarian in Green Bay WI","Specialty Care","Associate Veterinarian","3171 Voyager Dr","Green Bay","Wisconsin","54311","The Animal House Pet Clinic","+19204654629","https://animalhousegreenbay.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=48956","=== JOB DETAIL FIELDS ===
+23,"Associate Veterinarian in Green Bay WI","MPH-48956","The Animal House Pet Clinic","Mission Pet Health (Parent Client)","","","","","","","Green Bay, Wisconsin","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=48956","=== JOB DETAIL FIELDS ===
 Job ID: 48956
 Job Title: Veterinarian
 State: Wisconsin
@@ -787,7 +787,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"24","MPH-43889","Veterinarian","General Practice Care","Associate Veterinarian","50 Woodruff Oaks Ln","Greenville","South Carolina","29607","All Creatures Great & Small","+18642881174","https://allcreatures-animalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=43889","=== JOB DETAIL FIELDS ===
+24,"Veterinarian","MPH-43889","All Creatures Great & Small","Mission Pet Health (Parent Client)","","","","","","","Greenville, South Carolina","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=43889","=== JOB DETAIL FIELDS ===
 Job ID: 43889
 Job Title: Veterinarian
 State: South Carolina
@@ -811,7 +811,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"25","MPH-40440","Lead Veterinarian Opportunity at Willamette Veterinary Hospital","General Practice Care","Lead Veterinarian","1562 SW 3rd St","Corvallis","Oregon","97333","Willamette Veterinary Hospital","+15417532223","https://wilvet.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=40440","=== JOB DETAIL FIELDS ===
+25,"Lead Veterinarian Opportunity at Willamette Veterinary Hospital","MPH-40440","Willamette Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Corvallis, Oregon","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=40440","=== JOB DETAIL FIELDS ===
 Job ID: 40440
 Job Title: Veterinarian
 State: Oregon
@@ -842,7 +842,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"26","MPH-34513","Associate Veterinarian at Hilton Veterinary Care Hospital","General Practice Care","Associate Veterinarian","251 East Ave","Hilton","New York","14468","Hilton Veterinary Care Hospital","+15853922937","https://hiltonvethospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=34513","=== JOB DETAIL FIELDS ===
+26,"Associate Veterinarian at Hilton Veterinary Care Hospital","MPH-34513","Hilton Veterinary Care Hospital","Mission Pet Health (Parent Client)","","","","","","","Hilton, New York","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=34513","=== JOB DETAIL FIELDS ===
 Job ID: 34513
 Job Title: Veterinarian
 State: New York
@@ -868,7 +868,7 @@ Excellent communication skills with a positive, friendly attitude.
 #AVMA
 
 Will Accept a New Grad?: Yes"
-"27","MPH-34503","Associate Veterinarian in Raymore MO","Specialty Care","Associate Veterinarian","411 Remington Plaza Ct","Raymore","Missouri","64083","Raymore Veterinary Center","+18163312626","https://raymoreveterinarycenter.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=34503","=== JOB DETAIL FIELDS ===
+27,"Associate Veterinarian in Raymore MO","MPH-34503","Raymore Veterinary Center","Mission Pet Health (Parent Client)","","","","","","","Raymore, Missouri","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=34503","=== JOB DETAIL FIELDS ===
 Job ID: 34503
 Job Title: Veterinarian
 State: Missouri
@@ -921,7 +921,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"28","MPH-33728","Urgent Care Veterinarian","Urgent Care","Associate Veterinarian","625 N East St","Indianapolis","Indiana","46202","City Way Animal Clinics - Mass Ave","+13173960056","https://citywayanimalclinics.com/our-locations?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=33728","=== JOB DETAIL FIELDS ===
+28,"Urgent Care Veterinarian","MPH-33728","City Way Animal Clinics - Mass Ave","Mission Pet Health (Parent Client)","","","","","","","Indianapolis, Indiana","Urgent Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=33728","=== JOB DETAIL FIELDS ===
 Job ID: 33728
 Job Title: Veterinarian
 State: Indiana
@@ -945,7 +945,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude. #AVMA
 
 Will Accept a New Grad?: No"
-"29","MPH-31535","Medical Lead Veterinarian","General Practice Care","Medical Director","625 N East St","Indianapolis","Indiana","46202","City Way Animal Clinics - Mass Ave","+13173960056","https://citywayanimalclinics.com/our-locations?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=31535","=== JOB DETAIL FIELDS ===
+29,"Medical Lead Veterinarian","MPH-31535","City Way Animal Clinics - Mass Ave","Mission Pet Health (Parent Client)","","","","","","","Indianapolis, Indiana","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=31535","=== JOB DETAIL FIELDS ===
 Job ID: 31535
 Job Title: Medical Lead
 State: Indiana
@@ -972,7 +972,7 @@ What We're Looking For: - A leader who inspires and empowers - A strong clinicia
 #AVMA
 
 Will Accept a New Grad?: No"
-"30","MPH-27966","Veterinarian","General Practice Care","Associate Veterinarian","8018 Belair Rd","Baltimore","Maryland","21236","Fullerton Animal Hospital","+14106656996","https://fullertonanimal.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=27966","=== JOB DETAIL FIELDS ===
+30,"Veterinarian","MPH-27966","Fullerton Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Baltimore, Maryland","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=27966","=== JOB DETAIL FIELDS ===
 Job ID: 27966
 Job Title: Veterinarian
 State: Maryland
@@ -996,7 +996,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"31","MPH-23893","Veterinarian","General Practice Care","Associate Veterinarian","6215 Baltimore Ave","Riverdale","Maryland","20737","Lynn Animal Hospital","+13017791184","https://lynnanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=23893","=== JOB DETAIL FIELDS ===
+31,"Veterinarian","MPH-23893","Lynn Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Riverdale, Maryland","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=23893","=== JOB DETAIL FIELDS ===
 Job ID: 23893
 Job Title: Veterinarian
 State: Maryland
@@ -1020,7 +1020,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"32","MPH-21940","Veterinarian","General Practice Care","Associate Veterinarian","2200 N Bell Blvd","Cedar Park","Texas","78613","Block House Creek Animal Hospital","+15122594200","https://bhcah.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=21940","=== JOB DETAIL FIELDS ===
+32,"Veterinarian","MPH-21940","Block House Creek Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Cedar Park, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=21940","=== JOB DETAIL FIELDS ===
 Job ID: 21940
 Job Title: Veterinarian
 State: Texas
@@ -1044,7 +1044,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"33","MPH-11008","Veterinarian Opportunity at SoCal Pet Hospital","General Practice Care","Associate Veterinarian","25100 Hancock Ave #114","Murrieta","California","92562","SoCal Pet Hospital","+19512287182","https://socalpethospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=11008","=== JOB DETAIL FIELDS ===
+33,"Veterinarian Opportunity at SoCal Pet Hospital","MPH-11008","SoCal Pet Hospital","Mission Pet Health (Parent Client)","","","","","","","Murrieta, California","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=11008","=== JOB DETAIL FIELDS ===
 Job ID: 11008
 Job Title: Veterinarian
 State: California
@@ -1069,7 +1069,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"34","MPH-10157","Veterinarian Opportunity at Grand Canyon Veterinary Hospital","General Practice Care","Associate Veterinarian","18840 Soledad Canyon Rd","Santa Clarita","California","91351","Grand Canyon Veterinary Hospital","+16613676898","http://grandcanyonvethospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=10157","=== JOB DETAIL FIELDS ===
+34,"Veterinarian Opportunity at Grand Canyon Veterinary Hospital","MPH-10157","Grand Canyon Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Santa Clarita, California","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=10157","=== JOB DETAIL FIELDS ===
 Job ID: 10157
 Job Title: Veterinarian
 State: California
@@ -1102,7 +1102,7 @@ Who We're Looking For
 • Excellent communication skills with a positive, friendly, and professional attitude.
 
 Will Accept a New Grad?: Yes"
-"35","MPH-9873","Medical Lead Veterinarian","General Practice Care","Medical Director","948 Ocean Hwy W","Supply","North Carolina","28462","Brunswick Animal Hospital - NC","+19109392393","https://brunswickah.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=9873","=== JOB DETAIL FIELDS ===
+35,"Medical Lead Veterinarian","MPH-9873","Brunswick Animal Hospital - NC","Mission Pet Health (Parent Client)","","","","","","","Supply, North Carolina","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=9873","=== JOB DETAIL FIELDS ===
 Job ID: 9873
 Job Title: Medical Lead
 State: North Carolina
@@ -1133,7 +1133,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"36","MPH-7484","Veterinarian","General Practice Care","Associate Veterinarian","1607 Grand Ave #11","Glenwood Springs","Colorado","81601","All Dogs & Cats Veterinary Hospital - Glenwood Springs","+19709456762","https://alldogcatvetgws.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=7484","=== JOB DETAIL FIELDS ===
+36,"Veterinarian","MPH-7484","All Dogs & Cats Veterinary Hospital - Glenwood Springs","Mission Pet Health (Parent Client)","","","","","","","Glenwood Springs, Colorado","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=7484","=== JOB DETAIL FIELDS ===
 Job ID: 7484
 Job Title: Veterinarian
 State: Colorado
@@ -1157,7 +1157,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"37","MPH-5517","Veterinarian","General Practice Care","Associate Veterinarian","9585 Edgewood Ave","Mont Belvieu","Texas","77523","Barbers Hill Animal Hospital","+12817840448","https://barbershillvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=5517","=== JOB DETAIL FIELDS ===
+37,"Veterinarian","MPH-5517","Barbers Hill Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Mont Belvieu, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=5517","=== JOB DETAIL FIELDS ===
 Job ID: 5517
 Job Title: Veterinarian
 State: Texas
@@ -1181,7 +1181,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"38","MPH-54823","Veterinarian opportunity at Urgent Care Animal Hospital","Urgent Care","Associate Veterinarian","4945 N Eagle Rock Blvd Suite A","Los Angeles","California","90041","Urgent Care Animal Hospital","+13232852279","https://urgentcareanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54823","=== JOB DETAIL FIELDS ===
+38,"Veterinarian opportunity at Urgent Care Animal Hospital","MPH-54823","Urgent Care Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Los Angeles, California","Urgent Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=54823","=== JOB DETAIL FIELDS ===
 Job ID: 54823
 Job Title: Veterinarian
 State: California
@@ -1206,7 +1206,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"39","MPH-54822","Veterinarian Opportunity at Ocean Veterinary Hospital","General Practice Care","Associate Veterinarian","12410 Seal Beach Blvd Ste A","Seal Beach","California","90740","Ocean Veterinary Hospital","+15626142019","https://oceanvethospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54822","=== JOB DETAIL FIELDS ===
+39,"Veterinarian Opportunity at Ocean Veterinary Hospital","MPH-54822","Ocean Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Seal Beach, California","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=54822","=== JOB DETAIL FIELDS ===
 Job ID: 54822
 Job Title: Veterinarian
 State: California
@@ -1231,7 +1231,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"40","MPH-54721","Founding Partner  Veterinarian - Orlando (Winter Garden)","General Practice Care","Associate Veterinarian","","Florida","Florida","","Livewell Animal Hospital of Winter Garden","","","","4+ years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54721","=== JOB DETAIL FIELDS ===
+40,"Founding Partner  Veterinarian - Orlando (Winter Garden)","MPH-54721","Livewell Animal Hospital of Winter Garden","Mission Pet Health (Parent Client)","","","","","","","Florida","General Practice Care","Associate Veterinarian","","Full-Time","4+ years","https://missionpethealth.avature.net/agency/JobDetail?jobId=54721","=== JOB DETAIL FIELDS ===
 Job ID: 54721
 Job Title: Founding Partner & Lead Veterinarian
 State: Florida
@@ -1259,7 +1259,7 @@ An entrepreneurial spirit and a strong understanding of what it takes to run a s
 Previous formal leadership or management experience is a significant plus.
 
 Will Accept a New Grad?: No"
-"41","MPH-54704","Veterinarian","General Practice Care","Associate Veterinarian","785 Baldwin Rd","Cornelia","Georgia","30531","Cornelia Veterinary Hospital","+17067786605","https://corneliavet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54704","=== JOB DETAIL FIELDS ===
+41,"Veterinarian","MPH-54704","Cornelia Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Cornelia, Georgia","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=54704","=== JOB DETAIL FIELDS ===
 Job ID: 54704
 Job Title: Veterinarian
 State: Georgia
@@ -1284,7 +1284,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"42","MPH-54693","Associate Veterinarian","General Practice Care","Associate Veterinarian","3710 US-290","Dripping Springs","Texas","78620","Sunset Canyon Veterinary Clinic","+15128940266","https://sunsetcanyonveterinaryclinic.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54693","=== JOB DETAIL FIELDS ===
+42,"Associate Veterinarian","MPH-54693","Sunset Canyon Veterinary Clinic","Mission Pet Health (Parent Client)","","","","","","","Dripping Springs, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=54693","=== JOB DETAIL FIELDS ===
 Job ID: 54693
 Job Title: Veterinarian
 State: Texas
@@ -1309,7 +1309,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"43","MPH-54692","Regional Medical Director- Pacific Northwest","General Practice Care","Medical Director","","Birmingham","Alabama","","Birmingham","","","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54692","=== JOB DETAIL FIELDS ===
+43,"Regional Medical Director- Pacific Northwest","MPH-54692","Birmingham","Mission Pet Health (Parent Client)","","","","","","","Birmingham, Alabama","General Practice Care","Medical Director","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=54692","=== JOB DETAIL FIELDS ===
 Job ID: 54692
 Job Title: Regional Medical Director
 State: Alabama
@@ -1353,7 +1353,7 @@ Experience managing multi-site veterinary hospitals is required.
 Hospital ownership or previous Lead Veterinarian experience is strongly preferred.
 Exceptional interpersonal, oral, and written communication skills with the ability to present key data concisely.
 Strong organizational skills and a keen attention to detail."
-"44","MPH-54583","Veterinarian Opportunity at Wil-O-Paw Animal Hospital","General Practice Care","Associate Veterinarian","4809 Paw Paw Lake Rd","Coloma Charter Township","Michigan","49038","Wil-O-Paw Animal Hospital","+12694687297","https://wilopaw.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54583","=== JOB DETAIL FIELDS ===
+44,"Veterinarian Opportunity at Wil-O-Paw Animal Hospital","MPH-54583","Wil-O-Paw Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Coloma Charter Township, Michigan","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=54583","=== JOB DETAIL FIELDS ===
 Job ID: 54583
 Job Title: Veterinarian
 State: Michigan
@@ -1378,7 +1378,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"45","MPH-54573","Medical Lead Veterinarian at Companion Animal Wicker Park, Chicago","General Practice Care","Medical Director","2134 W Division St","Chicago","Illinois","60622","Companion Wicker Park","+13122837333","https://companionwp.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54573","=== JOB DETAIL FIELDS ===
+45,"Medical Lead Veterinarian at Companion Animal Wicker Park, Chicago","MPH-54573","Companion Wicker Park","Mission Pet Health (Parent Client)","","","","","","","Chicago, Illinois","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=54573","=== JOB DETAIL FIELDS ===
 Job ID: 54573
 Job Title: Medical Lead
 State: Illinois
@@ -1410,7 +1410,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"46","MPH-54567","Medical Lead Veterinarian at Avenue Animal Hospital in Tinley Park","General Practice Care","Medical Director","16736 Oak Park Ave","Tinley Park","Illinois","60477","Avenue Animal Hospital","+17085323866","https://avenueanimal.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54567","=== JOB DETAIL FIELDS ===
+46,"Medical Lead Veterinarian at Avenue Animal Hospital in Tinley Park","MPH-54567","Avenue Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Tinley Park, Illinois","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=54567","=== JOB DETAIL FIELDS ===
 Job ID: 54567
 Job Title: Medical Lead
 State: Illinois
@@ -1442,7 +1442,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"47","MPH-54544","Associate Veterinarian","General Practice Care","Associate Veterinarian","3601 N Nebo Rd","Muncie","Indiana","47304","Care Animal Hospital","+17652843000","https://care-animal.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54544","=== JOB DETAIL FIELDS ===
+47,"Associate Veterinarian","MPH-54544","Care Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Muncie, Indiana","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=54544","=== JOB DETAIL FIELDS ===
 Job ID: 54544
 Job Title: Veterinarian
 State: Indiana
@@ -1467,7 +1467,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"48","MPH-54515","Acquisition Diligence Analyst","General Practice Care","","2204 Lakeshore Dr #325","Birmingham","Alabama","35209","Mission Pet Health","+12054534760","https://missionpethealth.com/?utm_source=gmb&utm_medium=organic","","1-3 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54515","=== JOB DETAIL FIELDS ===
+48,"Acquisition Diligence Analyst","MPH-54515","Mission Pet Health","Mission Pet Health (Parent Client)","","","","","","","Birmingham, Alabama","General Practice Care","Associate Veterinarian","","Full-Time","1-3 years","https://missionpethealth.avature.net/agency/JobDetail?jobId=54515","=== JOB DETAIL FIELDS ===
 Job ID: 54515
 Job Title: Acquisition Diligence Analyst
 State: Alabama
@@ -1500,7 +1500,7 @@ Strong analytical and problem-solving skills.
 Excellent communication and presentation skills.
 Ability to work collaboratively in a fast-paced environment.
 Commitment to our WAG values."
-"49","MPH-54490","Medical Lead Veterinarian at Michigan City Animal Hospital","General Practice Care","Medical Director","2525 E Michigan Blvd","Michigan City","Indiana","46360","Michigan City Animal Hospital","+12198724191","https://mcanimalhospital.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54490","=== JOB DETAIL FIELDS ===
+49,"Medical Lead Veterinarian at Michigan City Animal Hospital","MPH-54490","Michigan City Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Michigan City, Indiana","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=54490","=== JOB DETAIL FIELDS ===
 Job ID: 54490
 Job Title: Medical Lead
 State: Indiana
@@ -1532,7 +1532,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"50","MPH-54464","Associate Veterinarian at Colonial Terrace Animal Hospital in Dubuque, Iowa","Urgent Care","Associate Veterinarian","2777 University Ave","Dubuque","Iowa","52001","Colonial Terrace Animal Hospital","+15635562667","https://colonialterraceanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54464","=== JOB DETAIL FIELDS ===
+50,"Associate Veterinarian at Colonial Terrace Animal Hospital in Dubuque, Iowa","MPH-54464","Colonial Terrace Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Dubuque, Iowa","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=54464","=== JOB DETAIL FIELDS ===
 Job ID: 54464
 Job Title: Veterinarian
 State: Iowa
@@ -1558,7 +1558,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"51","MPH-54211","Veterinarian","General Practice Care","Associate Veterinarian","713 Greenbrier Pkwy","Chesapeake","Virginia","23320","Chesapeake Animal Hospital","+17575475100","https://chesapeakeanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54211","=== JOB DETAIL FIELDS ===
+51,"Veterinarian","MPH-54211","Chesapeake Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Chesapeake, Virginia","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=54211","=== JOB DETAIL FIELDS ===
 Job ID: 54211
 Job Title: Veterinarian
 State: Virginia
@@ -1583,32 +1583,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"52","MPH-54196","Urgent Care Veterinarian","Urgent Care","Associate Veterinarian","1200 Sam Rittenberg Blvd B2","Charleston","South Carolina","29407","PawMed Veterinary Urgent Care","+18434273355","https://www.pawmedvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54196","=== JOB DETAIL FIELDS ===
-Job ID: 54196
-Job Title: Veterinarian
-State: South Carolina
-City: Charleston
-Hospital Name: PawMed Veterinary Urgent Care
-Number of Openings: 1
-Posted Date: 04-08-2026
-Recruiter: Anna Zingleman
-rebecca.metheny@mvetpartners.com
-Pay Class: Full-Time
-
-=== DESCRIPTION & REQUIREMENTS ===
-What Your Day-to-Day Looks Like
-Build Lasting Relationships: Connect with clients and their pets, becoming their trusted partner in a pet's lifelong health.
-Practice Your Best Medicine: From diagnosis to treatment, you'll lead patient care with the freedom to uphold the highest standards.
-Educate and Empower: Clearly communicate findings and treatment plans, empowering clients to make informed decisions.
-Collaborate and Grow: Work alongside a supportive paraprofessional team, contributing to a positive hospital culture.
-Who We're Looking For
-Doctor of Veterinary Medicine (DVM) degree.
-A valid state license and in good standing to practice.
-A collaborative spirit and a dedication to practicing the highest standard of medicine.
-Excellent communication skills with a positive, friendly attitude.
-
-Will Accept a New Grad?: No"
-"53","MPH-54191","Veterinarian Opportunity at Fire Mountain Veterinary Hospital","General Practice Care","Associate Veterinarian","613 Crouch St","Oceanside","California","92054","Fire Mountain Veterinary Hospital","+17607577557","http://www.firemountainvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54191","=== JOB DETAIL FIELDS ===
+52,"Veterinarian Opportunity at Fire Mountain Veterinary Hospital","MPH-54191","Fire Mountain Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Oceanside, California","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=54191","=== JOB DETAIL FIELDS ===
 Job ID: 54191
 Job Title: Veterinarian
 State: California
@@ -1633,7 +1608,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"54","MPH-54103","Associate Veterinarian","General Practice Care","Associate Veterinarian","10105 W Fairmont Pkwy","La Porte","Texas","77571","Bay-Porte Animal Hospital","+12814716834","https://bay-porte.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=54103","=== JOB DETAIL FIELDS ===
+53,"Associate Veterinarian","MPH-54103","Bay-Porte Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","La Porte, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=54103","=== JOB DETAIL FIELDS ===
 Job ID: 54103
 Job Title: Veterinarian
 State: Texas
@@ -1658,7 +1633,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"55","MPH-53987","Veterinarian | Whole Pet Veterinary Hospital of Wilmington","General Practice Care","Associate Veterinarian","5333 Oleander Dr A","Wilmington","North Carolina","28403","Whole Pet Veterinary Hospital (Wilmington)","+19104440420","https://www.wholepetvets.com/wilmington?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53987","=== JOB DETAIL FIELDS ===
+54,"Veterinarian | Whole Pet Veterinary Hospital of Wilmington","MPH-53987","Whole Pet Veterinary Hospital (Wilmington)","Mission Pet Health (Parent Client)","","","","","","","Wilmington, North Carolina","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53987","=== JOB DETAIL FIELDS ===
 Job ID: 53987
 Job Title: Veterinarian
 State: North Carolina
@@ -1683,7 +1658,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"56","MPH-53978","Lead Veterinarian","General Practice Care","Lead Veterinarian","2501 Hwy 17 S","North Myrtle Beach","South Carolina","29582","Animal Hospital of North Myrtle Beach","+18432728121","https://animalhospitalnmb.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53978","=== JOB DETAIL FIELDS ===
+55,"Lead Veterinarian","MPH-53978","Animal Hospital of North Myrtle Beach","Mission Pet Health (Parent Client)","","","","","","","North Myrtle Beach, South Carolina","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53978","=== JOB DETAIL FIELDS ===
 Job ID: 53978
 Job Title: Veterinarian
 State: South Carolina
@@ -1708,7 +1683,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"57","MPH-53974","Medical Lead Veterinarian","General Practice Care","Medical Director","6005 Carolina Beach Rd","Wilmington","North Carolina","28412","Myrtle Grove Animal Hospital","+19103133326","https://myrtlegroveanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53974","=== JOB DETAIL FIELDS ===
+56,"Medical Lead Veterinarian","MPH-53974","Myrtle Grove Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Wilmington, North Carolina","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53974","=== JOB DETAIL FIELDS ===
 Job ID: 53974
 Job Title: Veterinarian
 State: North Carolina
@@ -1733,39 +1708,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"58","MPH-53957","Human Resource Business Partner","General Practice Care","","2204 Lakeshore Dr #325","Birmingham","Alabama","35209","Mission Pet Health","+12054534760","https://missionpethealth.com/?utm_source=gmb&utm_medium=organic","","5+ years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53957","=== JOB DETAIL FIELDS ===
-Job ID: 53957
-Job Title: HR Business Partner
-State: Alabama
-City: Birmingham
-Hospital Name: Mission Pet Health
-Number of Openings: 1
-Posted Date: 03-30-2026
-Recruiter: Luis Aponte
-Luis.Aponte@svp.vet
-Pay Class: Full-Time
-
-=== DESCRIPTION & REQUIREMENTS ===
-The Human Resource Business Partner contributes to the company performance by providing tactical and strategic partnership on people and organization development strategies in support of the company, regional and hospital business objectives. The Business Partner carries out responsibilities in the following functional areas: teammate relations, policy interpretation and application, performance, compensation and talent management.
-
-Partners with Divisional and Regional leadership to align HR strategy to business strategy.
-Studies trends and HR metrics to develop solutions, programs and policies that drive engagement, retention, and operational efficiency.
-Provides day-to-day coaching to leadership on a variety of actions to include employee relations issues, policy interpretation and application and talent management and development.
-Evaluates organizational issues, patterns and trends to proactively recommend and design HR  solutions, tools and training for leaders.
-Leads and conducts internal investigations related to allegations of discrimination, harassment, hostile work environment, or other teammate relations matters ensuring fair and thorough resolution.
-Partners with Legal to manage EEOC claims.
-Supports and champions company-wide HR initiatives such as Open Enrollment, Performance Evaluations, Merit Cycle, Engagement Survey, etc.
-Collaborates with Talent Acquisition and Total Rewards teams to ensure compensation structures and hiring practices align with market trends and internal equity.
-Provides HR data analysis and reporting to business leaders, highlighting trends and actionable insights related to turnover, engagement, and performance.
-Serves as a trusted advisor to leadership, promoting ethical practices and decision-making that reflect the organization's mission, vision, and values
-Up to 25% travel required.
-
-Requirements
-
-Bachelor’s degree in a related field required
-5+ years of HR experience
-Professional Certification preferred"
-"59","MPH-53892","Medical Lead Veterinarian","General Practice Care","Medical Director","5806 W M-72 Hwy","Grayling","Michigan","49738","Grayling Hospital For Animals","+19893488622","https://graylinghospitalforanimals.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53892","=== JOB DETAIL FIELDS ===
+57,"Medical Lead Veterinarian","MPH-53892","Grayling Hospital For Animals","Mission Pet Health (Parent Client)","","","","","","","Grayling, Michigan","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53892","=== JOB DETAIL FIELDS ===
 Job ID: 53892
 Job Title: Medical Lead
 State: Michigan
@@ -1797,7 +1740,32 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"60","MPH-53839","Regional Medical Director- Austin","General Practice Care","Medical Director","2204 Lakeshore Dr #325","Birmingham","Alabama","35209","Mission Pet Health","+12054534760","https://missionpethealth.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53839","=== JOB DETAIL FIELDS ===
+58,"Associate Veterinarian at Hurley Veterinary Hospital","MPH-53846","Hurley Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Hurley, New York","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53846","=== JOB DETAIL FIELDS ===
+Job ID: 53846
+Job Title: Veterinarian
+State: New York
+City: Hurley
+Hospital Name: Hurley Veterinary Hospital
+Number of Openings: 1
+Posted Date: 03-23-2026
+Recruiter: Vanessa Sanchez
+Vanessa.sanchez@missionpethealth.com
+Pay Class: Full-Time
+
+=== DESCRIPTION & REQUIREMENTS ===
+What Your Day-to-Day Looks Like
+Build Lasting Relationships: Connect with clients and their pets, becoming their trusted partner in a pet's lifelong health.
+Practice Your Best Medicine: From diagnosis to treatment, you'll lead patient care with the freedom to uphold the highest standards.
+Educate and Empower: Clearly communicate findings and treatment plans, empowering clients to make informed decisions.
+Collaborate and Grow: Work alongside a supportive paraprofessional team, contributing to a positive hospital culture.
+Who We're Looking For
+Doctor of Veterinary Medicine (DVM) degree.
+A valid state license and in good standing to practice.
+A collaborative spirit and a dedication to practicing the highest standard of medicine.
+Excellent communication skills with a positive, friendly attitude.
+
+Will Accept a New Grad?: No"
+59,"Regional Medical Director- Austin","MPH-53839","Mission Pet Health","Mission Pet Health (Parent Client)","","","","","","","Birmingham, Alabama","General Practice Care","Medical Director","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53839","=== JOB DETAIL FIELDS ===
 Job ID: 53839
 Job Title: Regional Medical Director
 State: Alabama
@@ -1841,7 +1809,7 @@ Experience managing multi-site veterinary hospitals is required.
 Hospital ownership or previous Lead Veterinarian experience is strongly preferred.
 Exceptional interpersonal, oral, and written communication skills with the ability to present key data concisely.
 Strong organizational skills and a keen attention to detail."
-"61","MPH-53834","Medical Lead Veterinarian at Companion Animal Hospital Oak Park","General Practice Care","Medical Director","6530 W North Ave","Chicago","Illinois","60707","Companion Animal Hospital of Oak Park","+17082488888","https://companionop.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53834","=== JOB DETAIL FIELDS ===
+60,"Medical Lead Veterinarian at Companion Animal Hospital Oak Park","MPH-53834","Companion Animal Hospital of Oak Park","Mission Pet Health (Parent Client)","","","","","","","Chicago, Illinois","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53834","=== JOB DETAIL FIELDS ===
 Job ID: 53834
 Job Title: Medical Lead
 State: Illinois
@@ -1875,7 +1843,7 @@ Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 #AVMA
 
 Will Accept a New Grad?: No"
-"62","MPH-53827","Associate Veterinarian","General Practice Care","Associate Veterinarian","15820 Mueschke Rd Building B","Cypress","Texas","77433","Cypress Fairhaven Animal Hospital","+12812568085","https://cypressfairhavenvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53827","=== JOB DETAIL FIELDS ===
+61,"Associate Veterinarian","MPH-53827","Cypress Fairhaven Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Cypress, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53827","=== JOB DETAIL FIELDS ===
 Job ID: 53827
 Job Title: Veterinarian
 State: Texas
@@ -1900,7 +1868,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"63","MPH-53816","Associate Veterinarian - GP Dentals","Urgent Care","Associate Veterinarian","70 Gold Star Blvd suite 102","Worcester","Massachusetts","01606","Veterinary Urgent Care Center Worcester","+18574169009","https://veturgentcare.com/worcester-vet","$160,000 - $240,000 yearly","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53816","=== JOB DETAIL FIELDS ===
+62,"Associate Veterinarian - GP Dentals","MPH-53816","Veterinary Urgent Care Center Worcester","Mission Pet Health (Parent Client)","","","","","","","Worcester, Massachusetts","General Practice Care","Associate Veterinarian","$160,000–$240,000 per year","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53816","=== JOB DETAIL FIELDS ===
 Job ID: 53816
 Job Title: Veterinarian
 State: Massachusetts
@@ -1953,7 +1921,7 @@ You have a voice here…we welcome your thoughts and ideas and are always willin
 VUCC provides equal employment opportunities to all employees and applicants for employment in all job classifications without regard to race, color, religion, age, mental disability, physical disability, medical condition, gender, sexual orientation, genetic information, ancestry, marital status, national origin, veteran status, and other classifications protected by applicable state and local non-discrimination laws.
 
 Will Accept a New Grad?: No"
-"64","MPH-53806","Associate Veterinarian","General Practice Care","Associate Veterinarian","3421 W William Cannon Dr # 110","Austin","Texas","78745","Brodie Animal Hospital","+15128923486","https://brodieanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53806","=== JOB DETAIL FIELDS ===
+63,"Associate Veterinarian","MPH-53806","Brodie Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Austin, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53806","=== JOB DETAIL FIELDS ===
 Job ID: 53806
 Job Title: Veterinarian
 State: Texas
@@ -1978,7 +1946,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"65","MPH-53796","Associate Veterinarian - GP Dentals","Urgent Care","Associate Veterinarian","34 Long Pond Rd","Plymouth","Massachusetts","02360","Veterinary Urgent Care Center Plymouth","+17746087016","https://veturgentcare.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53796","=== JOB DETAIL FIELDS ===
+64,"Associate Veterinarian - GP Dentals","MPH-53796","Veterinary Urgent Care Center Plymouth","Mission Pet Health (Parent Client)","","","","","","","Plymouth, Massachusetts","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53796","=== JOB DETAIL FIELDS ===
 Job ID: 53796
 Job Title: Veterinarian
 State: Massachusetts
@@ -2030,7 +1998,7 @@ You have a voice here…we welcome your thoughts and ideas and are always willin
 VUCC provides equal employment opportunities to all employees and applicants for employment in all job classifications without regard to race, color, religion, age, mental disability, physical disability, medical condition, gender, sexual orientation, genetic information, ancestry, marital status, national origin, veteran status, and other classifications protected by applicable state and local non-discrimination laws.
 
 Will Accept a New Grad?: No"
-"66","MPH-53674","Veterinarian","General Practice Care","Associate Veterinarian","2501 Hwy 17 S","North Myrtle Beach","South Carolina","29582","Animal Hospital of North Myrtle Beach","+18432728121","https://animalhospitalnmb.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53674","=== JOB DETAIL FIELDS ===
+65,"Veterinarian","MPH-53674","Animal Hospital of North Myrtle Beach","Mission Pet Health (Parent Client)","","","","","","","North Myrtle Beach, South Carolina","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53674","=== JOB DETAIL FIELDS ===
 Job ID: 53674
 Job Title: Veterinarian
 State: South Carolina
@@ -2055,7 +2023,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"67","MPH-53367","Founding Partner  Veterinarian - Orlando (Lake Nona)","General Practice Care","Associate Veterinarian","","Orlando","Florida","","Livewell Animal Hospital of Lake Nona","","","","4+ years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53367","=== JOB DETAIL FIELDS ===
+66,"Founding Partner  Veterinarian - Orlando (Lake Nona)","MPH-53367","Livewell Animal Hospital of Lake Nona","Mission Pet Health (Parent Client)","","","","","","","Orlando, Florida","General Practice Care","Associate Veterinarian","","Full-Time","4+ years","https://missionpethealth.avature.net/agency/JobDetail?jobId=53367","=== JOB DETAIL FIELDS ===
 Job ID: 53367
 Job Title: Founding Partner & Lead Veterinarian
 State: Florida
@@ -2084,7 +2052,7 @@ An entrepreneurial spirit and a strong understanding of what it takes to run a s
 Previous formal leadership or management experience is a significant plus.
 
 Will Accept a New Grad?: No"
-"68","MPH-53365","Founding Partner Veterinarian - Framingham","General Practice Care","Partner Veterinarian","","Massachusetts","Massachusetts","","Livewell Animal Hospital of Framingham","","","","4+ years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53365","=== JOB DETAIL FIELDS ===
+67,"Founding Partner Veterinarian - Framingham","MPH-53365","Livewell Animal Hospital of Framingham","Mission Pet Health (Parent Client)","","","","","","","Massachusetts","Emergency Care","Associate Veterinarian","","Full-Time","4+ years","https://missionpethealth.avature.net/agency/JobDetail?jobId=53365","=== JOB DETAIL FIELDS ===
 Job ID: 53365
 Job Title: Founding Partner & Lead Veterinarian
 State: Massachusetts
@@ -2112,7 +2080,7 @@ An entrepreneurial spirit and a strong understanding of what it takes to run a s
 Previous formal leadership or management experience is a significant plus.
 
 Will Accept a New Grad?: No"
-"69","MPH-53341","Veterinarian","General Practice Care","Associate Veterinarian","840 St Andrews Blvd","Charleston","South Carolina","29407","West Ashley Veterinary Clinic","+18435717095","https://westashleyvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53341","=== JOB DETAIL FIELDS ===
+68,"Veterinarian","MPH-53341","West Ashley Veterinary Clinic","Mission Pet Health (Parent Client)","","","","","","","Charleston, South Carolina","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53341","=== JOB DETAIL FIELDS ===
 Job ID: 53341
 Job Title: Veterinarian
 State: South Carolina
@@ -2137,7 +2105,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"70","MPH-53207","Regional Medical Director- Houston","General Practice Care","Medical Director","2204 Lakeshore Dr #325","Birmingham","Alabama","35209","Mission Pet Health","+12054534760","https://missionpethealth.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53207","=== JOB DETAIL FIELDS ===
+69,"Regional Medical Director- Houston","MPH-53207","Mission Pet Health","Mission Pet Health (Parent Client)","","","","","","","Birmingham, Alabama","General Practice Care","Medical Director","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53207","=== JOB DETAIL FIELDS ===
 Job ID: 53207
 Job Title: Regional Medical Director
 State: Alabama
@@ -2181,7 +2149,7 @@ Experience managing multi-site veterinary hospitals is required.
 Hospital ownership or previous Lead Veterinarian experience is strongly preferred.
 Exceptional interpersonal, oral, and written communication skills with the ability to present key data concisely.
 Strong organizational skills and a keen attention to detail."
-"71","MPH-53169","Part Time Veterinarian Opportunity at OC Veterinary Medical Center","General Practice Care","Associate Veterinarian","200 S Tustin St B","Orange","California","92866","OC Veterinary Medical Center","+17146333323","https://ocvetmedcenter.com/?utm_source=gmb&utm_medium=organic","","","Part Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=53169","=== JOB DETAIL FIELDS ===
+70,"Part Time Veterinarian Opportunity at OC Veterinary Medical Center","MPH-53169","OC Veterinary Medical Center","Mission Pet Health (Parent Client)","","","","","","","Orange, California","General Practice Care","Associate Veterinarian","","Part-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=53169","=== JOB DETAIL FIELDS ===
 Job ID: 53169
 Job Title: Veterinarian
 State: California
@@ -2206,32 +2174,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"72","MPH-52982","DVM opportunity at Sepulveda Animal Hospital","General Practice Care","Associate Veterinarian","4300 Sepulveda Blvd","Culver City","California","90230","Sepulveda Animal Hospital","+13103970774","https://www.sepulvedaanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52982","=== JOB DETAIL FIELDS ===
-Job ID: 52982
-Job Title: Veterinarian
-State: California
-City: Culver City
-Hospital Name: Sepulveda Animal Hospital
-Number of Openings: 1
-Posted Date: 03-03-2026
-Recruiter: Erika Bergman
-Erika.Bergman@mvetpartners.com
-Pay Class: Full-Time
-
-=== DESCRIPTION & REQUIREMENTS ===
-What Your Day-to-Day Looks Like
-Build Lasting Relationships: Connect with clients and their pets, becoming their trusted partner in a pet's lifelong health.
-Practice Your Best Medicine: From diagnosis to treatment, you'll lead patient care with the freedom to uphold the highest standards.
-Educate and Empower: Clearly communicate findings and treatment plans, empowering clients to make informed decisions.
-Collaborate and Grow: Work alongside a supportive paraprofessional team, contributing to a positive hospital culture.
-Who We're Looking For
-Doctor of Veterinary Medicine (DVM) degree.
-A valid state license and in good standing to practice.
-A collaborative spirit and a dedication to practicing the highest standard of medicine.
-Excellent communication skills with a positive, friendly attitude.
-
-Will Accept a New Grad?: Yes"
-"73","MPH-52947","Associate Veterinarian","General Practice Care","Associate Veterinarian","9212 Sienna Ranch Rd","Missouri City","Texas","77459","Sienna Plantation Animal Hospital","+12817785244","https://siennaplantationanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52947","=== JOB DETAIL FIELDS ===
+71,"Associate Veterinarian","MPH-52947","Sienna Plantation Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Missouri City, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52947","=== JOB DETAIL FIELDS ===
 Job ID: 52947
 Job Title: Veterinarian
 State: Texas
@@ -2256,7 +2199,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"74","MPH-52940","Medical Lead Veterinarian at Glendale Animal Hospital","General Practice Care","Medical Director","1144 N Main St","Glendale Heights","Illinois","60139","Glendale Animal Hospital","+16308583530","https://glendaleanimal.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52940","=== JOB DETAIL FIELDS ===
+72,"Medical Lead Veterinarian at Glendale Animal Hospital","MPH-52940","Glendale Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Glendale Heights, Illinois","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52940","=== JOB DETAIL FIELDS ===
 Job ID: 52940
 Job Title: Medical Lead
 State: Illinois
@@ -2288,7 +2231,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"75","MPH-52824","Associate Veterinarian","General Practice Care","Associate Veterinarian","14837 Nacogdoches Rd","San Antonio","Texas","78247","Spring Creek Animal Hospital","+12105992131","https://springcreekvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52824","=== JOB DETAIL FIELDS ===
+73,"Associate Veterinarian","MPH-52824","Spring Creek Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","San Antonio, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52824","=== JOB DETAIL FIELDS ===
 Job ID: 52824
 Job Title: Veterinarian
 State: Texas
@@ -2313,7 +2256,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"76","MPH-52809","Veterinarian","General Practice Care","Associate Veterinarian","2301 Columbia Pike","Arlington","Virginia","22204","Arlington Animal Hospital","+17039205300","https://www.myarlingtonvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52809","=== JOB DETAIL FIELDS ===
+74,"Veterinarian","MPH-52809","Arlington Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Arlington, Virginia","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52809","=== JOB DETAIL FIELDS ===
 Job ID: 52809
 Job Title: Veterinarian
 State: Virginia
@@ -2338,7 +2281,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"77","MPH-52674","Veterinarian","General Practice Care","Associate Veterinarian","111 Healthy Trail","Mount Airy","North Carolina","27030","Foothills Pet Healthcare Clinic","+13367890009","https://foothillspethealthcareclinic.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52674","=== JOB DETAIL FIELDS ===
+75,"Veterinarian","MPH-52674","Foothills Pet Healthcare Clinic","Mission Pet Health (Parent Client)","","","","","","","Mount Airy, North Carolina","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52674","=== JOB DETAIL FIELDS ===
 Job ID: 52674
 Job Title: Veterinarian
 State: North Carolina
@@ -2363,7 +2306,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"78","MPH-52422","Medical Lead Veterinarian","General Practice Care","Medical Director","17173 Cedar Gulch Pkwy","Parker","Colorado","80134","Advanced Pet Care of Parker","+13038406300","https://apcofparker.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52422","=== JOB DETAIL FIELDS ===
+76,"Medical Lead Veterinarian","MPH-52422","Advanced Pet Care of Parker","Mission Pet Health (Parent Client)","","","","","","","Parker, Colorado","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52422","=== JOB DETAIL FIELDS ===
 Job ID: 52422
 Job Title: Medical Lead
 State: Colorado
@@ -2395,7 +2338,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"79","MPH-52421","Veterinarian","General Practice Care","Associate Veterinarian","4720 Barnes Rd","Colorado Springs","Colorado","80917","Faithful Friends Animal Hospital","+17195968544","https://faithfulfriendsanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52421","=== JOB DETAIL FIELDS ===
+77,"Veterinarian","MPH-52421","Faithful Friends Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Colorado Springs, Colorado","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52421","=== JOB DETAIL FIELDS ===
 Job ID: 52421
 Job Title: Veterinarian
 State: Colorado
@@ -2420,7 +2363,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"80","MPH-52384","Veterinarian","General Practice Care","Associate Veterinarian","","Spring Lake","North Carolina","","Riverbark Veterinary Hospital of Spring Lake","","","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52384","=== JOB DETAIL FIELDS ===
+78,"Veterinarian","MPH-52384","Riverbark Veterinary Hospital of Spring Lake","Mission Pet Health (Parent Client)","","","","","","","Spring Lake, North Carolina","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52384","=== JOB DETAIL FIELDS ===
 Job ID: 52384
 Job Title: Veterinarian
 State: North Carolina
@@ -2445,7 +2388,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"81","MPH-52336","Associate Veterinarian","General Practice Care","Associate Veterinarian","2691 120th Ave","Holland","Michigan","49424","Ottawa Animal Hospital East","+16163967420","https://ottawaanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52336","=== JOB DETAIL FIELDS ===
+79,"Associate Veterinarian","MPH-52336","Ottawa Animal Hospital East","Mission Pet Health (Parent Client)","","","","","","","Holland, Michigan","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52336","=== JOB DETAIL FIELDS ===
 Job ID: 52336
 Job Title: Veterinarian
 State: Michigan
@@ -2470,7 +2413,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"82","MPH-52335","Associate Veterinarian","General Practice Care","Associate Veterinarian","5806 W M-72 Hwy","Grayling","Michigan","49738","Grayling Hospital For Animals","+19893488622","https://graylinghospitalforanimals.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52335","=== JOB DETAIL FIELDS ===
+80,"Associate Veterinarian","MPH-52335","Grayling Hospital For Animals","Mission Pet Health (Parent Client)","","","","","","","Grayling, Michigan","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52335","=== JOB DETAIL FIELDS ===
 Job ID: 52335
 Job Title: Veterinarian
 State: Michigan
@@ -2495,7 +2438,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"83","MPH-52310","Veterinarian","General Practice Care","Associate Veterinarian","101 Finnegan Ct","Myrtle Beach","South Carolina","29579","Carolina Forest Veterinary Hospital","+18432367383","https://carolinaforestveterinary.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52310","=== JOB DETAIL FIELDS ===
+81,"Veterinarian","MPH-52310","Carolina Forest Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Myrtle Beach, South Carolina","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52310","=== JOB DETAIL FIELDS ===
 Job ID: 52310
 Job Title: Veterinarian
 State: South Carolina
@@ -2520,7 +2463,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"84","MPH-52307","Veterinarian","General Practice Care","Associate Veterinarian","2721 S Ellsworth Rd #101","Mesa","Arizona","85209","Augusta Ranch Animal Hospital","+14803806710","https://augustaranchanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52307","=== JOB DETAIL FIELDS ===
+82,"Veterinarian","MPH-52307","Augusta Ranch Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Mesa, Arizona","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52307","=== JOB DETAIL FIELDS ===
 Job ID: 52307
 Job Title: Veterinarian
 State: Arizona
@@ -2545,7 +2488,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"85","MPH-52303","Medical Lead Veterinarian","General Practice Care","Medical Director","2261 E Arapahoe Rd","Centennial","Colorado","80122","VIDA Veterinary Care - Centennial","+13038437222","https://vidavetcentennial.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52303","=== JOB DETAIL FIELDS ===
+83,"Medical Lead Veterinarian","MPH-52303","VIDA Veterinary Care - Centennial","Mission Pet Health (Parent Client)","","","","","","","Centennial, Colorado","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52303","=== JOB DETAIL FIELDS ===
 Job ID: 52303
 Job Title: Medical Lead
 State: Colorado
@@ -2577,7 +2520,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"86","MPH-52262","Lead Veterinarian","General Practice Care","Lead Veterinarian","1043 E Main St","Purcellville","Virginia","20132","Loudoun Veterinary Service, Inc","+15403387118","https://loudounvetservice.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52262","=== JOB DETAIL FIELDS ===
+84,"Lead Veterinarian","MPH-52262","Loudoun Veterinary Service, Inc","Mission Pet Health (Parent Client)","","","","","","","Purcellville, Virginia","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52262","=== JOB DETAIL FIELDS ===
 Job ID: 52262
 Job Title: Veterinarian
 State: Virginia
@@ -2602,7 +2545,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"87","MPH-52237","Medical Lead Veterinarian","General Practice Care","Medical Director","1401 Chris Kelley Blvd","Hutto","Texas","78634","Daylily Animal Hospital","+15126016121","https://daylilyvet.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52237","=== JOB DETAIL FIELDS ===
+85,"Medical Lead Veterinarian","MPH-52237","Daylily Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Hutto, Texas","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52237","=== JOB DETAIL FIELDS ===
 Job ID: 52237
 Job Title: Medical Lead
 State: Texas
@@ -2634,7 +2577,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"88","MPH-52112","Associate Veterinarian","General Practice Care","Associate Veterinarian","1811 N Granville Ave","Muncie","Indiana","47303","Maplewood Animal Hospital","+17652843393","https://maplewoodvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=52112","=== JOB DETAIL FIELDS ===
+86,"Associate Veterinarian","MPH-52112","Maplewood Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Muncie, Indiana","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=52112","=== JOB DETAIL FIELDS ===
 Job ID: 52112
 Job Title: Veterinarian
 State: Indiana
@@ -2659,7 +2602,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"89","MPH-51965","Lead Veterinarian","General Practice Care","Lead Veterinarian","9212 Sienna Ranch Rd","Missouri City","Texas","77459","Sienna Plantation Animal Hospital","+12817785244","https://siennaplantationanimalhospital.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51965","=== JOB DETAIL FIELDS ===
+87,"Lead Veterinarian","MPH-51965","Sienna Plantation Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Missouri City, Texas","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51965","=== JOB DETAIL FIELDS ===
 Job ID: 51965
 Job Title: Medical Lead
 State: Texas
@@ -2691,7 +2634,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"90","MPH-51913","Veterinarian","General Practice Care","Associate Veterinarian","116 Lake St","Roscommon","Michigan","48653","Roscommon Veterinary Clinic","+19892755003","https://roscommonveterinaryclinic.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51913","=== JOB DETAIL FIELDS ===
+88,"Veterinarian","MPH-51913","Roscommon Veterinary Clinic","Mission Pet Health (Parent Client)","","","","","","","Roscommon, Michigan","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51913","=== JOB DETAIL FIELDS ===
 Job ID: 51913
 Job Title: Veterinarian
 State: Michigan
@@ -2716,7 +2659,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"91","MPH-51888","Veterinarian Opportunity at Monarch Veterinary Hospital","General Practice Care","Associate Veterinarian","31271 Niguel Rd","Laguna Niguel","California","92677","Monarch Veterinary Hospital","+19494431466","https://www.monarchvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51888","=== JOB DETAIL FIELDS ===
+89,"Veterinarian Opportunity at Monarch Veterinary Hospital","MPH-51888","Monarch Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Laguna Niguel, California","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51888","=== JOB DETAIL FIELDS ===
 Job ID: 51888
 Job Title: Veterinarian
 State: California
@@ -2741,7 +2684,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"92","MPH-51829","Associate Veterinarian - Millbrook Animal Care Center","General Practice Care","Associate Veterinarian","1881 S Randall Rd","Geneva","Illinois","60134","Millbrook Animal Care Clinic","+13312480113","https://accmillbrook.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51829","=== JOB DETAIL FIELDS ===
+90,"Associate Veterinarian - Millbrook Animal Care Center","MPH-51829","Millbrook Animal Care Clinic","Mission Pet Health (Parent Client)","","","","","","","Geneva, Illinois","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51829","=== JOB DETAIL FIELDS ===
 Job ID: 51829
 Job Title: Veterinarian
 State: Illinois
@@ -2766,7 +2709,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"93","MPH-51821","Medical Lead - Boston Veterinary Clinic, Brookline","General Practice Care","Medical Director","1290 Beacon St","Brookline","Massachusetts","02446","Boston Veterinary Clinic (Brookline)","+18573628672","https://www.bostonveterinary.com/brookline?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51821","=== JOB DETAIL FIELDS ===
+91,"Medical Lead - Boston Veterinary Clinic, Brookline","MPH-51821","Boston Veterinary Clinic (Brookline)","Mission Pet Health (Parent Client)","","","","","","","Brookline, Massachusetts","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51821","=== JOB DETAIL FIELDS ===
 Job ID: 51821
 Job Title: Medical Lead
 State: Massachusetts
@@ -2798,7 +2741,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"94","MPH-51739","Medical Lead Veterinarian Opportunity at Wil-O-Paw Animal Hospital","General Practice Care","Medical Director","4809 Paw Paw Lake Rd","Coloma Charter Township","Michigan","49038","Wil-O-Paw Animal Hospital","+12694687297","https://wilopaw.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51739","=== JOB DETAIL FIELDS ===
+92,"Medical Lead Veterinarian Opportunity at Wil-O-Paw Animal Hospital","MPH-51739","Wil-O-Paw Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Coloma Charter Township, Michigan","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51739","=== JOB DETAIL FIELDS ===
 Job ID: 51739
 Job Title: Medical Lead
 State: Michigan
@@ -2830,7 +2773,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"95","MPH-51512","Veterinarian - Golf Rose Animal Hospital","General Practice Care","Associate Veterinarian","51 Remington Rd","Schaumburg","Illinois","60173","Golf Rose Animal Hospital","+18478853344","https://golfrose.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51512","=== JOB DETAIL FIELDS ===
+93,"Veterinarian - Golf Rose Animal Hospital","MPH-51512","Golf Rose Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Schaumburg, Illinois","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51512","=== JOB DETAIL FIELDS ===
 Job ID: 51512
 Job Title: Veterinarian
 State: Illinois
@@ -2855,7 +2798,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"96","MPH-51492","Associate Veterinarian at Bigger Road Veterinary Clinic of Springboro","General Practice Care","Associate Veterinarian","718 N Main St","Springboro","Ohio","45066","Bigger Road Veterinary Clinic of Springboro","+19375147702","https://biggervet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51492","=== JOB DETAIL FIELDS ===
+94,"Associate Veterinarian at Bigger Road Veterinary Clinic of Springboro","MPH-51492","Bigger Road Veterinary Clinic of Springboro","Mission Pet Health (Parent Client)","","","","","","","Springboro, Ohio","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51492","=== JOB DETAIL FIELDS ===
 Job ID: 51492
 Job Title: Veterinarian
 State: Ohio
@@ -2882,7 +2825,7 @@ Excellent communication skills with a positive, friendly attitude.
 #AVMA
 
 Will Accept a New Grad?: No"
-"97","MPH-51462","Veterinarian","General Practice Care","Associate Veterinarian","1007 E Del Webb Blvd STE 102","Sun City Center","Florida","33573","Sun City Center VC","+18133314444","https://suncityvet.net/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51462","=== JOB DETAIL FIELDS ===
+95,"Veterinarian","MPH-51462","Sun City Center VC","Mission Pet Health (Parent Client)","","","","","","","Sun City Center, Florida","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51462","=== JOB DETAIL FIELDS ===
 Job ID: 51462
 Job Title: Veterinarian
 State: Florida
@@ -2907,7 +2850,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"98","MPH-51310","Associate Veterinarian","General Practice Care","Associate Veterinarian","1314 Woodhead St","Houston","Texas","77019","Neartown Animal Clinic","+17135261502","https://neartownvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51310","=== JOB DETAIL FIELDS ===
+96,"Associate Veterinarian","MPH-51310","Neartown Animal Clinic","Mission Pet Health (Parent Client)","","","","","","","Houston, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51310","=== JOB DETAIL FIELDS ===
 Job ID: 51310
 Job Title: Veterinarian
 State: Texas
@@ -2932,7 +2875,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"99","MPH-51279","Medical Lead Opportunity at Canyon Ridge Animal Hospital","General Practice Care","Medical Director","601 Greenway Rd","Henderson","Nevada","89002","Canyon Ridge Animal Hospital","+17025584552","https://canyonridgeanimalhospital.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51279","=== JOB DETAIL FIELDS ===
+97,"Medical Lead Opportunity at Canyon Ridge Animal Hospital","MPH-51279","Canyon Ridge Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Henderson, Nevada","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51279","=== JOB DETAIL FIELDS ===
 Job ID: 51279
 Job Title: Medical Lead
 State: Nevada
@@ -2964,7 +2907,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"100","MPH-51266","Veterinarian","General Practice Care","Associate Veterinarian","215 Whitesell St NW Suite 109","Orting","Washington","98360","Orting Animal Hospital","+12534491580","https://ortinganimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51266","=== JOB DETAIL FIELDS ===
+98,"Veterinarian","MPH-51266","Orting Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Orting, Washington","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51266","=== JOB DETAIL FIELDS ===
 Job ID: 51266
 Job Title: Veterinarian
 State: Washington
@@ -2989,7 +2932,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"101","MPH-51187","Veterinarian | Hickory Ridge Animal Hospital","General Practice Care","Associate Veterinarian","10328 Owen Brown Rd","Columbia","Maryland","21044","Hickory Ridge Animal Hospital","+14107307434","https://hickoryridgeanimal.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=51187","=== JOB DETAIL FIELDS ===
+99,"Veterinarian | Hickory Ridge Animal Hospital","MPH-51187","Hickory Ridge Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Columbia, Maryland","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=51187","=== JOB DETAIL FIELDS ===
 Job ID: 51187
 Job Title: Veterinarian
 State: Maryland
@@ -3014,7 +2957,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"102","MPH-50888","Associate Veterinarian","General Practice Care","Associate Veterinarian","7415 Burnet Rd","Austin","Texas","78757","Crestview Veterinary Clinic","+15125352100","https://crestviewvc.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=50888","=== JOB DETAIL FIELDS ===
+100,"Associate Veterinarian","MPH-50888","Crestview Veterinary Clinic","Mission Pet Health (Parent Client)","","","","","","","Austin, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=50888","=== JOB DETAIL FIELDS ===
 Job ID: 50888
 Job Title: Veterinarian
 State: Texas
@@ -3039,7 +2982,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"103","MPH-50749","Veterinarian","General Practice Care","Associate Veterinarian","1337 Bridge Barrier Rd","Carolina Beach","North Carolina","28428","Carolina Beach Animal Hospital","+19104583000","https://carolinabeachanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=50749","=== JOB DETAIL FIELDS ===
+101,"Veterinarian","MPH-50749","Carolina Beach Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Carolina Beach, North Carolina","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=50749","=== JOB DETAIL FIELDS ===
 Job ID: 50749
 Job Title: Veterinarian
 State: North Carolina
@@ -3064,7 +3007,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"104","MPH-50684","Veterinarian","General Practice Care","Associate Veterinarian","11035 S Memorial Dr","Tulsa","Oklahoma","74133","Kindness Animal Hospital","+19189704300","https://kindnessoftulsa.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=50684","=== JOB DETAIL FIELDS ===
+102,"Veterinarian","MPH-50684","Kindness Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Tulsa, Oklahoma","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=50684","=== JOB DETAIL FIELDS ===
 Job ID: 50684
 Job Title: Veterinarian
 State: Oklahoma
@@ -3089,7 +3032,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"105","MPH-50659","Veterinarian Opportunity at Via Verde Animal Hospital","General Practice Care","Associate Veterinarian","1138 Via Verde","San Dimas","California","91773","Via Verde Animal Hosptial","+19095415051","http://www.viaverdeah.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=50659","=== JOB DETAIL FIELDS ===
+103,"Veterinarian Opportunity at Via Verde Animal Hospital","MPH-50659","Via Verde Animal Hosptial","Mission Pet Health (Parent Client)","","","","","","","San Dimas, California","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=50659","=== JOB DETAIL FIELDS ===
 Job ID: 50659
 Job Title: Veterinarian
 State: California
@@ -3123,7 +3066,7 @@ Who We're Looking For
 • Excellent communication skills with a positive, friendly, and professional attitude.
 
 Will Accept a New Grad?: Yes"
-"106","MPH-50479","Veterinarian Opportunity at Mt. McKinley Animal Hospital","General Practice Care","Associate Veterinarian","425 Harold Bentley Ave","Fairbanks","Alaska","99701","Mt. Mckinley Animal Hospital","+19074526104","https://mmahak.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=50479","=== JOB DETAIL FIELDS ===
+104,"Veterinarian Opportunity at Mt. McKinley Animal Hospital","MPH-50479","Mt. Mckinley Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Fairbanks, Alaska","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=50479","=== JOB DETAIL FIELDS ===
 Job ID: 50479
 Job Title: Veterinarian
 State: Alaska
@@ -3148,7 +3091,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"107","MPH-50456","Veterinarian","General Practice Care","Associate Veterinarian","150 Cedar St","Richmon Hill","Georgia","31324","Cedar Animal Hospital","+19127567560","https://cedaranimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=50456","=== JOB DETAIL FIELDS ===
+105,"Veterinarian","MPH-50456","Cedar Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Richmon Hill, Georgia","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=50456","=== JOB DETAIL FIELDS ===
 Job ID: 50456
 Job Title: Veterinarian
 State: Georgia
@@ -3173,7 +3116,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"108","MPH-50435","Veterinarian | Springfield Veterinary Center","General Practice Care","Associate Veterinarian","4416 Springfield Rd","Glen Allen","Virginia","23060","Springfield Veterinary Center","+18042707274","https://springfieldvetcenter.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=50435","=== JOB DETAIL FIELDS ===
+106,"Veterinarian | Springfield Veterinary Center","MPH-50435","Springfield Veterinary Center","Mission Pet Health (Parent Client)","","","","","","","Glen Allen, Virginia","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=50435","=== JOB DETAIL FIELDS ===
 Job ID: 50435
 Job Title: Veterinarian
 State: Virginia
@@ -3198,7 +3141,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"109","MPH-50431","Veterinarian | EmmaVet","General Practice Care","Associate Veterinarian","1628A Belle View Blvd","Alexandria","Virginia","22307","EmmaVet","+17033733774","https://emmavet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=50431","=== JOB DETAIL FIELDS ===
+107,"Veterinarian | EmmaVet","MPH-50431","EmmaVet","Mission Pet Health (Parent Client)","","","","","","","Alexandria, Virginia","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=50431","=== JOB DETAIL FIELDS ===
 Job ID: 50431
 Job Title: Veterinarian
 State: Virginia
@@ -3223,7 +3166,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"110","MPH-50287","Associate Veterinarian","General Practice Care","Associate Veterinarian","150 Herff Ranch Blvd","Boerne","Texas","78006","Cibolo Creek Veterinary Hospital","+18308165123","https://cibolocreekvethospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=50287","=== JOB DETAIL FIELDS ===
+108,"Associate Veterinarian","MPH-50287","Cibolo Creek Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Boerne, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=50287","=== JOB DETAIL FIELDS ===
 Job ID: 50287
 Job Title: Veterinarian
 State: Texas
@@ -3248,7 +3191,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"111","MPH-50262","Veterinarian","General Practice Care","Associate Veterinarian","5001 S Parker Rd #101","Aurora","Colorado","80015","Parkside Animal Health Center","+13036993344","https://animalhospitalaurora.net/?utm_source=gmb&utm_medium=organic","","","Part Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=50262","=== JOB DETAIL FIELDS ===
+109,"Veterinarian","MPH-50262","Parkside Animal Health Center","Mission Pet Health (Parent Client)","","","","","","","Aurora, Colorado","General Practice Care","Associate Veterinarian","","Part-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=50262","=== JOB DETAIL FIELDS ===
 Job ID: 50262
 Job Title: Veterinarian
 State: Colorado
@@ -3274,7 +3217,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"112","MPH-50242","Urgent Care or ER Veterinarian at Rivers Veterinary Urgent Care","Urgent Care","Associate Veterinarian","560 McNeilly Rd","Pittsburg","Pennsylvania","15226","Rivers Veterinary Urgent Care","+14129989030","http://riversvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=50242","=== JOB DETAIL FIELDS ===
+110,"Urgent Care or ER Veterinarian at Rivers Veterinary Urgent Care","MPH-50242","Rivers Veterinary Urgent Care","Mission Pet Health (Parent Client)","","","","","","","Pittsburg, Pennsylvania","Urgent Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=50242","=== JOB DETAIL FIELDS ===
 Job ID: 50242
 Job Title: Veterinarian
 State: Pennsylvania
@@ -3301,7 +3244,7 @@ Excellent communication skills with a positive, friendly attitude.
 #AVMA
 
 Will Accept a New Grad?: No"
-"113","MPH-50171","Associate Veterinarian","General Practice Care","Associate Veterinarian","104 Western Sky Trail","Jarrell","Texas","76537","Jarrell Animal Hospital","+15125983036","https://jarrellanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=50171","=== JOB DETAIL FIELDS ===
+111,"Associate Veterinarian","MPH-50171","Jarrell Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Jarrell, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=50171","=== JOB DETAIL FIELDS ===
 Job ID: 50171
 Job Title: Veterinarian
 State: Texas
@@ -3326,7 +3269,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"114","MPH-50081","Lead Veterinarian Opportunity at All Creatures Care Cottage","General Practice Care","Lead Veterinarian","601 W 19th St #200","Costa Mesa","California","92627","All Creatures Care Cottage","+19496427151","https://allcreaturescarecottage.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=50081","=== JOB DETAIL FIELDS ===
+112,"Lead Veterinarian Opportunity at All Creatures Care Cottage","MPH-50081","All Creatures Care Cottage","Mission Pet Health (Parent Client)","","","","","","","Costa Mesa, California","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=50081","=== JOB DETAIL FIELDS ===
 Job ID: 50081
 Job Title: Medical Lead
 State: California
@@ -3358,7 +3301,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"115","MPH-50057","Veterinarian","General Practice Care","Associate Veterinarian","800 Kinner St","Castle Rock","Colorado","80109","Plum Creek Veterinary Services","+13036601600","https://plumcreekveterinaryservices.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=50057","=== JOB DETAIL FIELDS ===
+113,"Veterinarian","MPH-50057","Plum Creek Veterinary Services","Mission Pet Health (Parent Client)","","","","","","","Castle Rock, Colorado","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=50057","=== JOB DETAIL FIELDS ===
 Job ID: 50057
 Job Title: Veterinarian
 State: Colorado
@@ -3383,7 +3326,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"116","MPH-49973","Associate Veterinarian","General Practice Care","Associate Veterinarian","8536 TX-146","Baytown","Texas","77523","Abshier-Meuth Animal Hospital","+12813833254","https://amahofbaytown.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=49973","=== JOB DETAIL FIELDS ===
+114,"Associate Veterinarian","MPH-49973","Abshier-Meuth Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Baytown, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=49973","=== JOB DETAIL FIELDS ===
 Job ID: 49973
 Job Title: Veterinarian
 State: Texas
@@ -3408,7 +3351,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"117","MPH-49281","Veterinarian","General Practice Care","Associate Veterinarian","","Devon","Pennsylvania","","Devon Veterinary Hospital & Main Line Veterinary Specialists","","","","","Part Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=49281","=== JOB DETAIL FIELDS ===
+115,"Veterinarian","MPH-49281","Devon Veterinary Hospital & Main Line Veterinary Specialists","Mission Pet Health (Parent Client)","","","","","","","Devon, Pennsylvania","General Practice Care","Associate Veterinarian","","Part-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=49281","=== JOB DETAIL FIELDS ===
 Job ID: 49281
 Job Title: Veterinarian
 State: Pennsylvania
@@ -3432,7 +3375,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"118","MPH-49270","Veterinarian","General Practice Care","Associate Veterinarian","2018 N Durham Dr","Houston","Texas","77008","North Durham Animal Hospital","+17138637387","https://ndanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=49270","=== JOB DETAIL FIELDS ===
+116,"Veterinarian","MPH-49270","North Durham Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Houston, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=49270","=== JOB DETAIL FIELDS ===
 Job ID: 49270
 Job Title: Veterinarian
 State: Texas
@@ -3456,7 +3399,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"119","MPH-49269","Veterinarian","General Practice Care","Associate Veterinarian","4601 N Main St","Baytown","Texas","77521","Animal Medical Center of Baytown","+12814222821","https://amcofbaytown.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=49269","=== JOB DETAIL FIELDS ===
+117,"Veterinarian","MPH-49269","Animal Medical Center of Baytown","Mission Pet Health (Parent Client)","","","","","","","Baytown, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=49269","=== JOB DETAIL FIELDS ===
 Job ID: 49269
 Job Title: Veterinarian
 State: Texas
@@ -3480,7 +3423,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"120","MPH-49138","Veterinarian Opportunity at Aliso Viejo Animal Hospital Animal Hospital","General Practice Care","Associate Veterinarian","23411 Aliso Viejo Pkwy Suite A","Aliso Viejo","California","92656","Aliso Viejo Animal Hospital","+19494267700","https://alisoviejovet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=49138","=== JOB DETAIL FIELDS ===
+118,"Veterinarian Opportunity at Aliso Viejo Animal Hospital Animal Hospital","MPH-49138","Aliso Viejo Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Aliso Viejo, California","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=49138","=== JOB DETAIL FIELDS ===
 Job ID: 49138
 Job Title: Veterinarian
 State: California
@@ -3504,7 +3447,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"121","MPH-48999","Associate Veterinarian","General Practice Care","Associate Veterinarian","4745 Paoli Pike","Floyds Knobs","Indiana","47119","Hillside Animal Clinic","+18129238825","https://hillsideanimalclinic.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=48999","=== JOB DETAIL FIELDS ===
+119,"Associate Veterinarian","MPH-48999","Hillside Animal Clinic","Mission Pet Health (Parent Client)","","","","","","","Floyds Knobs, Indiana","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=48999","=== JOB DETAIL FIELDS ===
 Job ID: 48999
 Job Title: Veterinarian
 State: Indiana
@@ -3528,7 +3471,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude. #AVMA
 
 Will Accept a New Grad?: No"
-"122","MPH-48946","Veterinarian","General Practice Care","Associate Veterinarian","1200 S Kenney Fort Blvd","Round Rock","Texas","78665","Forest Creek Animal Hospital","+15122387387","https://forestcreekvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=48946","=== JOB DETAIL FIELDS ===
+120,"Veterinarian","MPH-48946","Forest Creek Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Round Rock, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=48946","=== JOB DETAIL FIELDS ===
 Job ID: 48946
 Job Title: Veterinarian
 State: Texas
@@ -3552,7 +3495,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"123","MPH-48925","Veterinarian","General Practice Care","Associate Veterinarian","750 S Nova Rd","Ormond","Florida","32174","Tomoka Pines","+13866723137","https://ormondbeachvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=48925","=== JOB DETAIL FIELDS ===
+121,"Veterinarian","MPH-48925","Tomoka Pines","Mission Pet Health (Parent Client)","","","","","","","Ormond, Florida","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=48925","=== JOB DETAIL FIELDS ===
 Job ID: 48925
 Job Title: Veterinarian
 State: Florida
@@ -3576,7 +3519,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"124","MPH-45788","Veterinarian","General Practice Care","Associate Veterinarian","415 Springtown Way","San Marcos","Texas","78666","Springtown Veterinary Hospital","+15123532717","https://springtownvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=45788","=== JOB DETAIL FIELDS ===
+122,"Veterinarian","MPH-45788","Springtown Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","San Marcos, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=45788","=== JOB DETAIL FIELDS ===
 Job ID: 45788
 Job Title: Veterinarian
 State: Texas
@@ -3600,7 +3543,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"125","MPH-44425","Veterinarian","General Practice Care","Associate Veterinarian","2940 Rigsby Ave","San Antonio","Texas","78222","Dodd Animal Hospital","+12103335753","https://doddanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=44425","=== JOB DETAIL FIELDS ===
+123,"Veterinarian","MPH-44425","Dodd Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","San Antonio, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=44425","=== JOB DETAIL FIELDS ===
 Job ID: 44425
 Job Title: Veterinarian
 State: Texas
@@ -3624,7 +3567,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"126","MPH-44299","Veterinarian","General Practice Care","Associate Veterinarian","4140 College Rd","Wilmington","North Carolina","28412","College Road Animal Hospital","+19103956555","https://collegeroadanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=44299","=== JOB DETAIL FIELDS ===
+124,"Veterinarian","MPH-44299","College Road Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Wilmington, North Carolina","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=44299","=== JOB DETAIL FIELDS ===
 Job ID: 44299
 Job Title: Veterinarian
 State: North Carolina
@@ -3648,7 +3591,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"127","MPH-43371","Lead Veterinarian","General Practice Care","Lead Veterinarian","2940 Rigsby Ave","San Antonio","Texas","78222","Dodd Animal Hospital","+12103335753","https://doddanimalhospital.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=43371","=== JOB DETAIL FIELDS ===
+125,"Lead Veterinarian","MPH-43371","Dodd Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","San Antonio, Texas","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=43371","=== JOB DETAIL FIELDS ===
 Job ID: 43371
 Job Title: Medical Lead
 State: Texas
@@ -3679,7 +3622,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"128","MPH-42891","Veterinarian","General Practice Care","Associate Veterinarian","1101 S FM 116","Copperas Cove","Texas","76522","Crossroads Veterinary Hospital","+12545428700","https://crossroadsvethospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=42891","=== JOB DETAIL FIELDS ===
+126,"Veterinarian","MPH-42891","Crossroads Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Copperas Cove, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=42891","=== JOB DETAIL FIELDS ===
 Job ID: 42891
 Job Title: Veterinarian
 State: Texas
@@ -3703,7 +3646,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"129","MPH-42336","Veterinarian","General Practice Care","Associate Veterinarian","938 Esplanade Ave","New Orleans","Louisiana","70116","Pet Care Center Clinic Esplanade","+15045222997","https://petcarecenternola.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=42336","=== JOB DETAIL FIELDS ===
+127,"Veterinarian","MPH-42336","Pet Care Center Clinic Esplanade","Mission Pet Health (Parent Client)","","","","","","","New Orleans, Louisiana","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=42336","=== JOB DETAIL FIELDS ===
 Job ID: 42336
 Job Title: Veterinarian
 State: Louisiana
@@ -3727,7 +3670,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"130","MPH-42018","Associate Veterinarian","General Practice Care","Associate Veterinarian","542 E 11th St","Indianapolis","Indiana","46202","The Downtown Veterinarian","+13179721111","https://downtownpetvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=42018","=== JOB DETAIL FIELDS ===
+128,"Associate Veterinarian","MPH-42018","The Downtown Veterinarian","Mission Pet Health (Parent Client)","","","","","","","Indianapolis, Indiana","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=42018","=== JOB DETAIL FIELDS ===
 Job ID: 42018
 Job Title: Veterinarian
 State: Indiana
@@ -3751,7 +3694,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude. #AVMA
 
 Will Accept a New Grad?: No"
-"131","MPH-41905","Veterinarian","General Practice Care","Associate Veterinarian","3942 E NASA Pkwy","Seabrook","Texas","77586","Forest Lake Animal Clinic","+12813262576","https://forestlakeanimalclinic.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=41905","=== JOB DETAIL FIELDS ===
+129,"Veterinarian","MPH-41905","Forest Lake Animal Clinic","Mission Pet Health (Parent Client)","","","","","","","Seabrook, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=41905","=== JOB DETAIL FIELDS ===
 Job ID: 41905
 Job Title: Veterinarian
 State: Texas
@@ -3775,7 +3718,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"132","MPH-40320","Urgent Care Veterinarian - Long Lake Animal Hospital","Urgent Care","Associate Veterinarian","9929 N Long Lake Rd","Traverse City","Michigan","49685","Long Lake Animal Hospital","+12319472365","https://longlakeanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=40320","=== JOB DETAIL FIELDS ===
+130,"Urgent Care Veterinarian - Long Lake Animal Hospital","MPH-40320","Long Lake Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Traverse City, Michigan","Urgent Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=40320","=== JOB DETAIL FIELDS ===
 Job ID: 40320
 Job Title: Veterinarian
 State: Michigan
@@ -3801,7 +3744,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude. #AVMA
 
 Will Accept a New Grad?: No"
-"133","MPH-40149","Veterinarian Opportunity at Las Tablas Animal Hospital","General Practice Care","Associate Veterinarian","959 Las Tablas Rd Suite A1","Templeton","California","93465","Las Tablas Animal Hospital","+18053692222","https://lastablasanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=40149","=== JOB DETAIL FIELDS ===
+131,"Veterinarian Opportunity at Las Tablas Animal Hospital","MPH-40149","Las Tablas Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Templeton, California","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=40149","=== JOB DETAIL FIELDS ===
 Job ID: 40149
 Job Title: Veterinarian
 State: California
@@ -3825,7 +3768,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"134","MPH-40037","Dental Specialist Veterinarian","Specialty Care","Dental Specialist","29212 Five Mile Rd","Livonia","Michigan","48154","Strong Village Veterinary Hospital","+17344276360","https://strongvillagevet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=40037","=== JOB DETAIL FIELDS ===
+132,"Dental Specialist Veterinarian","MPH-40037","Strong Village Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Livonia, Michigan","Specialty Care","Dental Specialist","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=40037","=== JOB DETAIL FIELDS ===
 Job ID: 40037
 Job Title: Veterinarian
 State: Michigan
@@ -3856,7 +3799,7 @@ Offer: - Competitive Guaranteed Base Salary - Production Bonus with NO negative 
 If this sounds like a great career option for you, APPLY Today for Immediate Consideration!
 
 Will Accept a New Grad?: No"
-"135","MPH-39999","Veterinarian","General Practice Care","Associate Veterinarian","5668 S Straits Hwy","Indian River","Michigan","49749","Indian River Veterinary Clinic","+12312387022","https://indianriverveterinaryclinic.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=39999","=== JOB DETAIL FIELDS ===
+133,"Veterinarian","MPH-39999","Indian River Veterinary Clinic","Mission Pet Health (Parent Client)","","","","","","","Indian River, Michigan","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=39999","=== JOB DETAIL FIELDS ===
 Job ID: 39999
 Job Title: Veterinarian
 State: Michigan
@@ -3880,7 +3823,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude. #AVMA
 
 Will Accept a New Grad?: Yes"
-"136","MPH-39991","Veterinarian","General Practice Care","Associate Veterinarian","6475 W Imlay City Rd","Imlay City","Michigan","48444","Imlay City Veterinary Clinic","+18107245125","https://imlaycityvetclinicpc.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=39991","=== JOB DETAIL FIELDS ===
+134,"Veterinarian","MPH-39991","Imlay City Veterinary Clinic","Mission Pet Health (Parent Client)","","","","","","","Imlay City, Michigan","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=39991","=== JOB DETAIL FIELDS ===
 Job ID: 39991
 Job Title: Veterinarian
 State: Michigan
@@ -3904,7 +3847,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"137","MPH-39974","Urgent Care Veterinarian","Urgent Care","Associate Veterinarian","1825 Pine Grove Ave","Port Huron","Michigan","48060","Lake Huron Veterinary Clinic","+18109858300","https://lakehuronvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=39974","=== JOB DETAIL FIELDS ===
+135,"Urgent Care Veterinarian","MPH-39974","Lake Huron Veterinary Clinic","Mission Pet Health (Parent Client)","","","","","","","Port Huron, Michigan","Urgent Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=39974","=== JOB DETAIL FIELDS ===
 Job ID: 39974
 Job Title: Veterinarian
 State: Michigan
@@ -3928,7 +3871,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"138","MPH-38916","Veterinarian","General Practice Care","Associate Veterinarian","341 Broadway St","Eagle","Colorado","81631","Mountain Animal Hospital Center","+19703287085","https://mountainanimalhospitalcenter.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=38916","=== JOB DETAIL FIELDS ===
+136,"Veterinarian","MPH-38916","Mountain Animal Hospital Center","Mission Pet Health (Parent Client)","","","","","","","Eagle, Colorado","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=38916","=== JOB DETAIL FIELDS ===
 Job ID: 38916
 Job Title: Veterinarian
 State: Colorado
@@ -3952,7 +3895,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"139","MPH-37802","Veterinarian Opportunity at Dr. Treat - Burlingame","General Practice Care","Associate Veterinarian","220 Primrose Rd","Burlingame","California","94010","Dr. Treat - Burlingame","+16505905414","https://www.drtreat.co/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=37802","=== JOB DETAIL FIELDS ===
+137,"Veterinarian Opportunity at Dr. Treat - Burlingame","MPH-37802","Dr. Treat - Burlingame","Mission Pet Health (Parent Client)","","","","","","","Burlingame, California","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=37802","=== JOB DETAIL FIELDS ===
 Job ID: 37802
 Job Title: Veterinarian
 State: California
@@ -3976,7 +3919,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"140","MPH-37100","Veterinarian","General Practice Care","Associate Veterinarian","1516 Sidney Baker St","Kerrville","Texas","78028","Hoegemeyer Animal Clinic","+18308966507","https://hoegemeyeranimalclinic.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=37100","=== JOB DETAIL FIELDS ===
+138,"Veterinarian","MPH-37100","Hoegemeyer Animal Clinic","Mission Pet Health (Parent Client)","","","","","","","Kerrville, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=37100","=== JOB DETAIL FIELDS ===
 Job ID: 37100
 Job Title: Veterinarian
 State: Texas
@@ -4000,7 +3943,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"141","MPH-34522","Associate Veterinarian in New Berlin WI","Urgent Care","Associate Veterinarian","13100 W National Ave","New Berlin","Wisconsin","53151","Companion Animal Hospital","+12627891954","https://newberlinvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=34522","=== JOB DETAIL FIELDS ===
+139,"Associate Veterinarian in New Berlin WI","MPH-34522","Companion Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","New Berlin, Wisconsin","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=34522","=== JOB DETAIL FIELDS ===
 Job ID: 34522
 Job Title: Veterinarian
 State: Wisconsin
@@ -4052,7 +3995,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"142","MPH-34460","Veterinarian","General Practice Care","Associate Veterinarian","1100 Indian Trail Dr #4659","KINGSPORT","Tennessee","37660","Indian Ridge Animal Hospital","+14233784753","https://indianridgeanimalhospital.net/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=34460","=== JOB DETAIL FIELDS ===
+140,"Veterinarian","MPH-34460","Indian Ridge Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","KINGSPORT, Tennessee","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=34460","=== JOB DETAIL FIELDS ===
 Job ID: 34460
 Job Title: Veterinarian
 State: Tennessee
@@ -4077,7 +4020,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"143","MPH-34324","Associate Veterinarian","General Practice Care","Associate Veterinarian","550 Park Dr","Boiling Springs","Pennsylvania","17007","Boiling Springs Animal Hospital","+17172584575","https://bsahvets2.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=34324","=== JOB DETAIL FIELDS ===
+141,"Associate Veterinarian","MPH-34324","Boiling Springs Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Boiling Springs, Pennsylvania","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=34324","=== JOB DETAIL FIELDS ===
 Job ID: 34324
 Job Title: Veterinarian
 State: Pennsylvania
@@ -4103,7 +4046,7 @@ Excellent communication skills with a positive, friendly attitude.
 #AVMA
 
 Will Accept a New Grad?: Yes"
-"144","MPH-34247","Veterinarian","General Practice Care","Associate Veterinarian","4184 Lawrenceville Hwy","Lilburn","Georgia","30047","Beaver Crossing Animal Hospital","+17709214981","https://beavercrossing.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=34247","=== JOB DETAIL FIELDS ===
+142,"Veterinarian","MPH-34247","Beaver Crossing Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Lilburn, Georgia","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=34247","=== JOB DETAIL FIELDS ===
 Job ID: 34247
 Job Title: Veterinarian
 State: Georgia
@@ -4127,7 +4070,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"145","MPH-33797","Veterinarian","General Practice Care","Associate Veterinarian","12117 Menchaca Rd","Austin","Texas","78748","Manchaca Village Veterinary Care","+15128382273","https://manchacavet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=33797","=== JOB DETAIL FIELDS ===
+143,"Veterinarian","MPH-33797","Manchaca Village Veterinary Care","Mission Pet Health (Parent Client)","","","","","","","Austin, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=33797","=== JOB DETAIL FIELDS ===
 Job ID: 33797
 Job Title: Veterinarian
 State: Texas
@@ -4151,7 +4094,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"146","MPH-33792","Veterinarian","General Practice Care","Associate Veterinarian","3250 Hilton Rd","Ferndale","Michigan","48220","Hilton Veterinary Clinic of Ferndale","+12489553253","https://hiltonpetvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=33792","=== JOB DETAIL FIELDS ===
+144,"Veterinarian","MPH-33792","Hilton Veterinary Clinic of Ferndale","Mission Pet Health (Parent Client)","","","","","","","Ferndale, Michigan","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=33792","=== JOB DETAIL FIELDS ===
 Job ID: 33792
 Job Title: Veterinarian
 State: Michigan
@@ -4175,7 +4118,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"147","MPH-31294","Medical Lead Veterinarian","General Practice Care","Medical Director","717 N Lindsay Rd","Mesa","Arizona","85213","Noe's Ark Animal Hospital","+14808306810","https://noesark.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=31294","=== JOB DETAIL FIELDS ===
+145,"Medical Lead Veterinarian","MPH-31294","Noe's Ark Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Mesa, Arizona","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=31294","=== JOB DETAIL FIELDS ===
 Job ID: 31294
 Job Title: Medical Lead
 State: Arizona
@@ -4200,7 +4143,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"148","MPH-31152","Lead Veterinarian","General Practice Care","Lead Veterinarian","610 S Bell Blvd","Cedar Park","Texas","78613","Buttercup Veterinary Hospital","+15123357387","https://buttercupvethospital.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=31152","=== JOB DETAIL FIELDS ===
+146,"Lead Veterinarian","MPH-31152","Buttercup Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Cedar Park, Texas","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=31152","=== JOB DETAIL FIELDS ===
 Job ID: 31152
 Job Title: Medical Lead
 State: Texas
@@ -4231,7 +4174,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"149","MPH-30312","Urgent Care Veterinarian","Urgent Care","Associate Veterinarian","","Virginia Beach","Virginia","","Acredale Animal Hospital: Kempsville","","","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=30312","=== JOB DETAIL FIELDS ===
+147,"Urgent Care Veterinarian","MPH-30312","Acredale Animal Hospital: Kempsville","Mission Pet Health (Parent Client)","","","","","","","Virginia Beach, Virginia","Urgent Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=30312","=== JOB DETAIL FIELDS ===
 Job ID: 30312
 Job Title: Veterinarian
 State: Virginia
@@ -4255,7 +4198,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"150","MPH-28416","Veterinarian","General Practice Care","Associate Veterinarian","3981 W State Hwy 29","Georgetown","Texas","78628","Zoot Pet Hospital & Luxury Boarding","+15128649668","https://zootpets.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=28416","=== JOB DETAIL FIELDS ===
+148,"Veterinarian","MPH-28416","Zoot Pet Hospital & Luxury Boarding","Mission Pet Health (Parent Client)","","","","","","","Georgetown, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=28416","=== JOB DETAIL FIELDS ===
 Job ID: 28416
 Job Title: Veterinarian
 State: Texas
@@ -4279,7 +4222,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"151","MPH-28270","Veterinarian","General Practice Care","Associate Veterinarian","100 W Kegman Rd","Chesapeake","Virginia","23322","Hickory Veterinary Hospital","+17575481548","https://hickoryvethospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=28270","=== JOB DETAIL FIELDS ===
+149,"Veterinarian","MPH-28270","Hickory Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Chesapeake, Virginia","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=28270","=== JOB DETAIL FIELDS ===
 Job ID: 28270
 Job Title: Veterinarian
 State: Virginia
@@ -4303,7 +4246,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"152","MPH-27741","Veterinarian","General Practice Care","Associate Veterinarian","1181 Banks Mill Rd SE","Aiken","South Carolina","29803","Aiken Animal Hospital","+18036484401","https://aikenanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=27741","=== JOB DETAIL FIELDS ===
+150,"Veterinarian","MPH-27741","Aiken Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Aiken, South Carolina","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=27741","=== JOB DETAIL FIELDS ===
 Job ID: 27741
 Job Title: Veterinarian
 State: South Carolina
@@ -4327,7 +4270,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"153","MPH-26952","Veterinarian","General Practice Care","Associate Veterinarian","610 S Bell Blvd","Cedar Park","Texas","78613","Buttercup Veterinary Hospital","+15123357387","https://buttercupvethospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=26952","=== JOB DETAIL FIELDS ===
+151,"Veterinarian","MPH-26952","Buttercup Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Cedar Park, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=26952","=== JOB DETAIL FIELDS ===
 Job ID: 26952
 Job Title: Veterinarian
 State: Texas
@@ -4351,7 +4294,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"154","MPH-26344","Veterinarian","General Practice Care","Associate Veterinarian","2509 W Pecan St","Pflugerville","Texas","78660","White Rock Veterinary Hospital","+15126705400","https://whiterockvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=26344","=== JOB DETAIL FIELDS ===
+152,"Veterinarian","MPH-26344","White Rock Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Pflugerville, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=26344","=== JOB DETAIL FIELDS ===
 Job ID: 26344
 Job Title: Veterinarian
 State: Texas
@@ -4375,7 +4318,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"155","MPH-26032","Regional Medical Director - Colorado","General Practice Care","Medical Director","2204 Lakeshore Dr #325","Birmingham","Alabama","35209","Mission Pet Health","+12054534760","https://missionpethealth.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=26032","=== JOB DETAIL FIELDS ===
+153,"Regional Medical Director - Colorado","MPH-26032","Mission Pet Health","Mission Pet Health (Parent Client)","","","","","","","Birmingham, Alabama","General Practice Care","Medical Director","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=26032","=== JOB DETAIL FIELDS ===
 Job ID: 26032
 Job Title: Regional Medical Director
 State: Alabama
@@ -4418,7 +4361,7 @@ Experience managing multi-site veterinary hospitals is required.
 Hospital ownership or previous Lead Veterinarian experience is strongly preferred.
 Exceptional interpersonal, oral, and written communication skills with the ability to present key data concisely.
 Strong organizational skills and a keen attention to detail."
-"156","MPH-25661","Associate Veterinarian","Specialty Care","Associate Veterinarian","3610 Comfort Dr NW","Bemidji","Minnesota","56601","Bemidji Veterinary Hospital & Boarding Kennel","+12187512753","https://bemidjivethospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=25661","=== JOB DETAIL FIELDS ===
+154,"Associate Veterinarian","MPH-25661","Bemidji Veterinary Hospital & Boarding Kennel","Mission Pet Health (Parent Client)","","","","","","","Bemidji, Minnesota","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=25661","=== JOB DETAIL FIELDS ===
 Job ID: 25661
 Job Title: Veterinarian
 State: Minnesota
@@ -4470,7 +4413,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"157","MPH-22955","Lead Veterinarian","General Practice Care","Lead Veterinarian","1516 Sidney Baker St","Kerrville","Texas","78028","Hoegemeyer Animal Clinic","+18308966507","https://hoegemeyeranimalclinic.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=22955","=== JOB DETAIL FIELDS ===
+155,"Lead Veterinarian","MPH-22955","Hoegemeyer Animal Clinic","Mission Pet Health (Parent Client)","","","","","","","Kerrville, Texas","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=22955","=== JOB DETAIL FIELDS ===
 Job ID: 22955
 Job Title: Medical Lead
 State: Texas
@@ -4501,7 +4444,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"158","MPH-22128","Veterinarian","General Practice Care","Associate Veterinarian","4826 E Stagecoach Rd","Killeen","Texas","76542","Stagecoach Pet Hospital","+12542002790","https://stagecoachpet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=22128","=== JOB DETAIL FIELDS ===
+156,"Veterinarian","MPH-22128","Stagecoach Pet Hospital","Mission Pet Health (Parent Client)","","","","","","","Killeen, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=22128","=== JOB DETAIL FIELDS ===
 Job ID: 22128
 Job Title: Veterinarian
 State: Texas
@@ -4526,7 +4469,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"159","MPH-21234","Veterinarian","General Practice Care","Associate Veterinarian","11617 Reisterstown Rd","Reisterstown","Maryland","21136","Main Street Veterinary Hospital","+14105267500","https://mainstvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=21234","=== JOB DETAIL FIELDS ===
+157,"Veterinarian","MPH-21234","Main Street Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Reisterstown, Maryland","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=21234","=== JOB DETAIL FIELDS ===
 Job ID: 21234
 Job Title: Veterinarian
 State: Maryland
@@ -4550,7 +4493,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"160","MPH-21102","Veterinarian","General Practice Care","Associate Veterinarian","2500 Cobb Pkwy NW Suite A-4","Kennesaw","Georgia","30152","Kennesaw Mountain Veterinary Services","+17704473927","https://kmvs.org/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=21102","=== JOB DETAIL FIELDS ===
+158,"Veterinarian","MPH-21102","Kennesaw Mountain Veterinary Services","Mission Pet Health (Parent Client)","","","","","","","Kennesaw, Georgia","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=21102","=== JOB DETAIL FIELDS ===
 Job ID: 21102
 Job Title: Veterinarian
 State: Georgia
@@ -4574,7 +4517,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"161","MPH-19914","Regional Medical Director - Atlanta","General Practice Care","Medical Director","","Atlanta","Georgia","","Atlanta, GA","","","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=19914","=== JOB DETAIL FIELDS ===
+159,"Regional Medical Director - Atlanta","MPH-19914","Atlanta, GA","Mission Pet Health (Parent Client)","","","","","","","Atlanta, Georgia","General Practice Care","Medical Director","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=19914","=== JOB DETAIL FIELDS ===
 Job ID: 19914
 Job Title: Regional Medical Director
 State: Georgia
@@ -4617,7 +4560,7 @@ Experience managing multi-site veterinary hospitals is required.
 Hospital ownership or previous Lead Veterinarian experience is strongly preferred.
 Exceptional interpersonal, oral, and written communication skills with the ability to present key data concisely.
 Strong organizational skills and a keen attention to detail."
-"162","MPH-19743","Regional Medical Director- Los Angeles and Las Vegas","General Practice Care","Medical Director","2204 Lakeshore Dr #325","Birmingham","Alabama","35209","Mission Pet Health","+12054534760","https://missionpethealth.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=19743","=== JOB DETAIL FIELDS ===
+160,"Regional Medical Director- Los Angeles and Las Vegas","MPH-19743","Mission Pet Health","Mission Pet Health (Parent Client)","","","","","","","Birmingham, Alabama","General Practice Care","Medical Director","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=19743","=== JOB DETAIL FIELDS ===
 Job ID: 19743
 Job Title: Regional Medical Director
 State: Alabama
@@ -4659,7 +4602,7 @@ Experience managing multi-site veterinary hospitals is required.
 Hospital ownership or previous Lead Veterinarian experience is strongly preferred.
 Exceptional interpersonal, oral, and written communication skills with the ability to present key data concisely.
 Strong organizational skills and a keen attention to detail."
-"163","MPH-18354","Associate Veterinarian","General Practice Care","Associate Veterinarian","701 E University Ave","Georgetown","Texas","78626","Old Town Veterinary Hospital","+17373562400","https://otvethospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=18354","=== JOB DETAIL FIELDS ===
+161,"Associate Veterinarian","MPH-18354","Old Town Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Georgetown, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=18354","=== JOB DETAIL FIELDS ===
 Job ID: 18354
 Job Title: Veterinarian
 State: Texas
@@ -4684,7 +4627,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"164","MPH-16995","Veterinarian","General Practice Care","Associate Veterinarian","","Virginia Beach","Virginia","","Acredale Animal Hospital: Kempsville","","","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=16995","=== JOB DETAIL FIELDS ===
+162,"Veterinarian","MPH-16995","Acredale Animal Hospital: Kempsville","Mission Pet Health (Parent Client)","","","","","","","Virginia Beach, Virginia","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=16995","=== JOB DETAIL FIELDS ===
 Job ID: 16995
 Job Title: Veterinarian
 State: Virginia
@@ -4708,7 +4651,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"165","MPH-16953","Veterinarian Opportunity at Grand Animal Hospital","General Practice Care","Associate Veterinarian","1114 S Diamond Bar Blvd","Diamond Bar","California","91765","Grand Animal Hospital","+19093232860","http://www.grandvets.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=16953","=== JOB DETAIL FIELDS ===
+163,"Veterinarian Opportunity at Grand Animal Hospital","MPH-16953","Grand Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Diamond Bar, California","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=16953","=== JOB DETAIL FIELDS ===
 Job ID: 16953
 Job Title: Veterinarian
 State: California
@@ -4741,7 +4684,7 @@ Who We're Looking For
 • Excellent communication skills with a positive, friendly, and professional attitude.
 
 Will Accept a New Grad?: Yes"
-"166","MPH-15811","Veterinarian","General Practice Care","Associate Veterinarian","1830 Placida Rd","Englewood","Florida","34223","Englewood Animal Health Center","+19414748881","https://englewoodanimalhealthcenter.com/?utm_source=gmb&utm_medium=organic","","","Full-Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=15811","=== JOB DETAIL FIELDS ===
+164,"Veterinarian","MPH-15811","Englewood Animal Health Center","Mission Pet Health (Parent Client)","","","","","","","Englewood, Florida","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=15811","=== JOB DETAIL FIELDS ===
 Job ID: 15811
 Job Title: Veterinarian
 State: Florida
@@ -4764,7 +4707,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"167","MPH-15144","Veterinarian","General Practice Care","Associate Veterinarian","2040 Buford Hwy NE","Buford","Georgia","30518","Animal Hospital of North Gwinnett","+17709459555","https://animalhospitalofng.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=15144","=== JOB DETAIL FIELDS ===
+165,"Veterinarian","MPH-15144","Animal Hospital of North Gwinnett","Mission Pet Health (Parent Client)","","","","","","","Buford, Georgia","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=15144","=== JOB DETAIL FIELDS ===
 Job ID: 15144
 Job Title: Veterinarian
 State: Georgia
@@ -4788,7 +4731,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"168","MPH-14644","Veterinarian","General Practice Care","Associate Veterinarian","501 E FM 2410 Rd","Harker Heights","Texas","76548","Pet Medical Center","+12546906769","https://pet-medcenter.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=14644","=== JOB DETAIL FIELDS ===
+166,"Veterinarian","MPH-14644","Pet Medical Center","Mission Pet Health (Parent Client)","","","","","","","Harker Heights, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=14644","=== JOB DETAIL FIELDS ===
 Job ID: 14644
 Job Title: Veterinarian
 State: Texas
@@ -4812,7 +4755,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"169","MPH-13705","Veterinarian","General Practice Care","Associate Veterinarian","11503 Rockville Pike suite b","Rockville","Maryland","20852","Dr. Boyd's Veterinary Resort","+12404065496","https://www.drboyds.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=13705","=== JOB DETAIL FIELDS ===
+167,"Veterinarian","MPH-13705","Dr. Boyd's Veterinary Resort","Mission Pet Health (Parent Client)","","","","","","","Rockville, Maryland","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=13705","=== JOB DETAIL FIELDS ===
 Job ID: 13705
 Job Title: Veterinarian
 State: Maryland
@@ -4836,7 +4779,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"170","MPH-13389","Veterinarian","General Practice Care","Associate Veterinarian","507 Pressler St #700","Austin","Texas","78703","Livewell Animal Hospital of Austin","+15124748888","https://livewellanimal.com/our-locations/austin-tx/austin?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=13389","=== JOB DETAIL FIELDS ===
+168,"Veterinarian","MPH-13389","Livewell Animal Hospital of Austin","Mission Pet Health (Parent Client)","","","","","","","Austin, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=13389","=== JOB DETAIL FIELDS ===
 Job ID: 13389
 Job Title: Veterinarian
 State: Texas
@@ -4851,7 +4794,7 @@ Pay Class: Full-Time
 The Veterinarian is responsible for providing high quality care to our patients while also developing rapport with their owners. In addition to physical examinations, surgeries, and dentistry, client communication and client education are of the upmost importance. Its important that SVP Veterinarians treat each pet and client like part of the family.
 
 Will Accept a New Grad?: Yes"
-"171","MPH-13183","Veterinarian","General Practice Care","Associate Veterinarian","14740 NW Cornell Rd suite 20","Portland","Oregon","97229","North Beaverton Pet Hospital","+15038280259","https://northbeavertonpet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=13183","=== JOB DETAIL FIELDS ===
+169,"Veterinarian","MPH-13183","North Beaverton Pet Hospital","Mission Pet Health (Parent Client)","","","","","","","Portland, Oregon","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=13183","=== JOB DETAIL FIELDS ===
 Job ID: 13183
 Job Title: Veterinarian
 State: Oregon
@@ -4875,7 +4818,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"172","MPH-11908","Veterinarian","General Practice Care","Associate Veterinarian","2880 Boiling Springs Rd","Boiling Springs","South Carolina","29316","Heartland Animal Hospital","+18645781220","https://heartlandvets.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=11908","=== JOB DETAIL FIELDS ===
+170,"Veterinarian","MPH-11908","Heartland Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Boiling Springs, South Carolina","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=11908","=== JOB DETAIL FIELDS ===
 Job ID: 11908
 Job Title: Veterinarian
 State: South Carolina
@@ -4899,7 +4842,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"173","MPH-10898","Veterinarian Opportunity at Laguna Creek Veterinary Hospital","General Practice Care","Associate Veterinarian","5060 Laguna Blvd","Elk Grove","California","95758","Laguna Creek Veterinary Hospital","+19166847300","http://www.lagunacreekvet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=10898","=== JOB DETAIL FIELDS ===
+171,"Veterinarian Opportunity at Laguna Creek Veterinary Hospital","MPH-10898","Laguna Creek Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Elk Grove, California","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=10898","=== JOB DETAIL FIELDS ===
 Job ID: 10898
 Job Title: Veterinarian
 State: California
@@ -4923,7 +4866,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"174","MPH-8746","Lead Veterinarian Opportunity at Roseway Veterinary Hospital","General Practice Care","Lead Veterinarian","6920 NE Sandy Blvd","Portland","Oregon","97213","Roseway Veterinary Hospital","+15034462450","https://rosewayvet.com/?utm_source=gmb&utm_medium=organic","","2 years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=8746","=== JOB DETAIL FIELDS ===
+172,"Lead Veterinarian Opportunity at Roseway Veterinary Hospital","MPH-8746","Roseway Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Portland, Oregon","General Practice Care","Lead Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=8746","=== JOB DETAIL FIELDS ===
 Job ID: 8746
 Job Title: Medical Lead
 State: Oregon
@@ -4955,7 +4898,7 @@ Proficiency in intermediate computer skills (MS Office, Outlook, etc.).
 Enthusiasm and a desire to be part of a progressive, growth-oriented culture.
 
 Will Accept a New Grad?: No"
-"175","MPH-8713","Veterinarian","General Practice Care","Associate Veterinarian","11058 Clayton Blvd","Clayton","North Carolina","27520","Clayton Animal Hospital","+19195534601","https://claytonanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=8713","=== JOB DETAIL FIELDS ===
+173,"Veterinarian","MPH-8713","Clayton Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Clayton, North Carolina","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=8713","=== JOB DETAIL FIELDS ===
 Job ID: 8713
 Job Title: Veterinarian
 State: North Carolina
@@ -4979,7 +4922,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"176","MPH-8339","Veterinarian","General Practice Care","Associate Veterinarian","25239 Boerne Stage Rd","San Antonio","Texas","78255","Boerne Stage Veterinary Clinic","+12106980400","https://boernestagevet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=8339","=== JOB DETAIL FIELDS ===
+174,"Veterinarian","MPH-8339","Boerne Stage Veterinary Clinic","Mission Pet Health (Parent Client)","","","","","","","San Antonio, Texas","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=8339","=== JOB DETAIL FIELDS ===
 Job ID: 8339
 Job Title: Veterinarian
 State: Texas
@@ -5003,7 +4946,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"177","MPH-8201","Livewell Urgent Care Veterinarian - Bothell","Urgent Care","Associate Veterinarian","19128 112th Ave NE Suite 102","Bothell","Washington","98011","Livewell Animal Urgent Care of Bothell","+14252797703","http://livewellanimalbothell.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=8201","=== JOB DETAIL FIELDS ===
+175,"Livewell Urgent Care Veterinarian - Bothell","MPH-8201","Livewell Animal Urgent Care of Bothell","Mission Pet Health (Parent Client)","","","","","","","Bothell, Washington","Urgent Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=8201","=== JOB DETAIL FIELDS ===
 Job ID: 8201
 Job Title: Veterinarian
 State: Washington
@@ -5040,7 +4983,7 @@ Living and working in Bothell means enjoying a close-knit community feel while s
 If you’re ready to make an impact, grow your skills, and help write Livewell Animal Urgent Care’s story, we’d love to meet you.
 
 Will Accept a New Grad?: No"
-"178","MPH-8042","Veterinarian Opportunity at Hillsdale Veterinary Hospital","General Practice Care","Associate Veterinarian","6359 SW Capitol Hwy","Portland","Oregon","97239","Hillsdale Veterinary Hospital","+15032464660","https://hillsdalevet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=8042","=== JOB DETAIL FIELDS ===
+176,"Veterinarian Opportunity at Hillsdale Veterinary Hospital","MPH-8042","Hillsdale Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Portland, Oregon","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=8042","=== JOB DETAIL FIELDS ===
 Job ID: 8042
 Job Title: Veterinarian
 State: Oregon
@@ -5064,7 +5007,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"179","MPH-7048","Associate Veterinarian in Waterloo IA","Urgent Care","Associate Veterinarian","4041 Hurst Dr","Waterloo","Iowa","50701","Den Herder Veterinary Hospital","+13192325292","https://denherdervet.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=7048","=== JOB DETAIL FIELDS ===
+177,"Associate Veterinarian in Waterloo IA","MPH-7048","Den Herder Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Waterloo, Iowa","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=7048","=== JOB DETAIL FIELDS ===
 Job ID: 7048
 Job Title: Veterinarian
 State: Iowa
@@ -5110,7 +5053,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"180","MPH-6447","Associate Veterinarian at MetroVet Veterinary Clinic in Boston MA","Specialty Care","Associate Veterinarian","93 Hyde Park Ave","Boston","Massachusetts","02130","MetroVet Veterinary Clinic","+18572777781","http://www.metrovetclinic.com/?utm_source=gmb&utm_medium=organic","","2+ years","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=6447","=== JOB DETAIL FIELDS ===
+178,"Associate Veterinarian at MetroVet Veterinary Clinic in Boston MA","MPH-6447","MetroVet Veterinary Clinic","Mission Pet Health (Parent Client)","","","","","","","Boston, Massachusetts","General Practice Care","Associate Veterinarian","","Full-Time","2+ years","https://missionpethealth.avature.net/agency/JobDetail?jobId=6447","=== JOB DETAIL FIELDS ===
 Job ID: 6447
 Job Title: Veterinarian
 State: Massachusetts
@@ -5163,7 +5106,7 @@ Website: metrovetclinic.com
 #AVMA
 
 Will Accept a New Grad?: No"
-"181","MPH-4690","Veterinarian","General Practice Care","Associate Veterinarian","3653 Hillsborough Rd","Durham","North Carolina","27705","Westside Animal Hospital","+19193835578","https://westsideanimal.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=4690","=== JOB DETAIL FIELDS ===
+179,"Veterinarian","MPH-4690","Westside Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Durham, North Carolina","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=4690","=== JOB DETAIL FIELDS ===
 Job ID: 4690
 Job Title: Veterinarian
 State: North Carolina
@@ -5187,7 +5130,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"182","MPH-4670","Veterinarian","General Practice Care","Associate Veterinarian","1121 W Bridge St","Phoenixville","Pennsylvania","19460","Phoenixville Animal Hospital","+16109359071","https://phoenixvilleanimalhospital.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=4670","=== JOB DETAIL FIELDS ===
+180,"Veterinarian","MPH-4670","Phoenixville Animal Hospital","Mission Pet Health (Parent Client)","","","","","","","Phoenixville, Pennsylvania","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=4670","=== JOB DETAIL FIELDS ===
 Job ID: 4670
 Job Title: Veterinarian
 State: Pennsylvania
@@ -5211,7 +5154,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: No"
-"183","MPH-4597","Veterinarian","General Practice Care","Associate Veterinarian","7054 S 2300 E","Cottonwood Heights","Utah","84121","Hillside Veterinary Hospital","+18019432154","http://hillsidevet.com/?utm_source=gmb&utm_medium=organic","","","Part Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=4597","=== JOB DETAIL FIELDS ===
+181,"Veterinarian","MPH-4597","Hillside Veterinary Hospital","Mission Pet Health (Parent Client)","","","","","","","Cottonwood Heights, Utah","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=4597","=== JOB DETAIL FIELDS ===
 Job ID: 4597
 Job Title: Veterinarian
 State: Utah
@@ -5235,7 +5178,7 @@ A collaborative spirit and a dedication to practicing the highest standard of me
 Excellent communication skills with a positive, friendly attitude.
 
 Will Accept a New Grad?: Yes"
-"184","MPH-42933","Veterinarian","General Practice Care","Associate Veterinarian","3315 Worthington Blvd","Ijamsville","Maryland","21754","Village Vet of Urbana","+13018743050","https://villagevetofurbana.com/?utm_source=gmb&utm_medium=organic","","","Full Time","https://missionpethealth.avature.net/agency/JobDetail?jobId=42933","=== JOB DETAIL FIELDS ===
+182,"Veterinarian","MPH-42933","Village Vet of Urbana","Mission Pet Health (Parent Client)","","","","","","","Ijamsville, Maryland","General Practice Care","Associate Veterinarian","","Full-Time","","https://missionpethealth.avature.net/agency/JobDetail?jobId=42933","=== JOB DETAIL FIELDS ===
 Job ID: 42933
 Job Title: Veterinarian
 State: Maryland
