@@ -45,6 +45,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (showAlerts && scrapingComplete && !hasShownTerminalAlert) {
             hasShownTerminalAlert = true;
             alert(message || `Scraping completed! Scraped ${scrapedCount} jobs.`);
+            await chrome.storage.local.set({ scrapingComplete: false });
         }
     }
 

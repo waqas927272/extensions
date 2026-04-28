@@ -10,10 +10,20 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('searchInput');
     const exportCsvButton = document.getElementById('exportCsv');
     const toastContainer = document.getElementById('toastContainer');
+    const selectAllVisibleCheckbox = document.getElementById('selectAllVisibleJobs');
+    const editSelectedJobBtn = document.getElementById('editSelectedJob');
+    const deleteSelectedJobsBtn = document.getElementById('deleteSelectedJobs');
+    const editJobModal = document.getElementById('editJobModal');
+    const closeEditJobModalBtn = document.getElementById('closeEditJobModal');
+    const cancelEditJobBtn = document.getElementById('cancelEditJob');
+    const editJobForm = document.getElementById('editJobForm');
+    const editJobMeta = document.getElementById('editJobMeta');
 
     let currentSortColumn = null;
     let currentSortDirection = 'asc';
     let allJobs = [];
+    let displayedJobs = [];
+    let editingJobKey = '';
     let isGettingDescriptions = false;
     let isFetchingDetails = false;
     let isFetchingAddresses = false;
@@ -23,6 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let addressQueue = [];
     let currentAddressIndex = 0;
     let addressCache = new Map();
+    const selectedJobKeys = new Set();
     const getDescriptionsBtn = document.getElementById('getDescriptionsBtn');
     const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
     const fetchAddressesBtn = document.getElementById('fetchAddressesBtn');
@@ -101,6 +112,114 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.length > 2) return state;
         // Convert abbreviation to full name
         return stateAbbreviations[state.toUpperCase()] || state;
+    }
+
+    const ADDRESS_LOOKUP_OVERRIDES = [
+        {
+            hospitals: ['hillside veterinary hospital'],
+            location: 'cottonwood heights|utah',
+            result: {
+                streetAddress: '7054 S 2300 E',
+                zipCode: '84121',
+                city: 'Salt Lake City',
+                state: 'Utah',
+                fullAddress: '7054 S 2300 E, Salt Lake City, UT 84121, United States'
+            }
+        },
+        {
+            hospitals: ['tomoka pines', 'tomoka pines veterinary hospital'],
+            location: 'ormond|florida',
+            searchHospital: 'Tomoka Pines Veterinary Hospital',
+            searchLocation: 'Ormond Beach, Florida',
+            result: {
+                hospitalName: 'Tomoka Pines Veterinary Hospital',
+                streetAddress: '750 S Nova Rd',
+                zipCode: '32174',
+                city: 'Ormond Beach',
+                state: 'Florida',
+                fullAddress: '750 S Nova Rd, Ormond Beach, FL 32174, United States'
+            }
+        },
+        {
+            hospitals: ['rivers veterinary urgent care'],
+            location: 'pittsburg|pennsylvania',
+            searchLocation: 'Pittsburgh, Pennsylvania',
+            result: {
+                streetAddress: '560 McNeilly Rd',
+                zipCode: '15226',
+                city: 'Pittsburgh',
+                state: 'Pennsylvania',
+                fullAddress: '560 McNeilly Rd, Pittsburgh, PA 15226, United States'
+            }
+        },
+        {
+            hospitals: ['cedar animal hospital'],
+            location: 'richmon hill|georgia',
+            searchLocation: 'Richmond Hill, Georgia',
+            result: {
+                streetAddress: '150 Cedar St',
+                zipCode: '31324',
+                city: 'Richmond Hill',
+                state: 'Georgia',
+                fullAddress: '150 Cedar St, Richmond Hill, GA 31324, United States'
+            }
+        },
+        {
+            hospitals: ['fullerton animal hospital'],
+            location: 'baltimore|maryland',
+            searchLocation: 'Nottingham, Maryland',
+            result: {
+                streetAddress: '8018 Belair Rd',
+                zipCode: '21236',
+                city: 'Nottingham',
+                state: 'Maryland',
+                fullAddress: '8018 Belair Rd, Nottingham, MD 21236, United States'
+            }
+        },
+        {
+            hospitals: ['mission pet health'],
+            location: 'birmingham|alabama',
+            result: {
+                streetAddress: '2204 Lakeshore Drive, Suite 325',
+                zipCode: '35209',
+                city: 'Birmingham',
+                state: 'Alabama',
+                fullAddress: '2204 Lakeshore Drive, Suite 325, Birmingham, AL 35209, United States',
+                website: 'https://missionpethealth.com/',
+                phone: '(205) 453-4760'
+            }
+        }
+    ];
+
+    function normalizeLookupValue(value) {
+        return (value || '')
+            .toLowerCase()
+            .replace(/&/g, ' and ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+    }
+
+    function getOverrideLocationKey(location) {
+        const parts = (location || '').split(',').map(part => part.trim()).filter(Boolean);
+        return `${normalizeLookupValue(parts[0] || '')}|${normalizeLookupValue(getFullStateName(parts[1] || ''))}`;
+    }
+
+    function resolveAddressLookupTarget(hospitalName, location, originalHospitalName = '') {
+        const hospitalCandidates = [hospitalName, originalHospitalName]
+            .filter(Boolean)
+            .map(normalizeLookupValue);
+        const locationKey = getOverrideLocationKey(location);
+
+        const match = ADDRESS_LOOKUP_OVERRIDES.find(override =>
+            override.location === locationKey &&
+            override.hospitals.some(name => hospitalCandidates.includes(normalizeLookupValue(name)))
+        );
+
+        return {
+            searchHospital: match?.searchHospital || hospitalName,
+            searchLocation: match?.searchLocation || location,
+            directResult: match?.result ? { ...match.result } : null
+        };
     }
 
     const APPROVED_POSITIONS = [
@@ -1305,99 +1424,42 @@ document.addEventListener('DOMContentLoaded', () => {
         totalCountElement.textContent = count;
     }
 
-    function displayRecords(jobs) {
-        tableBody.innerHTML = '';
-        updateJobCount(jobs.length);
-
-        if (jobs.length === 0) {
-            table.style.display = 'none';
-            emptyState.classList.remove('hidden');
-            return;
-        }
-
-        table.style.display = 'table';
-        emptyState.classList.add('hidden');
-
-        jobs.forEach((job, index) => {
-            const row = tableBody.insertRow();
-
-            // Mark new jobs with green background
-            if (job.isNewLocation) {
-                row.style.backgroundColor = '#d1fae5';
-            }
-
-            // Serial Number
-            const serialCell = row.insertCell(0);
-            serialCell.textContent = index + 1;
-            serialCell.style.fontWeight = '600';
-            serialCell.style.color = '#475569';
-            serialCell.style.textAlign = 'center';
-
-            row.insertCell(1).textContent = job.title;
-            const jobIdCell = row.insertCell(2);
-            jobIdCell.textContent = job.jobId || 'N/A';
-            jobIdCell.style.fontFamily = "'Consolas', 'Monaco', monospace";
-            jobIdCell.style.fontSize = '12px';
-            jobIdCell.style.color = '#64748b';
-            row.insertCell(3).textContent = job.hospital;
-            row.insertCell(4).textContent = 'Mission Pet Health (Parent Client)';
-            row.insertCell(5).textContent = job.streetAddress || '-';
-            row.insertCell(6).textContent = job.city;
-            row.insertCell(7).textContent = job.state;
-            row.insertCell(8).textContent = job.zipCode || '-';
-
-            // Phone column
-            row.insertCell(9).textContent = job.phone || '-';
-
-            // Website column — show as clickable link if available
-            const websiteCell = row.insertCell(10);
-            if (job.website) {
-                const websiteLink = document.createElement('a');
-                websiteLink.href = job.website;
-                websiteLink.textContent = 'Visit';
-                websiteLink.target = '_blank';
-                websiteLink.style.color = '#2563eb';
-                websiteCell.appendChild(websiteLink);
-            } else {
-                websiteCell.textContent = '-';
-            }
-
-            row.insertCell(11).textContent = job.location;
-
-            // Detail Columns
-            row.insertCell(12).textContent = job.areaOfPractice || '-';
-            row.insertCell(13).textContent = job.position || '-';
-            row.insertCell(14).textContent = job.salary || '-';
-            row.insertCell(15).textContent = job.jobType || '-';
-            row.insertCell(16).textContent = job.experience || '-';
-
-            const linkCell = row.insertCell(17);
-            const link = document.createElement('a');
-            link.href = job.link;
-            link.textContent = 'View Job';
-            link.target = '_blank';
-            linkCell.appendChild(link);
-
-            const descCell = row.insertCell(18);
-            if (job.description) {
-                const descDiv = document.createElement('div');
-                descDiv.className = 'description-cell';
-                descDiv.textContent = job.description;
-                descCell.appendChild(descDiv);
-            } else {
-                descCell.innerHTML = '<span style="color: #94a3b8; font-style: italic; font-size: 12px;">Not scraped</span>';
-            }
-        });
+    function getJobSelectionKey(job) {
+        return job.jobId || job.link || `${job.title || ''}||${job.hospital || ''}||${job.location || ''}`;
     }
 
-    function filterJobs(searchTerm) {
-        if (!searchTerm) {
-            displayRecords(allJobs);
-            return;
-        }
+    function pruneSelection() {
+        const availableKeys = new Set(allJobs.map(getJobSelectionKey));
 
-        const term = searchTerm.toLowerCase();
-        const filtered = allJobs.filter(job =>
+        for (const key of [...selectedJobKeys]) {
+            if (!availableKeys.has(key)) {
+                selectedJobKeys.delete(key);
+            }
+        }
+    }
+
+    function updateSelectionControls() {
+        const selectedCount = selectedJobKeys.size;
+        const canEditSelected = selectedCount === 1;
+        const visibleSelectionCount = displayedJobs.filter(job => selectedJobKeys.has(getJobSelectionKey(job))).length;
+        const hasVisibleJobs = displayedJobs.length > 0;
+
+        editSelectedJobBtn.classList.toggle('hidden', !canEditSelected);
+        selectAllVisibleCheckbox.checked = hasVisibleJobs && visibleSelectionCount === displayedJobs.length;
+        selectAllVisibleCheckbox.indeterminate = visibleSelectionCount > 0 && visibleSelectionCount < displayedJobs.length;
+        selectAllVisibleCheckbox.disabled = !hasVisibleJobs;
+
+        deleteSelectedJobsBtn.classList.toggle('hidden', selectedCount === 0);
+        deleteSelectedJobsBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6Z"/>
+            </svg>
+            Delete Selected${selectedCount ? ` (${selectedCount})` : ''}
+        `;
+    }
+
+    function matchesSearch(job, term) {
+        return (
             (job.title || '').toLowerCase().includes(term) ||
             (job.hospital || '').toLowerCase().includes(term) ||
             (job.city || '').toLowerCase().includes(term) ||
@@ -1412,8 +1474,263 @@ document.addEventListener('DOMContentLoaded', () => {
             (job.jobType || '').toLowerCase().includes(term) ||
             (job.experience || '').toLowerCase().includes(term)
         );
+    }
 
-        displayRecords(filtered);
+    function getFilteredJobs(searchTerm = '') {
+        const term = (searchTerm || '').trim().toLowerCase();
+
+        if (!term) {
+            return [...allJobs];
+        }
+
+        return allJobs.filter(job => matchesSearch(job, term));
+    }
+
+    function getVisibleJobs() {
+        const filteredJobs = getFilteredJobs(searchInput ? searchInput.value : '');
+        return currentSortColumn
+            ? sortRecords(currentSortColumn, currentSortDirection, filteredJobs)
+            : filteredJobs;
+    }
+
+    function renderCurrentView() {
+        pruneSelection();
+        displayRecords(getVisibleJobs());
+    }
+
+    function toggleJobSelection(job, isSelected) {
+        const jobKey = getJobSelectionKey(job);
+
+        if (isSelected) {
+            selectedJobKeys.add(jobKey);
+        } else {
+            selectedJobKeys.delete(jobKey);
+        }
+    }
+
+    function toggleAllVisibleJobs(isSelected) {
+        displayedJobs.forEach(job => {
+            const jobKey = getJobSelectionKey(job);
+            if (isSelected) {
+                selectedJobKeys.add(jobKey);
+            } else {
+                selectedJobKeys.delete(jobKey);
+            }
+        });
+
+        renderCurrentView();
+    }
+
+    function deleteSelectedJobs() {
+        const selectedCount = selectedJobKeys.size;
+
+        if (selectedCount === 0) {
+            showToast('Select at least one job to delete.', 'error');
+            return;
+        }
+
+        const label = selectedCount === 1 ? 'this job' : `${selectedCount} jobs`;
+        if (!confirm(`Are you sure you want to delete ${label} from the records?`)) {
+            return;
+        }
+
+        allJobs = allJobs.filter(job => !selectedJobKeys.has(getJobSelectionKey(job)));
+        selectedJobKeys.clear();
+
+        chrome.storage.local.set({ scrapedJobs: allJobs }, () => {
+            renderCurrentView();
+            showToast(`Deleted ${selectedCount} job${selectedCount === 1 ? '' : 's'} from records!`, 'success');
+        });
+    }
+
+    function getSelectedJobs() {
+        return allJobs.filter(job => selectedJobKeys.has(getJobSelectionKey(job)));
+    }
+
+    function closeEditJobModal() {
+        editingJobKey = '';
+        editJobModal.classList.add('hidden');
+        editJobForm.reset();
+    }
+
+    function openEditJobModal() {
+        const selectedJobs = getSelectedJobs();
+        if (selectedJobs.length !== 1) {
+            showToast('Select exactly one job to edit.', 'error');
+            return;
+        }
+
+        const job = selectedJobs[0];
+        editingJobKey = getJobSelectionKey(job);
+        editJobMeta.textContent = `${job.jobId || 'No Job ID'} - ${job.title || 'Untitled Job'}`;
+
+        const fieldIds = [
+            'title', 'hospital', 'location', 'streetAddress', 'city', 'state', 'zipCode',
+            'phone', 'website', 'areaOfPractice', 'position', 'salary', 'jobType',
+            'experience', 'description'
+        ];
+
+        fieldIds.forEach(field => {
+            const input = document.getElementById(`editJob${field.charAt(0).toUpperCase()}${field.slice(1)}`);
+            if (input) {
+                input.value = job[field] || '';
+            }
+        });
+
+        editJobModal.classList.remove('hidden');
+    }
+
+    async function saveEditedJob(event) {
+        event.preventDefault();
+
+        if (!editingJobKey) {
+            closeEditJobModal();
+            return;
+        }
+
+        const jobIndex = allJobs.findIndex(job => getJobSelectionKey(job) === editingJobKey);
+        if (jobIndex === -1) {
+            closeEditJobModal();
+            showToast('Selected job could not be found.', 'error');
+            return;
+        }
+
+        const formData = new FormData(editJobForm);
+        const updatedFields = Object.fromEntries(formData.entries());
+
+        Object.keys(updatedFields).forEach(key => {
+            updatedFields[key] = (updatedFields[key] || '').trim();
+        });
+
+        allJobs[jobIndex] = {
+            ...allJobs[jobIndex],
+            ...updatedFields
+        };
+
+        if (allJobs[jobIndex].state) {
+            allJobs[jobIndex].state = getFullStateName(allJobs[jobIndex].state);
+        }
+
+        await chrome.storage.local.set({ scrapedJobs: allJobs });
+        closeEditJobModal();
+        renderCurrentView();
+        showToast('Job record updated.', 'success');
+    }
+
+    function displayRecords(jobs) {
+        displayedJobs = jobs;
+        tableBody.innerHTML = '';
+        updateJobCount(jobs.length);
+
+        if (jobs.length === 0) {
+            table.style.display = 'none';
+            emptyState.classList.remove('hidden');
+            updateSelectionControls();
+            return;
+        }
+
+        table.style.display = 'table';
+        emptyState.classList.add('hidden');
+
+        jobs.forEach((job, index) => {
+            const row = tableBody.insertRow();
+            const jobKey = getJobSelectionKey(job);
+            const isSelected = selectedJobKeys.has(jobKey);
+
+            // Mark new jobs with green background
+            if (job.isNewLocation) {
+                row.style.backgroundColor = '#d1fae5';
+            }
+
+            if (isSelected) {
+                row.classList.add('row-selected');
+            }
+
+            const selectionCell = row.insertCell(0);
+            selectionCell.className = 'selection-cell';
+            const selectionInput = document.createElement('input');
+            selectionInput.type = 'checkbox';
+            selectionInput.className = 'selection-checkbox';
+            selectionInput.checked = isSelected;
+            selectionInput.setAttribute('aria-label', `Select ${job.title || 'job'}`);
+            selectionInput.addEventListener('change', () => {
+                toggleJobSelection(job, selectionInput.checked);
+                renderCurrentView();
+            });
+            selectionCell.appendChild(selectionInput);
+
+            // Serial Number
+            const serialCell = row.insertCell(1);
+            serialCell.textContent = index + 1;
+            serialCell.style.fontWeight = '600';
+            serialCell.style.color = '#475569';
+            serialCell.style.textAlign = 'center';
+
+            row.insertCell(2).textContent = job.title;
+            const jobIdCell = row.insertCell(3);
+            jobIdCell.textContent = job.jobId || 'N/A';
+            jobIdCell.style.fontFamily = "'Consolas', 'Monaco', monospace";
+            jobIdCell.style.fontSize = '12px';
+            jobIdCell.style.color = '#64748b';
+            row.insertCell(4).textContent = job.hospital;
+            row.insertCell(5).textContent = 'Mission Pet Health (Parent Client)';
+            row.insertCell(6).textContent = job.streetAddress || '-';
+            row.insertCell(7).textContent = job.city;
+            row.insertCell(8).textContent = job.state;
+            row.insertCell(9).textContent = job.zipCode || '-';
+
+            // Phone column
+            row.insertCell(10).textContent = job.phone || '-';
+
+            // Website column — show as clickable link if available
+            const websiteCell = row.insertCell(11);
+            if (job.website) {
+                const websiteLink = document.createElement('a');
+                websiteLink.href = job.website;
+                websiteLink.textContent = 'Visit';
+                websiteLink.target = '_blank';
+                websiteLink.style.color = '#2563eb';
+                websiteCell.appendChild(websiteLink);
+            } else {
+                websiteCell.textContent = '-';
+            }
+
+            row.insertCell(12).textContent = job.location;
+
+            // Detail Columns
+            row.insertCell(13).textContent = job.areaOfPractice || '-';
+            row.insertCell(14).textContent = job.position || '-';
+            row.insertCell(15).textContent = job.salary || '-';
+            row.insertCell(16).textContent = job.jobType || '-';
+            row.insertCell(17).textContent = job.experience || '-';
+
+            const linkCell = row.insertCell(18);
+            const link = document.createElement('a');
+            link.href = job.link;
+            link.textContent = 'View Job';
+            link.target = '_blank';
+            linkCell.appendChild(link);
+
+            const descCell = row.insertCell(19);
+            if (job.description) {
+                const descDiv = document.createElement('div');
+                descDiv.className = 'description-cell';
+                descDiv.textContent = job.description;
+                descCell.appendChild(descDiv);
+            } else {
+                descCell.innerHTML = '<span style="color: #94a3b8; font-style: italic; font-size: 12px;">Not scraped</span>';
+            }
+        });
+
+        updateSelectionControls();
+    }
+
+    function filterJobs(searchTerm) {
+        if (searchInput && searchInput.value !== searchTerm) {
+            searchInput.value = searchTerm;
+        }
+
+        renderCurrentView();
     }
 
     function sortRecords(column, direction, records) {
@@ -1481,7 +1798,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize
     chrome.storage.local.get(['scrapedJobs'], (result) => {
         allJobs = result.scrapedJobs || [];
-        displayRecords(allJobs);
+        renderCurrentView();
 
         tableHeaders.forEach(header => {
             header.addEventListener('click', () => {
@@ -1501,8 +1818,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 header.classList.add(`sort-${currentSortDirection}`);
 
-                const sortedJobs = sortRecords(currentSortColumn, currentSortDirection, allJobs);
-                displayRecords(sortedJobs);
+                renderCurrentView();
             });
         });
     });
@@ -1513,6 +1829,40 @@ document.addEventListener('DOMContentLoaded', () => {
             filterJobs(e.target.value);
         });
     }
+
+    selectAllVisibleCheckbox.addEventListener('change', () => {
+        toggleAllVisibleJobs(selectAllVisibleCheckbox.checked);
+    });
+
+    editSelectedJobBtn.addEventListener('click', () => {
+        openEditJobModal();
+    });
+
+    deleteSelectedJobsBtn.addEventListener('click', () => {
+        deleteSelectedJobs();
+    });
+
+    closeEditJobModalBtn.addEventListener('click', () => {
+        closeEditJobModal();
+    });
+
+    cancelEditJobBtn.addEventListener('click', () => {
+        closeEditJobModal();
+    });
+
+    editJobModal.addEventListener('click', (event) => {
+        if (event.target === editJobModal) {
+            closeEditJobModal();
+        }
+    });
+
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && !editJobModal.classList.contains('hidden')) {
+            closeEditJobModal();
+        }
+    });
+
+    editJobForm.addEventListener('submit', saveEditedJob);
 
     // Export CSV
     if (exportCsvButton) {
@@ -1540,7 +1890,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 chrome.storage.local.set({ scrapedJobs: jobs }, () => {
                     allJobs = jobs;
-                    displayRecords(allJobs);
+                    renderCurrentView();
                     showToast(`Cleared details from ${clearedCount} jobs!`, 'success');
                 });
             });
@@ -1564,7 +1914,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 chrome.storage.local.set({ scrapedJobs: jobs }, () => {
                     allJobs = jobs;
-                    displayRecords(allJobs);
+                    renderCurrentView();
                     showToast(`Cleared descriptions from ${clearedCount} jobs!`, 'success');
                 });
             });
@@ -1593,7 +1943,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 chrome.storage.local.set({ scrapedJobs: jobs }, () => {
                     allJobs = jobs;
-                    displayRecords(allJobs);
+                    renderCurrentView();
                     showToast(`Cleared address data from ${clearedCount} jobs!`, 'success');
                 });
             });
@@ -1603,9 +1953,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Clear all records
     clearRecordsButton.addEventListener('click', () => {
         if (confirm('Are you sure you want to clear all scraped job records?')) {
-            chrome.storage.local.set({ scrapedJobs: [] }, () => {
+            chrome.storage.local.set({
+                scrapedJobs: [],
+                scrapedJobIds: [],
+                scrapingComplete: false,
+                scrapingStatus: ''
+            }, () => {
                 allJobs = [];
-                displayRecords([]);
+                renderCurrentView();
                 showToast('All records cleared!', 'success');
             });
         }
@@ -1842,7 +2197,7 @@ document.addEventListener('DOMContentLoaded', () => {
             chrome.storage.local.get(['scrapedJobs'], (data) => {
                 const jobs = data.scrapedJobs || [];
                 allJobs = jobs;
-                displayRecords(allJobs);
+                renderCurrentView();
 
                 if (isGettingDescriptions) {
                     setTimeout(() => processNextJob(), 1500);
@@ -2104,7 +2459,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 originalJob.areaOfPractice = finalAOP;
                 originalJob.position = finalPosition || '';
                 originalJob.salary = firstDetail.salary || originalJob.salary || '';
-                originalJob.hospital = firstDetail.hospitalName || originalJob.hospital || '';
                 originalJob.jobType = firstDetail.jobType || originalJob.jobType || 'Full-Time';
                 originalJob.experience = firstDetail.experience || originalJob.experience || '';
                 if (firstDetail.city) originalJob.city = firstDetail.city;
@@ -2122,14 +2476,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     // Check if hospital name already has a city suffix (e.g. "The Oncology Service-Leesburg")
                     // Only swap city suffixes if the pattern exists — don't add suffixes to names that don't have one
                     const baseHospitalMatch = currentHospital.match(/^(.+?)\s*[-–]\s*([^-–]+)$/);
-                    const hasCitySuffix = !!baseHospitalMatch;
-                    const baseHospitalName = hasCitySuffix ? baseHospitalMatch[1].trim() : '';
+                    const hasCitySuffix = false;
+                    const baseHospitalName = '';
 
                     // Update parent job's hospital name with first location's city (only if it already had a suffix)
                     if (hasCitySuffix) {
                         const firstLocCity = detailsList[0].city || '';
                         if (firstLocCity) {
-                            originalJob.hospital = `${baseHospitalName}-${firstLocCity}`;
+                            void firstLocCity;
                         }
                     }
 
@@ -2149,7 +2503,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         const newJob = {
                             ...originalJob,
                             jobId: `${baseJobId}-${i + 1}`,
-                            hospital: childHospital,
+                            hospital: currentHospital,
                             city: '',
                             state: '',
                             location: loc.location || `${loc.city}, ${loc.state}`,
@@ -2165,7 +2519,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 chrome.storage.local.set({ scrapedJobs: jobs }, () => {
                     allJobs = jobs;
-                    displayRecords(allJobs);
+                    renderCurrentView();
                     resolve();
                 });
             });
@@ -2352,11 +2706,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 searchHospital = searchHospital + ' Hospital';
             }
 
-            // Parse city and state from location field (e.g. "Austin, TX")
+            const lookupTarget = resolveAddressLookupTarget(searchHospital, job.location || '', job.hospital || '');
+            searchHospital = lookupTarget.searchHospital || searchHospital;
+
+            // Parse city and state from the resolved search location
             let searchCity = '';
             let searchState = '';
-            if (job.location) {
-                const locParts = job.location.split(',').map(s => s.trim());
+            const searchLocationSource = lookupTarget.searchLocation || job.location || '';
+            if (searchLocationSource) {
+                const locParts = searchLocationSource.split(',').map(s => s.trim());
                 if (locParts.length >= 2) {
                     searchCity = locParts[0];
                     searchState = locParts[1];
@@ -2365,7 +2723,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // Build search: "Hospital Name, City, State"
             const searchLocation = [searchCity, searchState].filter(Boolean).join(', ');
             const normalizeLocationValue = (value) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
             const existingLocationMismatch =
@@ -2373,8 +2730,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 (searchState && job.state && normalizeLocationValue(getFullStateName(job.state)) !== normalizeLocationValue(getFullStateName(searchState)));
 
             const cacheKeys = getAddressCacheKeys(searchHospital, searchLocation, job.hospital || '');
-            let addressData = getRememberedAddress(cacheKeys);
-            if (addressData) {
+            let addressData = null;
+            if (lookupTarget.directResult) {
+                addressData = lookupTarget.directResult;
+                rememberAddressData(cacheKeys, addressData);
+            } else {
+                addressData = getRememberedAddress(cacheKeys);
+            }
+
+            if (lookupTarget.directResult) {
+                console.log(`Using built-in address override for "${searchHospital}, ${searchLocation}"`);
+            } else if (addressData) {
                 console.log(`Using cached address for "${searchHospital}, ${searchLocation}"`);
             } else {
                 addressData = await fetchAddressFromGoogleMaps(searchHospital, searchLocation, job.hospital || '');
@@ -2424,7 +2790,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Update display
                 allJobs = jobs;
-                displayRecords(allJobs);
+                renderCurrentView();
             }
         } catch (error) {
             console.error('Error fetching address:', error);

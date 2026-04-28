@@ -164,12 +164,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     if (request.action === 'scrapeJobDescription') {
         handleScrapeDescription(request);
-        return true;
+        return false;
     }
 
     if (request.action === 'fetchJobDetails') {
         handleFetchDetails(request);
-        return true;
+        return false;
     }
 
     return false;
