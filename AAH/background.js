@@ -141,10 +141,12 @@ async function handleStartScraping(sendResponse) {
 }
 
 function handleScrapeDescription(request) {
-    const { tabId, jobIndex } = request;
+    const { tabId, jobIndex, jobLink } = request;
     let settled = false;
     let injecting = false;
     let timeoutId = null;
+    let retryCount = 0;
+    const maxRetries = 1;
 
     const cleanup = () => {
       chrome.tabs.onUpdated.removeListener(listener);
@@ -161,6 +163,44 @@ function handleScrapeDescription(request) {
         jobIndex: jobIndex,
         message: message || 'Failed to fetch description.'
       }).catch(() => {});
+    };
+
+    const retryFromErrorPage = async (reasonMessage) => {
+      if (settled || retryCount >= maxRetries) {
+        fail(reasonMessage || 'Failed to fetch description.');
+        return;
+      }
+
+      retryCount++;
+      injecting = false;
+      cleanup();
+
+      try {
+        // Re-open the intended job URL in the same tab in case Chrome loaded an internal error page.
+        const retryUrl = (() => {
+          try {
+            const u = new URL(jobLink || '');
+            u.searchParams.set('nl', '1');
+            return u.toString();
+          } catch {
+            return jobLink || null;
+          }
+        })();
+
+        if (!retryUrl) {
+          fail(reasonMessage || 'Retry failed: missing job URL.');
+          return;
+        }
+
+        timeoutId = setTimeout(() => {
+          fail('Timed out waiting for the job page to load.');
+        }, 30000);
+
+        chrome.tabs.onUpdated.addListener(listener);
+        await chrome.tabs.update(tabId, { url: retryUrl });
+      } catch (e) {
+        fail(e.message || reasonMessage || 'Retry failed.');
+      }
     };
 
     const injectAndSave = async () => {
@@ -196,7 +236,12 @@ function handleScrapeDescription(request) {
           });
         });
       } catch (e) {
-        fail(e.message);
+        const msg = (e && e.message) ? e.message : 'Failed to run description scraper.';
+        if (/Frame with ID 0 is showing error page/i.test(msg) || /error page/i.test(msg)) {
+          retryFromErrorPage(msg);
+          return;
+        }
+        fail(msg);
       }
     };
 

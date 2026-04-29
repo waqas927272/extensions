@@ -619,7 +619,8 @@
     }
     // If generic UVC name, try to find specific hospital in description
     if (hospitalName.toLowerCase().includes('united veterinary care')) {
-        const hospitalMatch = fullDescription.match(/at\s+((?:[\w'.&-]+\s+){1,5}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)))\b/i);
+        const normalizedDescription = fullDescription.replace(/[\u2010\u2011\u2012\u2013\u2014\u2212]/g, '-');
+        const hospitalMatch = normalizedDescription.match(/\bat[ \t]+((?:[A-Za-z0-9'.&-]+[ \t]+){1,8}(?:Animal[ \t]+Hospital|Veterinary[ \t]+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet[ \t]+(?:Hospital|Clinic|Care)|Emergency[ \t]+(?:Hospital|Center|Clinic)))\b/i);
         if (hospitalMatch) hospitalName = hospitalMatch[1].trim();
     }
 
@@ -649,3 +650,4 @@
         location: loc.location
     }));
 })();
+

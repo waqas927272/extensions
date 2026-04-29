@@ -83,20 +83,42 @@
             if (addressData) return addressData;
         }
 
+        // Fallback: try first result explicitly one more time
+        const fallbackLinks = document.querySelectorAll('a.hfpxzc');
+        if (fallbackLinks.length > 0) {
+            fallbackLinks[0].click();
+            const retryEnd = Date.now() + 5000;
+            while (Date.now() < retryEnd) {
+                await wait(POLL);
+                addressData = tryExtractFromPlaceDetail();
+                if (addressData) return addressData;
+            }
+        }
+
         // Last resort: try extracting from whatever is on the page now
         return tryExtractFromPageBody() || emptyResult();
 
     } catch (e) {
-        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: e.message };
+        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', placeName: '', error: e.message };
     }
 
     // ===== Extract hospital name from the Google Maps URL query =====
     // URL format: https://www.google.com/maps/search/Hospital+Name+City+State
     function getHospitalNameFromUrl() {
+        const injectedQuery = (window.__AAH_MAPS_QUERY || '').trim();
+        if (injectedQuery) {
+            return injectedQuery;
+        }
         const url = window.location.href;
         const searchMatch = url.match(/\/maps\/search\/([^?#]+)/);
         if (searchMatch) {
-            return decodeURIComponent(searchMatch[1]).replace(/\+/g, ' ').trim();
+            const decoded = decodeURIComponent(searchMatch[1]).replace(/\+/g, ' ').trim();
+            return decoded;
+        }
+        const searchInput = document.querySelector('#searchboxinput') ||
+            document.querySelector('input[aria-label="Search Google Maps"]');
+        if (searchInput && searchInput.value) {
+            return searchInput.value.trim();
         }
         return '';
     }
@@ -113,7 +135,10 @@
             .replace(/\s+/g, ' ')
             .trim();
 
-        const queryNorm = normalize(searchQuery);
+        const cleanedQuery = searchQuery
+            .replace(/\s*-\s*[^,]+,\s*[A-Za-z]{2,}\s*$/i, ' ')
+            .trim();
+        const queryNorm = normalize(cleanedQuery || searchQuery);
         const queryWords = queryNorm.split(' ').filter(w => w.length > 2); // Skip short words
 
         let bestLink = null;
@@ -140,8 +165,8 @@
             }
         }
 
-        // Require at least 50% word overlap to consider it a match
-        return bestScore >= 0.5 ? bestLink : null;
+        // Require at least 30% word overlap to consider it a match
+        return bestScore >= 0.3 ? bestLink : null;
     }
 
     // ===== Extract website URL from place detail panel =====
@@ -201,6 +226,7 @@
                 const result = { fullAddress };
                 Object.assign(result, parseAddress(fullAddress));
                 // Also extract website and phone while we're on the detail panel
+                result.placeName = tryExtractPlaceName();
                 result.website = tryExtractWebsite();
                 result.phone = tryExtractPhone();
                 if (result.streetAddress) return result;
@@ -221,6 +247,7 @@
                 if (/\b[A-Z]{2}\s+\d{5}/.test(text) && /\d+\s+\w/.test(text)) {
                     const result = { fullAddress: text };
                     Object.assign(result, parseAddress(text));
+                    result.placeName = tryExtractPlaceName();
                     result.website = tryExtractWebsite();
                     result.phone = tryExtractPhone();
                     if (result.streetAddress) return result;
@@ -236,6 +263,7 @@
                 const clean = label.replace(/^Address:\s*/i, '').trim();
                 const result = { fullAddress: clean };
                 Object.assign(result, parseAddress(clean));
+                result.placeName = tryExtractPlaceName();
                 result.website = tryExtractWebsite();
                 result.phone = tryExtractPhone();
                 if (result.streetAddress) return result;
@@ -253,6 +281,7 @@
         if (match) {
             const result = { fullAddress: match[1].trim() };
             Object.assign(result, parseAddress(result.fullAddress));
+            result.placeName = tryExtractPlaceName();
             result.website = tryExtractWebsite();
             result.phone = tryExtractPhone();
             if (result.streetAddress) return result;
@@ -262,7 +291,7 @@
 
     // ===== Empty result helper =====
     function emptyResult() {
-        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
+        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', placeName: '' };
     }
 
     // ===== Parse a full US address string into components =====
@@ -335,3 +364,16 @@
     }
 
 })();
+    function tryExtractPlaceName() {
+        const selectors = [
+            'h1.DUwDvf',
+            'h1[data-attrid="title"]',
+            'h1.fontHeadlineLarge'
+        ];
+        for (const sel of selectors) {
+            const el = document.querySelector(sel);
+            const txt = (el?.textContent || '').trim();
+            if (txt) return txt;
+        }
+        return '';
+    }

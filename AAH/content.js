@@ -1,8 +1,56 @@
 // content.js
 function scrapeCurrentPage() {
     const jobs = [];
+    function toTitleCasePreserveSeparators(value) {
+      return String(value || '')
+        .split(/(\s+|-)/)
+        .map(part => {
+          if (!part || /^\s+$/.test(part) || part === '-') return part;
+          if (/^[A-Z]{2,}$/.test(part) && part.length <= 3) return part;
+          return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+        })
+        .join('');
+    }
+
+    function normalizeHospitalName(rawName) {
+      let name = String(rawName || '').trim();
+      if (!name) return '';
+
+      // Remove trailing location suffix from listings:
+      // "CY-FAIR ANIMAL HOSPITAL - ALDINE, TX" -> "CY-FAIR ANIMAL HOSPITAL"
+      name = name.replace(/\s*[-–—]\s*[A-Za-z\s.'-]+,\s*[A-Z]{2}\s*$/, '').trim();
+
+      return toTitleCasePreserveSeparators(name);
+    }
+
+    function normalizeStateValue(value) {
+      const raw = String(value || '').trim();
+      if (!raw) return '';
+      if (/^[A-Z]{2}$/.test(raw)) return raw;
+      return toTitleCasePreserveSeparators(raw);
+    }
+
+    function parseHospitalListingValue(rawValue) {
+      const raw = String(rawValue || '').replace(/[\u2010\u2011\u2012\u2013\u2014\u2212]/g, '-').trim();
+      if (!raw) return { hospital: '', city: '', state: '' };
+
+      // Examples:
+      // "CY-FAIR ANIMAL HOSPITAL - ALDINE, TX"
+      // "Some Vet Clinic - Los Angeles, California"
+      const m = raw.match(/^(.*)\s*-\s*([^,]+)\s*,\s*([A-Za-z]{2}|[A-Za-z][A-Za-z\s.'-]+)\s*$/);
+      if (!m) {
+        return { hospital: normalizeHospitalName(raw), city: '', state: '' };
+      }
+
+      const hospital = normalizeHospitalName(m[1]);
+      const city = normalizeCityName(m[2]) || m[2].trim();
+      const state = normalizeStateValue(m[3]);
+      return { hospital, city, state };
+    }
+
     function shouldSkipScrapedJob(jobTitle) {
       const title = (jobTitle || '').toLowerCase();
+      if (/\bmentorship\b/.test(title)) return true;
       const hasProtectedRole = /\bassociate\s+veterinarian\b/.test(title) ||
         /\bmedical\s+director\b/.test(title);
       if (hasProtectedRole) return false;
@@ -78,10 +126,8 @@ function scrapeCurrentPage() {
           const jobTypeEl = row.querySelector('th:nth-child(4)');
 
           if (hospitalNameEl && jobTitleEl && locationEl) {
-            let hospitalName = hospitalNameEl.innerText.trim();
-            // Hospital name often contains " - City, ST" suffix (e.g. "Mitchell Village Animal Hospital - Morehead City, NC")
-            // Strip it to get just the hospital name
-            hospitalName = hospitalName.replace(/\s*[-]\s*[A-Za-z\s.'-]+,\s*[A-Z]{2}\s*$/, '').trim();
+            const hospitalListingValue = (hospitalNameEl.innerText || '').trim();
+            let hospitalName = hospitalListingValue;
             const jobTitle = jobTitleEl.innerText.trim();
             if (shouldSkipScrapedJob(jobTitle)) {
               return;
@@ -100,15 +146,18 @@ function scrapeCurrentPage() {
             city = parsedLocation.city;
             state = parsedLocation.state;
 
+            const finalLocation = (city && state) ? `${city}, ${state}` : parsedLocation.location;
+
             jobs.push({
               title: jobTitle,
               hospital: hospitalName,
               hospitalName: hospitalName,
+              hospitalRaw: hospitalListingValue,
               position: jobTitle, // As per assumption
               city: city,
               state: state,
               country: country,
-              location: parsedLocation.location,
+              location: finalLocation,
               link: link,
               jobType: jobType,
               jobId: jobId
