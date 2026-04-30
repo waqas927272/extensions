@@ -15,6 +15,14 @@ function sendScrapingStatus(status, message = '', scrapedCount = sessionScrapedC
   }).catch(() => {});
 }
 
+function normalizeSalaryText(salary) {
+  return (salary || '')
+    .replace(/â€“|â€”|–|—/g, ' - ')
+    .replace(/\s+-\s+/g, ' - ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 async function setupOffscreenDocument(path) {
   // Check if an offscreen document is already open
   const offscreenUrl = chrome.runtime.getURL(path);
@@ -169,7 +177,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
               // Salary
               if (firstDetail.salary) {
-                record.salary = firstDetail.salary;
+                record.salary = normalizeSalaryText(firstDetail.salary);
               }
 
               // Job Type
@@ -242,7 +250,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             location:         location,
             area_of_practice: record.areaOfPractice || '',
             position:         record.position || '',
-            salary:           record.salary || '',
+            salary:           normalizeSalaryText(record.salary),
             job_type:         record.jobType || '',
             url:              record.link || '',
             link:             record.link || '',

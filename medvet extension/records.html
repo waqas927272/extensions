@@ -338,6 +338,18 @@
       transform: translateY(-1px);
     }
 
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .btn:disabled:hover {
+      transform: none;
+      box-shadow: none;
+    }
+
     .btn svg {
       width: 14px;
       height: 14px;
@@ -377,6 +389,14 @@
       border-color: #fca5a5;
       color: #dc2626;
       box-shadow: 0 8px 28px rgba(220, 38, 38, 0.2);
+    }
+
+    .btn:disabled:hover {
+      background: white;
+      border-color: #e2e8f0;
+      color: #64748b;
+      transform: none;
+      box-shadow: none;
     }
 
     .button-group {
@@ -421,30 +441,31 @@
 
     table {
       width: 100%;
-      min-width: 1780px;
+      min-width: 1840px;
       border-collapse: collapse;
       table-layout: fixed;
     }
 
     th:nth-child(1), td:nth-child(1) { width: 34px; }
-    th:nth-child(2), td:nth-child(2) { width: 120px; }
-    th:nth-child(3), td:nth-child(3) { width: 84px; }
-    th:nth-child(4), td:nth-child(4) { width: 155px; }
+    th:nth-child(2), td:nth-child(2) { width: 44px; }
+    th:nth-child(3), td:nth-child(3) { width: 150px; }
+    th:nth-child(4), td:nth-child(4) { width: 84px; }
     th:nth-child(5), td:nth-child(5) { width: 130px; }
     th:nth-child(6), td:nth-child(6) { width: 150px; }
-    th:nth-child(7), td:nth-child(7) { width: 75px; }
-    th:nth-child(8), td:nth-child(8) { width: 70px; }
-    th:nth-child(9), td:nth-child(9) { width: 68px; }
-    th:nth-child(10), td:nth-child(10) { width: 92px; }
-    th:nth-child(11), td:nth-child(11) { width: 60px; }
-    th:nth-child(12), td:nth-child(12) { width: 95px; }
-    th:nth-child(13), td:nth-child(13) { width: 110px; }
+    th:nth-child(7), td:nth-child(7) { width: 130px; }
+    th:nth-child(8), td:nth-child(8) { width: 75px; }
+    th:nth-child(9), td:nth-child(9) { width: 70px; }
+    th:nth-child(10), td:nth-child(10) { width: 68px; }
+    th:nth-child(11), td:nth-child(11) { width: 92px; }
+    th:nth-child(12), td:nth-child(12) { width: 60px; }
+    th:nth-child(13), td:nth-child(13) { width: 95px; }
     th:nth-child(14), td:nth-child(14) { width: 110px; }
-    th:nth-child(15), td:nth-child(15) { width: 105px; }
-    th:nth-child(16), td:nth-child(16) { width: 72px; }
-    th:nth-child(17), td:nth-child(17) { width: 70px; }
-    th:nth-child(18), td:nth-child(18) { width: 55px; }
-    th:nth-child(19), td:nth-child(19) { width: 225px; }
+    th:nth-child(15), td:nth-child(15) { width: 110px; }
+    th:nth-child(16), td:nth-child(16) { width: 105px; }
+    th:nth-child(17), td:nth-child(17) { width: 72px; }
+    th:nth-child(18), td:nth-child(18) { width: 70px; }
+    th:nth-child(19), td:nth-child(19) { width: 55px; }
+    th:nth-child(20), td:nth-child(20) { width: 225px; }
 
     thead {
       background: linear-gradient(135deg, #143c71 0%, #1e5a9e 100%);
@@ -936,6 +957,12 @@
           </svg>
           Clear All
         </button>
+        <button class="btn btn-danger" id="deleteSelectedJobs" disabled>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z"/>
+          </svg>
+          Delete Selected
+        </button>
       </div>
     </div>
 
@@ -954,6 +981,7 @@
       <table id="jobRecordsTable">
         <thead>
           <tr>
+            <th><input type="checkbox" id="selectAllJobs" title="Select all visible jobs"></th>
             <th>#</th>
             <th data-sort="title">Job Title</th>
             <th data-sort="jobId">Job ID</th>

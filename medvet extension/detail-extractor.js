@@ -191,6 +191,7 @@
         'Medical Oncologist',
         'Neurologist & Neurosurgeon',
         'Ophthalmologist',
+        'Avian and Exotic Specialis',
         'Radiation Oncologist',
         'Radiologist',
         'Sports Medicine & Rehabilitation Specialist',
@@ -205,7 +206,7 @@
             'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
             'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
             'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
-            'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
+            'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Avian and Exotic Specialis', 'Radiation Oncologist',
             'Radiologist', 'Sports Medicine & Rehabilitation Specialist', 'Surgeon'
         ],
         'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
@@ -264,6 +265,7 @@
             ['Anesthesiologist', [/\banesthesiologist\b/i, /\bboard certified\b.*\banesth/i, /\bresidency[-\s]+trained\b.*\banesth/i, /\bdacvaa\b/i]],
             ['Internal Medicine Specialist', [/\binternist\b/i, /\binternal medicine specialist\b/i, /\bboard certified\b.*\binternal medicine\b/i, /\bresidency[-\s]+trained\b.*\binternal medicine\b/i, /\bdacvim\b(?!.*oncology)(?!.*cardiology)(?!.*neurology)/i]],
             ['ECC Specialist', [/\bcriticalist\b/i, /\becc specialist\b/i, /\bemergency\s*(?:&|and)?\s*critical care specialist\b/i, /\bboard certified\b.*\bcritical/i, /\bresidency[-\s]+trained\b.*\bcritical/i, /\bdacvecc\b/i]],
+            ['Avian and Exotic Specialis', [/\bavian\b/i, /\bexotics?\b/i]],
             ['DABVP Specialist', [/\bdabvp\b/i]],
             ['Dental Specialist', [/\bdental specialist\b/i, /\bveterinary dentist\b/i, /\boral surgeon\b/i, /\bboard certified\b.*\bdent/i, /\bresidency[-\s]+trained\b.*\bdent/i, /\bdavdc\b/i]],
             ['Sports Medicine & Rehabilitation Specialist', [/\brehabilitation veterinarian\b/i, /\bsports medicine\b/i, /\brehabilitation specialist\b/i, /\bboard certified\b.*\brehabilitation\b/i, /\bresidency[-\s]+trained\b.*\brehabilitation\b/i]],
@@ -292,7 +294,7 @@
         if (cat.includes('(er)') || cat === 'veterinarian (er)') return 'Emergency Care';
         if (cat.includes('specialty diplomate')) return 'Specialty Care';
         if (cat.includes('surgeon diplomate')) return 'Specialty Care';
-        if (cat.includes('rehabilitation') || cat.includes('sports medicine')) return 'Specialty Care';
+        if (cat.includes('rehabilitation') || cat.includes('sports medicine') || cat.includes('avian') || cat.includes('exotic')) return 'Specialty Care';
         return '';
     }
 
@@ -310,7 +312,7 @@
             'dermatologist', 'ophthalmologist', 'anesthesiologist', 'theriogenologist',
             'radiologist', 'internist', 'criticalist',
             'oncology', 'cardiology', 'neurology', 'dermatology', 'ophthalmology',
-            'anesthesia', 'theriogenology', 'radiology', 'rehabilitation', 'sports medicine'];
+            'anesthesia', 'theriogenology', 'radiology', 'rehabilitation', 'sports medicine', 'avian', 'exotic'];
         for (const sp of specialtyNames) {
             if (titleLower.includes(sp)) return 'Specialty Care';
         }
@@ -336,8 +338,10 @@
         if (titleLower.includes('urgent care')) return 'Urgent Care';
 
         // STEP 5: Equine/Bovine/Exotics from title
-        if (titleLower.includes('equine') || titleLower.includes('bovine') || titleLower.includes('large animal') ||
-            titleLower.includes('avian') || titleLower.includes('exotics')) {
+        if (titleLower.includes('avian') || titleLower.includes('exotics')) {
+            return 'Specialty Care';
+        }
+        if (titleLower.includes('equine') || titleLower.includes('bovine') || titleLower.includes('large animal')) {
             return 'General Practice Care / Emergency Care / Urgent Care';
         }
 
@@ -411,6 +415,7 @@
         if (t.includes('rehabilitation') || t.includes('sports medicine')) return 'Sports Medicine & Rehabilitation Specialist';
         if (t.includes('radiologist') || t.includes('diagnostic imaging') || t.includes('radiology')) return 'Radiologist';
         if (t.includes('ophthalmologist') || t.includes('ophthalmology')) return 'Ophthalmologist';
+        if (t.includes('avian') || t.includes('exotic')) return 'Avian and Exotic Specialis';
         if (t.includes('anesthesiologist') || t.includes('anesthesia')) return 'Anesthesiologist';
         if (t.includes('internist') || t.includes('internal medicine')) return 'Internal Medicine Specialist';
         if (t.includes('criticalist') || t.match(/\becc\b/) || t.includes('emergency medicine')) return 'ECC Specialist';
@@ -476,7 +481,7 @@
                 'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
                 'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
                 'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
-                'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
+                'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Avian and Exotic Specialis', 'Radiation Oncologist',
                 'Radiologist', 'Sports Medicine & Rehabilitation Specialist', 'Surgeon'
             ],
             'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian'],
@@ -535,7 +540,7 @@
         if (amounts.length >= 2) {
             const min = Math.min(amounts[0], amounts[1]);
             const max = Math.max(amounts[0], amounts[1]);
-            return `${fmt(min)}–${fmt(max)} ${unit}`;
+            return `${fmt(min)} - ${fmt(max)} ${unit}`;
         }
 
         // Single amount
@@ -558,7 +563,7 @@
                     if (Number.isInteger(n)) return '$' + n.toLocaleString('en-US');
                     return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 };
-                return `${fmt(min)}–${fmt(max)} ${isHourly ? 'per hour' : 'per year'}`;
+                return `${fmt(min)} - ${fmt(max)} ${isHourly ? 'per hour' : 'per year'}`;
             } else if (minVal) {
                 const min = parseFloat(minVal.replace(/,/g, ''));
                 const fmt = (n) => {

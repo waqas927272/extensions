@@ -13,6 +13,8 @@
     const descriptionModal = document.getElementById('descriptionModal');
     const modalDescriptionContent = document.getElementById('modalDescriptionContent');
     const closeDescriptionModal = document.getElementById('closeDescriptionModal');
+    const selectAllJobsCheckbox = document.getElementById('selectAllJobs');
+    const deleteSelectedJobsButton = document.getElementById('deleteSelectedJobs');
 
     let currentSortColumn = null;
     let currentSortDirection = 'asc';
@@ -26,6 +28,8 @@
     let addressQueue = [];
     let currentAddressIndex = 0;
     let addressCache = new Map();
+    let currentlyDisplayedJobs = [];
+    const selectedJobKeys = new Set();
     const getDescriptionsBtn = document.getElementById('getDescriptionsBtn');
     const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
     const fetchAddressesBtn = document.getElementById('fetchAddressesBtn');
@@ -121,6 +125,7 @@
         'Medical Oncologist',
         'Neurologist & Neurosurgeon',
         'Ophthalmologist',
+        'Avian and Exotic Specialis',
         'Radiation Oncologist',
         'Radiologist',
         'Sports Medicine & Rehabilitation Specialist',
@@ -135,7 +140,7 @@
             'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
             'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
             'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
-            'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
+            'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Avian and Exotic Specialis', 'Radiation Oncologist',
             'Radiologist', 'Sports Medicine & Rehabilitation Specialist', 'Surgeon'
         ],
         'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
@@ -161,6 +166,7 @@
             ['Anesthesiologist', [/\banesthesiologist\b/i, /\bboard certified\b.*\banesth/i, /\bresidency[-\s]+trained\b.*\banesth/i, /\bdacvaa\b/i]],
             ['Internal Medicine Specialist', [/\binternist\b/i, /\binternal medicine specialist\b/i, /\bboard certified\b.*\binternal medicine\b/i, /\bresidency[-\s]+trained\b.*\binternal medicine\b/i, /\bdacvim\b(?!.*oncology)(?!.*cardiology)(?!.*neurology)/i]],
             ['ECC Specialist', [/\bcriticalist\b/i, /\becc specialist\b/i, /\bemergency\s*(?:&|and)?\s*critical care specialist\b/i, /\bboard certified\b.*\bcritical/i, /\bresidency[-\s]+trained\b.*\bcritical/i, /\bdacvecc\b/i]],
+            ['Avian and Exotic Specialis', [/\bavian\b/i, /\bexotics?\b/i]],
             ['DABVP Specialist', [/\bdabvp\b/i]],
             ['Dental Specialist', [/\bdental specialist\b/i, /\bveterinary dentist\b/i, /\boral surgeon\b/i, /\bboard certified\b.*\bdent/i, /\bresidency[-\s]+trained\b.*\bdent/i, /\bdavdc\b/i]],
             ['Sports Medicine & Rehabilitation Specialist', [/\brehabilitation veterinarian\b/i, /\bsports medicine\b/i, /\brehabilitation specialist\b/i, /\bboard certified\b.*\brehabilitation\b/i, /\bresidency[-\s]+trained\b.*\brehabilitation\b/i]],
@@ -208,6 +214,7 @@
         if (t.includes('rehabilitation') || t.includes('sports medicine')) return 'Sports Medicine & Rehabilitation Specialist';
         if (t.includes('radiologist') || t.includes('diagnostic imaging') || t.includes('radiology')) return 'Radiologist';
         if (t.includes('ophthalmologist') || t.includes('ophthalmology')) return 'Ophthalmologist';
+        if (t.includes('avian') || t.includes('exotic')) return 'Avian and Exotic Specialis';
         if (t.includes('anesthesiologist') || t.includes('anesthesia')) return 'Anesthesiologist';
         if (t.includes('internist') || t.includes('internal medicine')) return 'Internal Medicine Specialist';
         if (t.includes('criticalist') || t.match(/\becc\b/) || t.includes('emergency medicine')) return 'ECC Specialist';
@@ -266,7 +273,7 @@
         const cat = category.toLowerCase().trim();
         if (cat.includes('gen practice')) return 'General Practice Care';
         if (cat.includes('(er)') || cat === 'veterinarian (er)') return 'Emergency Care';
-        if (cat.includes('specialty diplomate') || cat.includes('surgeon diplomate')) return 'Specialty Care';
+        if (cat.includes('specialty diplomate') || cat.includes('surgeon diplomate') || cat.includes('avian') || cat.includes('exotic')) return 'Specialty Care';
         return '';
     }
 
@@ -279,7 +286,7 @@
             'dermatologist', 'ophthalmologist', 'anesthesiologist', 'theriogenologist',
             'radiologist', 'internist', 'criticalist',
             'oncology', 'cardiology', 'neurology', 'dermatology', 'ophthalmology',
-            'anesthesia', 'theriogenology', 'radiology'];
+            'anesthesia', 'theriogenology', 'radiology', 'avian', 'exotic'];
         for (const sp of specialtyNames) {
             if (t.includes(sp)) return 'Specialty Care';
         }
@@ -301,8 +308,8 @@
         if (t.includes('emergency') || t.match(/\ber\b/) || t.includes('er vet') || t.includes('er dvm')) return 'Emergency Care';
 
         // Equine/Bovine/Exotics
-        if (t.includes('equine') || t.includes('bovine') || t.includes('large animal') ||
-            t.includes('avian') || t.includes('exotics')) return 'General Practice Care / Emergency Care / Urgent Care';
+        if (t.includes('avian') || t.includes('exotics')) return 'Specialty Care';
+        if (t.includes('equine') || t.includes('bovine') || t.includes('large animal')) return 'General Practice Care / Emergency Care / Urgent Care';
 
         return '';
     }
@@ -334,7 +341,7 @@
             if (amounts.length >= 2) {
                 const min = Math.min(amounts[0], amounts[1]);
                 const max = Math.max(amounts[0], amounts[1]);
-                return `${fmt(min)}â€“${fmt(max)} ${unit}`;
+                return `${fmt(min)} - ${fmt(max)} ${unit}`;
             }
             return `${fmt(amounts[0])} ${unit}`;
         }
@@ -440,7 +447,7 @@
             if (category) {
                 if (category.includes('gen practice')) return 'General Practice Care';
                 if (category === 'veterinarian (er)' || category.includes('(er)')) return 'Emergency Care';
-                if (category.includes('specialty diplomate') || category.includes('surgeon diplomate') || category.includes('rehabilitation') || category.includes('sports medicine')) return 'Specialty Care';
+                if (category.includes('specialty diplomate') || category.includes('surgeon diplomate') || category.includes('rehabilitation') || category.includes('sports medicine') || category.includes('avian') || category.includes('exotic')) return 'Specialty Care';
             }
 
             // STEP 2: Check TITLE for clear specialty position names (COMPREHENSIVE LIST)
@@ -449,7 +456,7 @@
                 'dermatologist', 'ophthalmologist', 'anesthesiologist', 'theriogenologist',
                 'radiologist', 'internist', 'criticalist', 'ecc specialist',
                 'oncology', 'cardiology', 'neurology', 'dermatology', 'ophthalmology',
-                'anesthesia', 'theriogenology', 'radiology', 'rehabilitation', 'sports medicine'
+                'anesthesia', 'theriogenology', 'radiology', 'rehabilitation', 'sports medicine', 'avian', 'exotic'
             ];
             for (const sp of specialtyPositionNames) {
                 if (title.includes(sp)) return 'Specialty Care';
@@ -475,9 +482,7 @@
 
             // STEP 4: Check TITLE for equine/bovine/large animal/avian/exotics
             if (title.includes('equine') || title.includes('bovine') || title.includes('large animal') ||
-                title.includes('avian') || title.includes('exotics')) {
-                return 'General Practice Care / Emergency Care / Urgent Care';
-            }
+                title.includes('avian') || title.includes('exotics')) return 'Specialty Care';
 
             // STEP 5: For generic titles, check ONLY the qualifications section
             const qualSection = extractQualificationsSection(descriptionText);
@@ -514,6 +519,7 @@
             if (t.includes('rehabilitation') || t.includes('sports medicine')) return 'Sports Medicine & Rehabilitation Specialist';
             if (t.includes('radiologist') || t.includes('diagnostic imaging') || t.includes('radiology')) return 'Radiologist';
             if (t.includes('ophthalmologist') || t.includes('ophthalmology')) return 'Ophthalmologist';
+            if (t.includes('avian') || t.includes('exotic')) return 'Avian and Exotic Specialis';
             if (t.includes('anesthesiologist') || t.includes('anesthesia')) return 'Anesthesiologist';
             if (t.includes('internist') || t.includes('internal medicine')) return 'Internal Medicine Specialist';
             if (t.includes('criticalist') || t.match(/\becc\b/) || t.includes('emergency medicine')) return 'ECC Specialist';
@@ -547,7 +553,7 @@
                     'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
                     'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
                     'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
-                    'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
+                    'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Avian and Exotic Specialis', 'Radiation Oncologist',
                     'Radiologist', 'Sports Medicine & Rehabilitation Specialist', 'Surgeon'
                 ],
                 'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian'],
@@ -1246,13 +1252,39 @@
         totalCountElement.textContent = count;
     }
 
+    function normalizeSalaryText(salary) {
+        return (salary || '')
+            .replace(/â€“|â€”|–|—/g, ' - ')
+            .replace(/\s+-\s+/g, ' - ')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+    }
+
+    function getJobKey(job) {
+        return job.jobId || job.link || `${job.title || ''}|${job.location || ''}|${job.hospital || ''}`;
+    }
+
+    function updateSelectionControls() {
+        const visibleKeys = currentlyDisplayedJobs.map(getJobKey).filter(Boolean);
+        const selectedVisibleCount = visibleKeys.filter(key => selectedJobKeys.has(key)).length;
+
+        selectAllJobsCheckbox.checked = visibleKeys.length > 0 && selectedVisibleCount === visibleKeys.length;
+        selectAllJobsCheckbox.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleKeys.length;
+        deleteSelectedJobsButton.disabled = selectedJobKeys.size === 0;
+        deleteSelectedJobsButton.textContent = selectedJobKeys.size > 0
+            ? `Delete Selected (${selectedJobKeys.size})`
+            : 'Delete Selected';
+    }
+
     function displayRecords(jobs) {
         tableBody.innerHTML = '';
+        currentlyDisplayedJobs = jobs;
         updateJobCount(jobs.length);
 
         if (jobs.length === 0) {
             table.style.display = 'none';
             emptyState.classList.remove('hidden');
+            updateSelectionControls();
             return;
         }
 
@@ -1261,37 +1293,54 @@
 
         jobs.forEach((job, index) => {
             const row = tableBody.insertRow();
+            const jobKey = getJobKey(job);
 
             // Mark new jobs with green background
             if (job.isNewLocation) {
                 row.style.backgroundColor = '#d1fae5';
             }
 
+            const selectCell = row.insertCell(0);
+            selectCell.style.textAlign = 'center';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'job-select-checkbox';
+            checkbox.checked = selectedJobKeys.has(jobKey);
+            checkbox.addEventListener('change', () => {
+                if (checkbox.checked) {
+                    selectedJobKeys.add(jobKey);
+                } else {
+                    selectedJobKeys.delete(jobKey);
+                }
+                updateSelectionControls();
+            });
+            selectCell.appendChild(checkbox);
+
             // Serial Number
-            const serialCell = row.insertCell(0);
+            const serialCell = row.insertCell(1);
             serialCell.textContent = index + 1;
             serialCell.style.fontWeight = '600';
             serialCell.style.color = '#475569';
             serialCell.style.textAlign = 'center';
 
-            row.insertCell(1).textContent = job.title;
-            const jobIdCell = row.insertCell(2);
+            row.insertCell(2).textContent = job.title;
+            const jobIdCell = row.insertCell(3);
             jobIdCell.textContent = job.jobId || 'N/A';
             jobIdCell.style.fontFamily = "'Consolas', 'Monaco', monospace";
             jobIdCell.style.fontSize = '12px';
             jobIdCell.style.color = '#64748b';
-            row.insertCell(3).textContent = job.hospital;
-            row.insertCell(4).textContent = 'MedVet (Parent Client)';
-            row.insertCell(5).textContent = job.streetAddress || '-';
-            row.insertCell(6).textContent = job.city;
-            row.insertCell(7).textContent = job.state;
-            row.insertCell(8).textContent = job.zipCode || '-';
+            row.insertCell(4).textContent = job.hospital;
+            row.insertCell(5).textContent = 'MedVet (Parent Client)';
+            row.insertCell(6).textContent = job.streetAddress || '-';
+            row.insertCell(7).textContent = job.city;
+            row.insertCell(8).textContent = job.state;
+            row.insertCell(9).textContent = job.zipCode || '-';
 
             // Phone column
-            row.insertCell(9).textContent = job.phone || '-';
+            row.insertCell(10).textContent = job.phone || '-';
 
             // Website column â€” show as clickable link if available
-            const websiteCell = row.insertCell(10);
+            const websiteCell = row.insertCell(11);
             if (job.website) {
                 const websiteLink = document.createElement('a');
                 websiteLink.href = job.website;
@@ -1303,23 +1352,23 @@
                 websiteCell.textContent = '-';
             }
 
-            row.insertCell(11).textContent = job.location;
+            row.insertCell(12).textContent = job.location;
 
             // Detail Columns
-            row.insertCell(12).textContent = job.areaOfPractice || '-';
-            row.insertCell(13).textContent = job.position || '-';
-            row.insertCell(14).textContent = job.salary || '-';
-            row.insertCell(15).textContent = job.jobType || '-';
-            row.insertCell(16).textContent = job.experience || '-';
+            row.insertCell(13).textContent = job.areaOfPractice || '-';
+            row.insertCell(14).textContent = job.position || '-';
+            row.insertCell(15).textContent = normalizeSalaryText(job.salary) || '-';
+            row.insertCell(16).textContent = job.jobType || '-';
+            row.insertCell(17).textContent = job.experience || '-';
 
-            const linkCell = row.insertCell(17);
+            const linkCell = row.insertCell(18);
             const link = document.createElement('a');
             link.href = job.link;
             link.textContent = 'View Job';
             link.target = '_blank';
             linkCell.appendChild(link);
 
-            const descCell = row.insertCell(18);
+            const descCell = row.insertCell(19);
             if (job.description) {
                 const descButton = document.createElement('button');
                 descButton.type = 'button';
@@ -1331,6 +1380,7 @@
                 descCell.innerHTML = '<span style="color: #94a3b8; font-style: italic; font-size: 12px;">Not scraped</span>';
             }
         });
+        updateSelectionControls();
     }
 
     function filterJobs(searchTerm) {
@@ -1398,7 +1448,7 @@
                 `"${(job.location || '').replace(/"/g, '""')}"`,
                 `"${(job.areaOfPractice || '').replace(/"/g, '""')}"`,
                 `"${(job.position || '').replace(/"/g, '""')}"`,
-                `"${(job.salary || '').replace(/"/g, '""')}"`,
+                `"${normalizeSalaryText(job.salary).replace(/"/g, '""')}"`,
                 `"${(job.jobType || '').replace(/"/g, '""')}"`,
                 `"${(job.experience || '').replace(/"/g, '""')}"`,
                 `"${(job.link || '').replace(/"/g, '""')}"`,
@@ -1424,11 +1474,20 @@
     // Initialize
     chrome.storage.local.get(['scrapedJobs', 'records'], (result) => {
         allJobs = (result.scrapedJobs && result.scrapedJobs.length ? result.scrapedJobs : result.records) || [];
-        allJobs = allJobs.map(job => ({
-            ...job,
-            hospital: job.hospital || job.hospitalName || 'MedVet',
-            location: job.location || [job.city, job.state].filter(Boolean).join(', ')
-        }));
+        let normalizedExistingSalary = false;
+        allJobs = allJobs.map(job => {
+            const normalizedSalary = normalizeSalaryText(job.salary);
+            if ((job.salary || '') !== normalizedSalary) normalizedExistingSalary = true;
+            return {
+                ...job,
+                hospital: job.hospital || job.hospitalName || 'MedVet',
+                salary: normalizedSalary,
+                location: job.location || [job.city, job.state].filter(Boolean).join(', ')
+            };
+        });
+        if (normalizedExistingSalary) {
+            chrome.storage.local.set({ scrapedJobs: allJobs, records: allJobs });
+        }
         displayRecords(allJobs);
 
         tableHeaders.forEach(header => {
@@ -1548,11 +1607,47 @@
         }
     });
 
+    selectAllJobsCheckbox.addEventListener('change', () => {
+        const visibleKeys = currentlyDisplayedJobs.map(getJobKey).filter(Boolean);
+        if (selectAllJobsCheckbox.checked) {
+            visibleKeys.forEach(key => selectedJobKeys.add(key));
+        } else {
+            visibleKeys.forEach(key => selectedJobKeys.delete(key));
+        }
+        displayRecords(currentlyDisplayedJobs);
+    });
+
+    deleteSelectedJobsButton.addEventListener('click', () => {
+        if (selectedJobKeys.size === 0) {
+            showToast('No jobs selected.', 'error');
+            return;
+        }
+
+        const selectedCount = selectedJobKeys.size;
+        if (!confirm(`Delete ${selectedCount} selected job(s)?`)) {
+            return;
+        }
+
+        const remainingJobs = allJobs.filter(job => !selectedJobKeys.has(getJobKey(job)));
+        chrome.storage.local.set({ scrapedJobs: remainingJobs, records: remainingJobs }, () => {
+            allJobs = remainingJobs;
+            selectedJobKeys.clear();
+            const currentSearch = searchInput.value.trim();
+            if (currentSearch) {
+                filterJobs(currentSearch);
+            } else {
+                displayRecords(allJobs);
+            }
+            showToast(`Deleted ${selectedCount} selected job(s).`, 'success');
+        });
+    });
+
     // Clear all records
     clearRecordsButton.addEventListener('click', () => {
         if (confirm('Are you sure you want to clear all scraped job records?')) {
             chrome.storage.local.set({ scrapedJobs: [], records: [] }, () => {
                 allJobs = [];
+                selectedJobKeys.clear();
                 displayRecords([]);
                 showToast('All records cleared!', 'success');
             });
@@ -1602,7 +1697,7 @@
             location: job.location,
             area_of_practice: job.areaOfPractice || '',
             position: job.position || '',
-            salary: job.salary || '',
+            salary: normalizeSalaryText(job.salary),
             job_type: job.jobType || '',
             experience: job.experience || '',
             url: job.link,
@@ -1952,7 +2047,7 @@
                 detailsList = extracted.locations.map(loc => ({
                     areaOfPractice: extracted.areaOfPractice,
                     position: extracted.position,
-                    salary: extracted.salary,
+                    salary: normalizeSalaryText(extracted.salary),
                     hospitalName: extracted.hospitalName,
                     jobType: extracted.jobType,
                     experience: extracted.experience,
@@ -1966,7 +2061,7 @@
                 detailsList = [{
                     areaOfPractice: extracted.areaOfPractice,
                     position: extracted.position,
-                    salary: extracted.salary,
+                    salary: normalizeSalaryText(extracted.salary),
                     hospitalName: extracted.hospitalName,
                     jobType: extracted.jobType,
                     experience: extracted.experience,
@@ -2043,7 +2138,7 @@
                 // Update original job with extracted details
                 originalJob.areaOfPractice = finalAOP;
                 originalJob.position = finalPosition || '';
-                originalJob.salary = firstDetail.salary || originalJob.salary || '';
+                originalJob.salary = normalizeSalaryText(firstDetail.salary || originalJob.salary || '');
                 originalJob.hospital = firstDetail.hospitalName || originalJob.hospital || '';
                 originalJob.jobType = firstDetail.jobType || originalJob.jobType || 'Full-Time';
                 originalJob.experience = firstDetail.experience || originalJob.experience || '';
