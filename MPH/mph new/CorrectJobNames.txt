@@ -4,7 +4,9 @@ Associate Veterinarian
 General Practice Care:	
 Associate Veterinarian
 Lead Veterinarian
+Medical Lead Veterinarian
 Medical Director
+Partner Veterinarian
 
 Specialty Care:
 Anesthesiologist

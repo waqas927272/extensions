@@ -1,15 +1,49 @@
 (() => {
   let isScraping = true;
-  const excludedJobTitles = new Set([
-    'mentorship program',
-    'contingent licensed veterinary technician',
-    'emergency credentialed technician or experienced veterinary assistant',
-    'emergency department client service representative- seasonal',
-    'emergency registered veterinary technician'
-  ]);
+  const excludedJobTitlePatterns = [
+    /\bmentorship\b/,
+    /\blocum\b/,
+    /\brelief\b/,
+    /\bcontingent\b/,
+    /\bclient\s+services?\s+representative\b/,
+    /\bdoctor\s+coordinator\b/,
+    /\bexperience\s+manager\b/,
+    /\bclinical\s+(?:manager|supervisor)\b/,
+    /\bfacility\s+maintenance\s+technician\b/,
+    /\boperations\s+technician\b/,
+    /\bprocurement\b/,
+    /\bhealthcare\s+technology\s+applications\b/,
+    /\bveterinary\s+social\s+worker\b/,
+    /\bregistered\s+veterinary\s+technician\b/,
+    /\blicensed\s+veterinary\s+technician\b/,
+    /\bcredentialed\s+(?:veterinary\s+)?technician\b/,
+    /\bveterinary\s+credentialed\s+technician\b/,
+    /\bveterinary\s+technician\b/,
+    /\btechnician\s+assistant\b/,
+    /\btechnician\/assistant\b/,
+    /\btechnician\s+for\s+(?:icu|surgery|nursing)\b/,
+    /\b(?:icu|nursing|anesthesia|dentistry|ophthalmology|radiology|rehabilitation|surgery|neurology|internal\s+medicine|medical\s+oncology|emergency|critical\s+care|hospitalist)\b.*\btechnician\b/,
+    /\btechnician\b.*\b(?:icu|nursing|anesthesia|dentistry|ophthalmology|radiology|rehabilitation|surgery|neurology|internal\s+medicine|medical\s+oncology|emergency|critical\s+care|hospitalist)\b/,
+    /\bveterinary\s+assistant\b/,
+    /\bexperienced\s+veterinary\s+assistant\b/,
+    /\bassistant\b.*\b(?:oncology|neurology|radiology|surgery|emergency|critical\s+care|internal\s+medicine|nursing)\b/,
+    /\blvt\b/,
+    /\brvt\b/,
+    /\bva\b/
+  ];
 
   function normalizeTitle(title) {
-    return (title || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    return (title || '')
+      .toLowerCase()
+      .replace(/&/g, ' and ')
+      .replace(/[\/_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function shouldSkipJobTitle(title) {
+    const normalizedTitle = normalizeTitle(title);
+    return excludedJobTitlePatterns.some(pattern => pattern.test(normalizedTitle));
   }
 
   function scrapeData() {
@@ -34,7 +68,7 @@
         const title = titleElement ? titleElement.innerText.trim() : '';
         const link = linkElement ? linkElement.href : '';
 
-        if (excludedJobTitles.has(normalizeTitle(title))) {
+        if (shouldSkipJobTitle(title)) {
           return;
         }
 

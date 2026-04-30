@@ -254,6 +254,7 @@
         'ECC Specialist',
         'Internal Medicine Specialist',
         'Lead Veterinarian',
+        'Medical Lead Veterinarian',
         'Medical Oncologist',
         'Neurologist & Neurosurgeon',
         'Ophthalmologist',
@@ -265,7 +266,7 @@
     const APPROVED_POSITION_SET = new Set(APPROVED_POSITIONS);
     const VALID_POSITIONS_BY_AOP = {
         'Emergency Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
-        'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
+        'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Lead Veterinarian', 'Medical Director', 'Partner Veterinarian'],
         'Specialty Care': [
             'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
             'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
@@ -279,8 +280,29 @@
     const URGENT_CARE_SIGNAL_PATTERN = /\burgent care\b|after hours urgent care|veterinary urgent care center/i;
     const EMERGENCY_SIGNAL_PATTERN = /\bemergency veterinarian\b|\ber veterinarian\b|\ber dvm\b|\ber\b|\bemergency\b/i;
 
+    function extractCandidateRequirementSection(text) {
+        const source = text || '';
+        const headingPattern = /^\s*(?:who\s+we'?re\s+looking\s+for|who\s+we\s+are\s+looking\s+for|requirements?|qualifications?|what\s+you'?ll\s+need|credentials?|must\s+have|what\s+we\s+need)\s*:?\s*$/im;
+        const headingMatch = headingPattern.exec(source);
+        if (!headingMatch) return '';
+
+        const afterHeading = source.slice(headingMatch.index + headingMatch[0].length);
+        const nextHeadingMatch = afterHeading.match(/^\s*(?:will accept|benefits?|compensation|salary|about|our culture|location|website|apply|all applications|why|facility|what we offer|ready to|description & requirements|job description)\b/im);
+        return (nextHeadingMatch ? afterHeading.slice(0, nextHeadingMatch.index) : afterHeading).trim();
+    }
+
     function hasSpecialtyTrainingSignal(text) {
-        return /\bboard certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b/i.test(text || '');
+        const requirementText = extractCandidateRequirementSection(text);
+        if (!requirementText) return false;
+
+        const signalPattern = /\bboard[-\s]+certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b|\bdiplomate\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b/i;
+        const optionalPattern = /\b(?:open to|preferred|a plus|plus but not required|not required|interested in|welcome|consider|considering|ideal|bonus)\b/i;
+
+        return requirementText
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(Boolean)
+            .some(line => signalPattern.test(line) && !optionalPattern.test(line));
     }
 
     function isNonClinicalJobTitle(title) {
@@ -335,6 +357,7 @@
 
         const rules = [
             ['Medical Director', [/\bmedical director\b/i]],
+            ['Medical Lead Veterinarian', [/\bmedical lead(?:\s+veterinarian)?\b/i]],
             ['Lead Veterinarian', [/\blead veterinarian\b/i, /\blead vet\b/i]],
             ['Neurologist & Neurosurgeon', [/\bneurologist\b/i, /\bneurosurgeon\b/i, /\bboard certified\b.*\bneurolog/i, /\bresidency[-\s]+trained\b.*\bneurolog/i, /\bdacvim\b.*\bneurolog/i]],
             ['Dermatologist', [/\bdermatologist\b/i, /\bboard certified\b.*\bdermatolog/i, /\bresidency[-\s]+trained\b.*\bdermatolog/i, /\bdacvd\b/i]],
@@ -425,13 +448,7 @@
         }
 
         // STEP 6: Check qualifications section for specialty requirements
-        const qualSection = extractQualificationsSection(descriptionText);
-        if (qualSection) {
-            const qualLower = qualSection.toLowerCase();
-            for (const cert of specialtyCerts) {
-                if (qualLower.includes(cert)) return 'Specialty Care';
-            }
-        }
+        if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
 
         return 'General Practice Care';
     }
@@ -452,7 +469,7 @@
     function extractRoleSignalText(text) {
         if (!text) return '';
 
-        const rolePattern = /\b(?:medical director|lead veterinarian|lead vet|board certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
+        const rolePattern = /\b(?:medical director|medical lead(?:\s+veterinarian)?|lead veterinarian|lead vet|board certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
         const blockedPattern = /\b(?:our services|services include|specialties include|benefits|medical(?:,\s*|\s+)dental|dental insurance|our hospital|our team has|state[-\s]?of[-\s]?the[-\s]?art|we offer|years of experience in specialty and emergency services)\b/i;
         const qualificationsSection = extractQualificationsSection(text);
         const collected = [];
@@ -484,8 +501,8 @@
         // Medical Director, NOT Medical Oncologist. The specialty word is the service name, not the role.
         if (t.includes('regional medical director')) return 'Medical Director';
         if (t.includes('medical director')) return 'Medical Director';
-        if (t.includes('founding partner')) return 'Lead Veterinarian';
-        if (t.includes('medical lead')) return 'Lead Veterinarian';
+        if (t.includes('founding partner')) return 'Partner Veterinarian';
+        if (t.includes('medical lead')) return 'Medical Lead Veterinarian';
         if (t.includes('lead veterinarian') || t.includes('lead vet')) return 'Lead Veterinarian';
 
         // === SPECIALTY POSITION NAMES ===
@@ -523,7 +540,7 @@
     // ===== Determine Position =====
     // Valid positions per AOP (from CorrectJobNames.txt):
     //   Emergency Care: Associate Veterinarian
-    //   General Practice Care: Associate Veterinarian, Lead Veterinarian, Medical Director
+    //   General Practice Care: Associate Veterinarian, Lead Veterinarian, Medical Lead Veterinarian, Medical Director, Partner Veterinarian
     //   Specialty Care: Anesthesiologist, Cardiologist, Credentialed Veterinary Technician Specialist,
     //     DABVP Specialist, Dental Specialist, Dermatologist, ECC Specialist,
     //     Internal Medicine Specialist, Medical Director, Medical Oncologist,
@@ -556,7 +573,7 @@
     function validatePositionForAOP(position, aop) {
         const validPositions = {
             'Emergency Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
-            'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
+            'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Lead Veterinarian', 'Medical Director', 'Partner Veterinarian'],
             'Specialty Care': [
                 'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
                 'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
