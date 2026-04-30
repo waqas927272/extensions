@@ -123,6 +123,7 @@
         'Ophthalmologist',
         'Radiation Oncologist',
         'Radiologist',
+        'Sports Medicine & Rehabilitation Specialist',
         'Surgeon',
         'Partner Veterinarian'
     ];
@@ -135,7 +136,7 @@
             'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
             'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
             'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
-            'Radiologist', 'Surgeon'
+            'Radiologist', 'Sports Medicine & Rehabilitation Specialist', 'Surgeon'
         ],
         'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
     };
@@ -162,6 +163,7 @@
             ['ECC Specialist', [/\bcriticalist\b/i, /\becc specialist\b/i, /\bemergency\s*(?:&|and)?\s*critical care specialist\b/i, /\bboard certified\b.*\bcritical/i, /\bresidency[-\s]+trained\b.*\bcritical/i, /\bdacvecc\b/i]],
             ['DABVP Specialist', [/\bdabvp\b/i]],
             ['Dental Specialist', [/\bdental specialist\b/i, /\bveterinary dentist\b/i, /\boral surgeon\b/i, /\bboard certified\b.*\bdent/i, /\bresidency[-\s]+trained\b.*\bdent/i, /\bdavdc\b/i]],
+            ['Sports Medicine & Rehabilitation Specialist', [/\brehabilitation veterinarian\b/i, /\bsports medicine\b/i, /\brehabilitation specialist\b/i, /\bboard certified\b.*\brehabilitation\b/i, /\bresidency[-\s]+trained\b.*\brehabilitation\b/i]],
             ['Surgeon', [/\bveterinary surgeon\b/i, /\bsurgeon\b/i, /\bboard certified\b.*\bsurgeon\b/i, /\bresidency[-\s]+trained\b.*\bsurgeon\b/i, /\bdacvs\b/i, /\bacvs\b/i]],
             ['Credentialed Veterinary Technician Specialist', [/\bcredentialed veterinary technician specialist\b/i, /\btechnician specialist\b/i, /\bvts\b/i]]
         ];
@@ -203,6 +205,7 @@
         if (t.includes('cardiologist') || t.includes('cardiology')) return 'Cardiologist';
         if (t.includes('oncologist') && t.includes('radiation')) return 'Radiation Oncologist';
         if (t.includes('oncologist') || t.includes('oncology')) return 'Medical Oncologist';
+        if (t.includes('rehabilitation') || t.includes('sports medicine')) return 'Sports Medicine & Rehabilitation Specialist';
         if (t.includes('radiologist') || t.includes('diagnostic imaging') || t.includes('radiology')) return 'Radiologist';
         if (t.includes('ophthalmologist') || t.includes('ophthalmology')) return 'Ophthalmologist';
         if (t.includes('anesthesiologist') || t.includes('anesthesia')) return 'Anesthesiologist';
@@ -437,7 +440,7 @@
             if (category) {
                 if (category.includes('gen practice')) return 'General Practice Care';
                 if (category === 'veterinarian (er)' || category.includes('(er)')) return 'Emergency Care';
-                if (category.includes('specialty diplomate') || category.includes('surgeon diplomate')) return 'Specialty Care';
+                if (category.includes('specialty diplomate') || category.includes('surgeon diplomate') || category.includes('rehabilitation') || category.includes('sports medicine')) return 'Specialty Care';
             }
 
             // STEP 2: Check TITLE for clear specialty position names (COMPREHENSIVE LIST)
@@ -446,7 +449,7 @@
                 'dermatologist', 'ophthalmologist', 'anesthesiologist', 'theriogenologist',
                 'radiologist', 'internist', 'criticalist', 'ecc specialist',
                 'oncology', 'cardiology', 'neurology', 'dermatology', 'ophthalmology',
-                'anesthesia', 'theriogenology', 'radiology'
+                'anesthesia', 'theriogenology', 'radiology', 'rehabilitation', 'sports medicine'
             ];
             for (const sp of specialtyPositionNames) {
                 if (title.includes(sp)) return 'Specialty Care';
@@ -508,6 +511,7 @@
             if (t.includes('cardiologist') || t.includes('cardiology')) return 'Cardiologist';
             if (t.includes('oncologist') && t.includes('radiation')) return 'Radiation Oncologist';
             if (t.includes('oncologist') || t.includes('oncology')) return 'Medical Oncologist';
+            if (t.includes('rehabilitation') || t.includes('sports medicine')) return 'Sports Medicine & Rehabilitation Specialist';
             if (t.includes('radiologist') || t.includes('diagnostic imaging') || t.includes('radiology')) return 'Radiologist';
             if (t.includes('ophthalmologist') || t.includes('ophthalmology')) return 'Ophthalmologist';
             if (t.includes('anesthesiologist') || t.includes('anesthesia')) return 'Anesthesiologist';
@@ -544,7 +548,7 @@
                     'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
                     'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
                     'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
-                    'Radiologist', 'Surgeon'
+                    'Radiologist', 'Sports Medicine & Rehabilitation Specialist', 'Surgeon'
                 ],
                 'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian'],
             };
