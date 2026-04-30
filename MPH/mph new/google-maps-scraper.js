@@ -58,6 +58,9 @@
         // Find best matching result
         const bestMatch = findBestMatch(resultLinks, hospitalName);
         if (!bestMatch) {
+            if (isLivewellQuery(hospitalName)) {
+                return emptyResult();
+            }
             // No match found — try extracting from the first result anyway
             // as Google Maps usually puts the most relevant result first
             console.log('No exact match found, trying first result');
@@ -126,6 +129,9 @@
             const label = (link.getAttribute('aria-label') || '').replace(/·.*$/, '').trim();
             const normalizedLabel = label.split(',')[0].trim();
             const labelNorm = normalize(normalizedLabel);
+            if (isLivewellQuery(searchQuery) && !labelNorm.includes('livewell')) {
+                continue;
+            }
             const labelWords = new Set(labelNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w)));
 
             // Count how many query words appear in the label
@@ -148,6 +154,10 @@
         }
 
         return bestScore >= 0.34 ? bestLink : null;
+    }
+
+    function isLivewellQuery(value) {
+        return /\blivewell\b/i.test(value || '');
     }
 
     // ===== Extract website URL from place detail panel =====

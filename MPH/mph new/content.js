@@ -162,8 +162,8 @@ function scrapeMarketplacePage(scrapedJobIds) {
                 title,
                 jobId: `MPH-${rawJobId}`,
                 location,
-                city,
-                state,
+                city: '',
+                state: '',
                 hospital,
                 link: jobLink
             });
@@ -208,8 +208,8 @@ function tryArticleStrategy(scrapedJobIds, jobs) {
                 title,
                 jobId: `MPH-${rawJobId}`,
                 location,
-                city,
-                state,
+                city: '',
+                state: '',
                 hospital,
                 link: jobLink
             });
@@ -247,8 +247,8 @@ function tryTableStrategy(scrapedJobIds, jobs) {
                 title,
                 jobId: `MPH-${rawJobId}`,
                 location: parsed.location,
-                city: parsed.city,
-                state: parsed.state,
+                city: '',
+                state: '',
                 hospital: '',
                 link: link.href
             });
@@ -287,8 +287,8 @@ function tryListItemStrategy(scrapedJobIds, jobs) {
                 title,
                 jobId: `MPH-${rawJobId}`,
                 location: parsed.location,
-                city: parsed.city,
-                state: parsed.state,
+                city: '',
+                state: '',
                 hospital: '',
                 link: link.href
             });
@@ -466,6 +466,11 @@ function parseLocationText(text) {
     }
 
     const clean = text.replace(/Location:|City:|State:/gi, '').trim();
+    const stateOnly = parseStateOnlyValue(clean);
+    if (stateOnly) {
+        return { location: stateOnly, city: '', state: stateOnly };
+    }
+
     const match = clean.match(/^([A-Za-z\s.'()-]+),\s*([A-Za-z\s]{2,})$/);
     if (match) {
         const city = match[1].trim();
@@ -475,4 +480,15 @@ function parseLocationText(text) {
     }
 
     return { location: clean, city: clean, state: '' };
+}
+
+function parseStateOnlyValue(value) {
+    const clean = (value || '').trim();
+    if (!clean) return '';
+
+    if (/^[A-Z]{2}$/i.test(clean)) {
+        return clean.toUpperCase();
+    }
+
+    return STATE_ABBR[clean.toLowerCase()] || '';
 }

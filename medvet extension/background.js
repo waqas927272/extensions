@@ -1,8 +1,19 @@
 let isScraping = false;
 let sessionScrapedCount = 0;
 let totalOnPage = 0;
+let uniqueJobLinks = new Set();
 
 let offscreenCreating; // A global promise to avoid race conditions and ensure the offscreen document is only created once.
+
+function sendScrapingStatus(status, message = '', scrapedCount = sessionScrapedCount) {
+  chrome.runtime.sendMessage({
+    action: 'scrapingStatus',
+    status,
+    message,
+    scrapedCount,
+    currentPage: 0
+  }).catch(() => {});
+}
 
 async function setupOffscreenDocument(path) {
   // Check if an offscreen document is already open
@@ -31,10 +42,13 @@ async function setupOffscreenDocument(path) {
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.command === 'start') {
+  if (request.command === 'start' || request.action === 'startScraping') {
     isScraping = true;
     sessionScrapedCount = 0;
     totalOnPage = 0;
+    uniqueJobLinks = new Set();
+    sendScrapingStatus('scraping', 'Starting MedVet listing scrape...', 0);
+    chrome.storage.local.set({ scrapedJobs: [], records: [] });
     // Inject content script into the current tab to start scraping
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0] && tabs[0].id) {
@@ -45,17 +59,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
     });
     sendResponse({ status: 'started' });
-  } else if (request.command === 'stop') {
+  } else if (request.command === 'stop' || request.action === 'stopScraping') {
     isScraping = false;
     chrome.runtime.sendMessage({ command: 'scraping_finished' }); // Inform popup
+    sendScrapingStatus('stopped', 'Scraping stopped.', sessionScrapedCount);
     sendResponse({ status: 'stopped' });
   } else if (request.command === 'get-status') {
-    chrome.storage.local.get({ records: [] }, (result) => {
+    chrome.storage.local.get({ scrapedJobs: [], records: [] }, (result) => {
+      const jobs = result.scrapedJobs.length ? result.scrapedJobs : result.records;
       sendResponse({
         isScraping,
         sessionCount: sessionScrapedCount,
         pageTotal: totalOnPage,
-        totalRecords: result.records.length
+        totalRecords: jobs.length
       });
     });
   } else if (request.command === 'page-total') {
@@ -66,14 +82,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (isScraping) { // If scraping was active, it means this was the final page
       isScraping = false; // Stop the scraping process
       chrome.runtime.sendMessage({ command: 'scraping_finished' });
+      sendScrapingStatus('completed', `Scraping completed! Found ${sessionScrapedCount} jobs. Use "View Records", then "Get Descriptions" or "Fetch Details" for enrichment.`, sessionScrapedCount);
     }
   } else if (request.command === 'add-records') {
     if (isScraping) { // Only add records if scraping is active
-      sessionScrapedCount += request.records.length;
-      chrome.runtime.sendMessage({ command: 'session-update', count: sessionScrapedCount });
-      chrome.storage.local.get({ records: [] }, (result) => {
-        const allRecords = result.records.concat(request.records);
-        chrome.storage.local.set({ records: allRecords });
+      chrome.storage.local.get({ scrapedJobs: [] }, (result) => {
+        const allRecords = result.scrapedJobs || [];
+        for (const record of request.records || []) {
+          if (!record.link || uniqueJobLinks.has(record.link)) continue;
+          uniqueJobLinks.add(record.link);
+          allRecords.push(record);
+        }
+        sessionScrapedCount = allRecords.length;
+        chrome.runtime.sendMessage({ command: 'session-update', count: sessionScrapedCount });
+        sendScrapingStatus('in_progress', `Scraped ${sessionScrapedCount} jobs so far...`, sessionScrapedCount);
+        chrome.storage.local.set({ scrapedJobs: allRecords, records: allRecords });
       });
     }
   } else if (request.command === 'fetch-job-description') {
@@ -97,23 +120,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     })();
     return true; // Indicates that the response is sent asynchronously
   } else if (request.action === 'scrapeJobDescription') {
-    const { tabId, jobIndex, jobLink } = request;
+    const { tabId, jobIndex } = request;
 
-    // Wait for the tab to finish loading, then inject detail-extractor.js
-    // detail-extractor.js returns [{areaOfPractice, position, salary, hospitalName, description, city, state, location}]
+    // Wait for the tab to finish loading, then inject the description-only scraper.
     chrome.tabs.onUpdated.addListener(function listener(updatedTabId, info) {
       if (updatedTabId === tabId && info.status === 'complete') {
         chrome.tabs.onUpdated.removeListener(listener);
 
         chrome.scripting.executeScript({
           target: { tabId: tabId },
-          files: ['detail-extractor.js']
+          files: ['description-scraper.js']
         }).then((results) => {
-          const detailsList = results[0]?.result;
-          const firstDetail = Array.isArray(detailsList) && detailsList.length > 0 ? detailsList[0] : null;
+          const description = results?.[0]?.result || '';
+          const firstDetail = description ? { description } : null;
 
-          chrome.storage.local.get({ records: [] }, (result) => {
-            const records = result.records || [];
+          chrome.storage.local.get({ scrapedJobs: [] }, (result) => {
+            const records = result.scrapedJobs || [];
             if (records[jobIndex] && firstDetail) {
               const record = records[jobIndex];
 
@@ -159,7 +181,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               if (firstDetail.city && !record.city) record.city = firstDetail.city;
               if (firstDetail.state && !record.state) record.state = firstDetail.state;
 
-              chrome.storage.local.set({ records: records }, () => {
+              chrome.storage.local.set({ scrapedJobs: records, records: records }, () => {
                 console.log(`Details saved for job ${jobIndex + 1}: ${record.title} → ${record.position} (${record.areaOfPractice})`);
                 chrome.tabs.remove(tabId);
                 chrome.runtime.sendMessage({
@@ -207,7 +229,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             job_title:        record.title || '',
             job_id:           record.jobId || '',
             department_id:    record.jobId || '',
-            hospital:         record.hospitalName || '',
+            hospital:         record.hospital || record.hospitalName || '',
             aggregator:       'MedVet (Parent Client)',
             street_address:   record.streetAddress || '',
             parent_client:    'MedVet',

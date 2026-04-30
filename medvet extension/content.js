@@ -1,5 +1,16 @@
 (() => {
   let isScraping = true;
+  const excludedJobTitles = new Set([
+    'mentorship program',
+    'contingent licensed veterinary technician',
+    'emergency credentialed technician or experienced veterinary assistant',
+    'emergency department client service representative- seasonal',
+    'emergency registered veterinary technician'
+  ]);
+
+  function normalizeTitle(title) {
+    return (title || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  }
 
   function scrapeData() {
     if (!isScraping) {
@@ -23,6 +34,10 @@
         const title = titleElement ? titleElement.innerText.trim() : '';
         const link = linkElement ? linkElement.href : '';
 
+        if (excludedJobTitles.has(normalizeTitle(title))) {
+          return;
+        }
+
         // Extract job ID from the URL (last path segment)
         let jobId = '';
         if (link) {
@@ -45,15 +60,18 @@
             }
         }
 
-        const position = categoryElement.innerText.trim();
+        const location = [city, state].filter(Boolean).join(', ');
 
         pageRecords.push({
           title,
           jobId,
+          hospital: 'MedVet',
           city,
           state,
+          location,
           link,
-          position
+          areaOfPractice: '',
+          position: ''
         });
       }
     });

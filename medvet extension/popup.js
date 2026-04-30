@@ -1,61 +1,54 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const startButton = document.getElementById('startScraping');
-  const stopButton = document.getElementById('stopScraping');
-  const viewRecordsButton = document.getElementById('viewRecords');
-  const loadingMessage = document.getElementById('loadingMessage');
-  const sessionCountSpan = document.getElementById('sessionCount');
-  const pageTotalSpan = document.getElementById('pageTotal');
-  const totalRecordsSpan = document.getElementById('totalRecords');
+    const startScrapingButton = document.getElementById('startScraping');
+    const stopScrapingButton = document.getElementById('stopScraping');
+    const viewRecordsButton = document.getElementById('viewRecords');
+    const loadingIndicator = document.getElementById('loadingIndicator');
 
-  function updateStatus() {
-    chrome.runtime.sendMessage({ command: 'get-status' }, (response) => {
-      if (chrome.runtime.lastError) {
-        // Handle potential error if background script is not ready
-        console.error(chrome.runtime.lastError.message);
-        return;
-      }
-      if (response) {
-        if (response.isScraping) {
-          loadingMessage.classList.add('show');
-        } else {
-          loadingMessage.classList.remove('show');
+    // Listener for messages from background.js to update UI
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === 'scrapingStatus') {
+            const spinnerText = loadingIndicator.querySelector('span');
+            if (request.status === 'starting' || request.status === 'scraping') {
+                loadingIndicator.classList.remove('hidden');
+                if (spinnerText) spinnerText.textContent = request.message || 'Scraping... Please wait.';
+            } else if (request.status === 'in_progress') {
+                loadingIndicator.classList.remove('hidden');
+                if (spinnerText) spinnerText.textContent = `Scraping page ${request.currentPage}... (${request.scrapedCount} jobs found)`;
+            } else if (request.status === 'completed' || request.status === 'stopped') {
+                loadingIndicator.classList.add('hidden');
+                if (spinnerText) spinnerText.textContent = 'Scraping... Please wait.'; // Reset for next time
+                if (request.status === 'completed') {
+                    if (request.message && request.message.includes('Fetch Details')) {
+                        alert(request.message);
+                    } else {
+                        alert(`Scraping completed! Scraped ${request.scrapedCount} jobs. Click "View Records" then "Fetch Details" to get additional information.`);
+                    }
+                } else {
+                    alert(`Scraping stopped. Scraped ${request.scrapedCount} jobs so far.`);
+                }
+            } else if (request.status === 'error') {
+                loadingIndicator.classList.add('hidden');
+                if (spinnerText) spinnerText.textContent = 'Scraping... Please wait.'; // Reset
+                alert(`Scraping error: ${request.message}`);
+            }
         }
-        sessionCountSpan.textContent = response.sessionCount || 0;
-        pageTotalSpan.textContent = response.pageTotal || 0;
-        totalRecordsSpan.textContent = response.totalRecords || 0;
-      }
     });
-  }
+  
+    startScrapingButton.addEventListener('click', () => {
+        chrome.runtime.sendMessage({ action: 'startScraping' });
+        // The loading indicator will be shown by the 'scrapingStatus' message from background.js
+        loadingIndicator.classList.remove('hidden');
+        const spinnerText = loadingIndicator.querySelector('span');
+        if (spinnerText) spinnerText.textContent = 'Initializing scraping...';
+    });
 
-  // Initial status update when popup opens
-  updateStatus();
-
-  startButton.addEventListener('click', () => {
-    loadingMessage.classList.add('show');
-    // Reset counts for new session
-    sessionCountSpan.textContent = 0;
-    pageTotalSpan.textContent = 0;
-    chrome.runtime.sendMessage({ command: 'start' });
+    stopScrapingButton.addEventListener('click', () => {
+        chrome.runtime.sendMessage({ action: 'stopScraping' });
+        const spinnerText = loadingIndicator.querySelector('span');
+        if (spinnerText) spinnerText.textContent = 'Stopping scraping...';
+    });
+  
+    viewRecordsButton.addEventListener('click', () => {
+      chrome.tabs.create({ url: 'records.html' });
+    });
   });
-
-  stopButton.addEventListener('click', () => {
-    loadingMessage.classList.remove('show');
-    chrome.runtime.sendMessage({ command: 'stop' });
-  });
-
-  viewRecordsButton.addEventListener('click', () => {
-    chrome.tabs.create({ url: 'records.html' });
-  });
-
-  // Listen for real-time updates from the background script
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.command === 'scraping_finished') {
-      loadingMessage.classList.remove('show');
-      updateStatus(); // Update all stats once finished
-    } else if (request.command === 'session-update') {
-      sessionCountSpan.textContent = request.count;
-    } else if (request.command === 'page-total-update') {
-      pageTotalSpan.textContent = request.count;
-    }
-  });
-});

@@ -27,17 +27,7 @@
         while (Date.now() - startTime < MAX_WAIT) {
             // Check if we're on a single place page (address button exists)
             addressData = tryExtractFromPlaceDetail();
-            if (addressData) {
-                // Wait up to 3s more for phone if not yet loaded
-                if (!addressData.phone) {
-                    for (let i = 0; i < 6; i++) {
-                        await wait(500);
-                        const phone = tryExtractPhone();
-                        if (phone) { addressData.phone = phone; break; }
-                    }
-                }
-                return addressData;
-            }
+            if (addressData) return addressData;
 
             // Check if search results list has loaded
             const resultLinks = document.querySelectorAll('a.hfpxzc');
@@ -90,18 +80,7 @@
             await wait(POLL);
 
             addressData = tryExtractFromPlaceDetail();
-            if (addressData) {
-                // Address found — but phone/website may load slightly later.
-                // Wait up to 3 more seconds specifically for phone to appear.
-                if (!addressData.phone) {
-                    for (let i = 0; i < 6; i++) {
-                        await wait(500);
-                        const phone = tryExtractPhone();
-                        if (phone) { addressData.phone = phone; break; }
-                    }
-                }
-                return addressData;
-            }
+            if (addressData) return addressData;
         }
 
         // Last resort: try extracting from whatever is on the page now
@@ -117,7 +96,8 @@
         const url = window.location.href;
         const searchMatch = url.match(/\/maps\/search\/([^?#]+)/);
         if (searchMatch) {
-            return decodeURIComponent(searchMatch[1]).replace(/\+/g, ' ').trim();
+            const decoded = decodeURIComponent(searchMatch[1]).replace(/\+/g, ' ').trim();
+            return decoded.split(',')[0].trim();
         }
         return '';
     }
@@ -127,6 +107,8 @@
     function findBestMatch(links, searchQuery) {
         if (!searchQuery || links.length === 0) return null;
 
+        const stopWords = new Set(['the', 'and', 'for', 'with', 'veterinary', 'animal', 'pet', 'hospital', 'clinic', 'center', 'centre']);
+
         // Normalize for comparison: lowercase, remove special chars
         const normalize = (str) => str.toLowerCase()
             .replace(/&/g, 'and')
@@ -135,25 +117,29 @@
             .trim();
 
         const queryNorm = normalize(searchQuery);
-        const queryWords = queryNorm.split(' ').filter(w => w.length > 2); // Skip short words
+        const queryWords = queryNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w));
 
         let bestLink = null;
         let bestScore = 0;
 
         for (const link of links) {
             const label = (link.getAttribute('aria-label') || '').replace(/·.*$/, '').trim();
-            const labelNorm = normalize(label);
+            const normalizedLabel = label.split(',')[0].trim();
+            const labelNorm = normalize(normalizedLabel);
+            const labelWords = new Set(labelNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w)));
 
             // Count how many query words appear in the label
             let matchCount = 0;
             for (const word of queryWords) {
-                if (labelNorm.includes(word)) {
+                if (labelNorm.includes(word) || labelWords.has(word)) {
                     matchCount++;
                 }
             }
 
-            // Score = percentage of query words that matched
-            const score = queryWords.length > 0 ? matchCount / queryWords.length : 0;
+            // Score = percentage of query words that matched, with small boosts for close name matches
+            let score = queryWords.length > 0 ? matchCount / queryWords.length : 0;
+            if (labelNorm === queryNorm) score += 0.5;
+            if (labelNorm.startsWith(queryNorm) || queryNorm.startsWith(labelNorm)) score += 0.2;
 
             if (score > bestScore) {
                 bestScore = score;
@@ -161,8 +147,7 @@
             }
         }
 
-        // Require at least 50% word overlap to consider it a match
-        return bestScore >= 0.5 ? bestLink : null;
+        return bestScore >= 0.34 ? bestLink : null;
     }
 
     // ===== Extract website URL from place detail panel =====
@@ -183,58 +168,47 @@
             const cleaned = ariaLabel.replace(/^Website:\s*/i, '').trim();
             if (cleaned) return cleaned;
         }
+        // Method 3: any website-labelled link/button in the place panel
+        const websiteFallback = document.querySelector('a[aria-label^="Website:"], button[aria-label^="Website:"], a[data-tooltip="Open website"]');
+        if (websiteFallback) {
+            const href = websiteFallback.getAttribute('href') || '';
+            if (href && !href.startsWith('javascript:')) return href;
+            const ariaLabel = websiteFallback.getAttribute('aria-label') || '';
+            const cleaned = ariaLabel.replace(/^Website:\s*/i, '').trim();
+            if (cleaned) return cleaned;
+        }
         return '';
-    }
-
-    // ===== Extract a clean phone number string from raw text =====
-    // Uses innerText (not textContent) to avoid hidden icon glyphs (charCode 57520 etc.)
-    // Then regex-extracts only valid phone characters.
-    function cleanPhone(raw) {
-        if (!raw) return '';
-        // Strip "Phone: " label prefix
-        let s = raw.replace(/^Phone:\s*/i, '');
-        // Collapse all whitespace (including \n from innerText) to single space
-        s = s.replace(/\s+/g, ' ').trim();
-        // Extract just the phone number — +1 XXX-XXX-XXXX or (XXX) XXX-XXXX etc.
-        const m = s.match(/(\+?1[\s\-.]?)?\(?\d{3}\)?[\s\-\.]\d{3}[\s\-\.]\d{4}/);
-        if (m) return m[0].replace(/\s+/g, ' ').trim();
-        // Fallback: keep only phone-safe chars
-        const stripped = s.replace(/[^\d\+\-\(\) ]/g, '').trim();
-        return stripped.length >= 7 ? stripped : '';
     }
 
     // ===== Extract phone number from place detail panel =====
     function tryExtractPhone() {
-        // Method 1: button with data-item-id starting with "phone:" (most reliable)
+        // Method 1: button with data-item-id starting with "phone:"
         const phoneBtn = document.querySelector('button[data-item-id^="phone:"]');
         if (phoneBtn) {
-            // Use innerText — excludes hidden icon glyphs that textContent includes
-            const fromInnerText = cleanPhone(phoneBtn.innerText);
-            if (fromInnerText) return fromInnerText;
-            // Fallback: aria-label "Phone: +1 773-281-7110 "
-            const fromAria = cleanPhone(phoneBtn.getAttribute('aria-label'));
-            if (fromAria) return fromAria;
-            // Last resort: data-item-id "phone:tel:+17732817110"
-            const fromId = cleanPhone(
-                (phoneBtn.getAttribute('data-item-id') || '')
-                    .replace(/^phone:tel:/, '')
-                    .replace(/^phone:/, '')
-            );
-            if (fromId) return fromId;
-        }
-        // Method 2: any element with aria-label starting "Phone:"
-        const ariaPhoneEl = document.querySelector('[aria-label^="Phone:"]');
-        if (ariaPhoneEl) {
-            const cleaned = cleanPhone(ariaPhoneEl.getAttribute('aria-label'));
+            // data-item-id="phone:tel:+1-555-123-4567" or similar
+            const dataId = phoneBtn.getAttribute('data-item-id') || '';
+            const phoneFromId = dataId.replace(/^phone:tel:/, '').replace(/^phone:/, '').trim();
+            if (phoneFromId) return phoneFromId;
+            // Fallback: aria-label
+            const ariaLabel = phoneBtn.getAttribute('aria-label') || '';
+            const cleaned = ariaLabel.replace(/^Phone:\s*/i, '').trim();
             if (cleaned) return cleaned;
         }
-        // Method 3: tel: links
+        // Method 2: look for tel: links
         const telLinks = document.querySelectorAll('a[href^="tel:"]');
         for (const link of telLinks) {
-            const text = cleanPhone(link.innerText || link.textContent);
-            if (text) return text;
-            const phone = cleanPhone(link.getAttribute('href').replace('tel:', ''));
+            const phone = link.getAttribute('href').replace('tel:', '').trim();
             if (phone) return phone;
+        }
+        // Method 3: generic phone-labelled buttons/spans
+        const phoneFallback = document.querySelector('button[aria-label^="Phone:"], button[data-item-id*="phone"], [aria-label^="Phone:"]');
+        if (phoneFallback) {
+            const dataId = phoneFallback.getAttribute('data-item-id') || '';
+            const phoneFromId = dataId.replace(/^phone:tel:/, '').replace(/^phone:/, '').trim();
+            if (phoneFromId) return phoneFromId;
+            const ariaLabel = phoneFallback.getAttribute('aria-label') || '';
+            const cleaned = ariaLabel.replace(/^Phone:\s*/i, '').trim();
+            if (cleaned) return cleaned;
         }
         return '';
     }

@@ -1,4 +1,65 @@
 (() => {
+    const STATE_ABBR = {
+        'alabama': 'AL',
+        'alaska': 'AK',
+        'arizona': 'AZ',
+        'arkansas': 'AR',
+        'california': 'CA',
+        'colorado': 'CO',
+        'connecticut': 'CT',
+        'delaware': 'DE',
+        'florida': 'FL',
+        'georgia': 'GA',
+        'hawaii': 'HI',
+        'idaho': 'ID',
+        'illinois': 'IL',
+        'indiana': 'IN',
+        'iowa': 'IA',
+        'kansas': 'KS',
+        'kentucky': 'KY',
+        'louisiana': 'LA',
+        'maine': 'ME',
+        'maryland': 'MD',
+        'massachusetts': 'MA',
+        'michigan': 'MI',
+        'minnesota': 'MN',
+        'mississippi': 'MS',
+        'missouri': 'MO',
+        'montana': 'MT',
+        'nebraska': 'NE',
+        'nevada': 'NV',
+        'new hampshire': 'NH',
+        'new jersey': 'NJ',
+        'new mexico': 'NM',
+        'new york': 'NY',
+        'north carolina': 'NC',
+        'north dakota': 'ND',
+        'ohio': 'OH',
+        'oklahoma': 'OK',
+        'oregon': 'OR',
+        'pennsylvania': 'PA',
+        'rhode island': 'RI',
+        'south carolina': 'SC',
+        'south dakota': 'SD',
+        'tennessee': 'TN',
+        'texas': 'TX',
+        'utah': 'UT',
+        'vermont': 'VT',
+        'virginia': 'VA',
+        'washington': 'WA',
+        'west virginia': 'WV',
+        'wisconsin': 'WI',
+        'wyoming': 'WY',
+        'district of columbia': 'DC'
+    };
+
+    function parseStateOnlyValue(value) {
+        const clean = (value || '').trim();
+        if (!clean) return '';
+        if (/^[A-Z]{2}$/i.test(clean)) return clean.toUpperCase();
+        return STATE_ABBR[clean.toLowerCase()] || '';
+    }
+
     // ===== DATA SOURCE 1: Parse preloadedData from Angular script =====
     function getPreloadedData() {
         const scripts = document.querySelectorAll('script');
@@ -83,7 +144,12 @@
                     result.city = parts[0];
                     result.state = parts[1];
                 } else if (parts.length === 1) {
-                    result.city = parts[0];
+                    const stateOnly = parseStateOnlyValue(parts[0]);
+                    if (stateOnly) {
+                        result.state = stateOnly;
+                    } else {
+                        result.city = parts[0];
+                    }
                 }
             } else {
                 // No separator — full text might be just category or category + location
@@ -698,11 +764,11 @@
         }
 
         // 2. From DOM (.jv-job-detail-meta)
-        if (locations.length === 0 && domData.city) {
+        if (locations.length === 0 && (domData.city || domData.state)) {
             locations.push({
-                city: domData.city,
+                city: domData.city || '',
                 state: domData.state || '',
-                location: domData.state ? `${domData.city}, ${domData.state}` : domData.city
+                location: domData.city && domData.state ? `${domData.city}, ${domData.state}` : (domData.city || domData.state)
             });
         }
 
