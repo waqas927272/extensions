@@ -110,6 +110,178 @@
         return stateAbbreviations[state.toUpperCase()] || state;
     }
 
+    function getStateAbbreviation(state) {
+        if (!state) return '';
+        const trimmed = state.trim().replace(/\.$/, '');
+        if (/^[A-Z]{2}$/i.test(trimmed)) return trimmed.toUpperCase();
+
+        const normalized = trimmed.toLowerCase();
+        const match = Object.entries(stateAbbreviations).find(([, fullName]) => fullName.toLowerCase() === normalized);
+        return match ? match[0] : trimmed;
+    }
+
+    function normalizeHospitalLocation(city, state) {
+        const cleanCity = (city || '').trim().replace(/\s+/g, ' ');
+        const cleanState = getStateAbbreviation(state || '');
+        if (cleanCity && cleanState) return `${cleanCity}, ${cleanState}`;
+        return cleanCity || cleanState || '';
+    }
+
+    function parseHospitalLocationText(value) {
+        if (!value) return null;
+        const cleaned = value
+            .replace(/\([^)]*\)/g, ' ')
+            .replace(/\s+/g, ' ')
+            .replace(/\s+,/g, ',')
+            .trim();
+        const stateNames = Object.values(stateAbbreviations).join('|');
+        const match = cleaned.match(new RegExp(`\\b([A-Z][A-Za-z .'-]+?)\\s*,\\s*([A-Z]{2}|${stateNames})\\b`, 'i'));
+        if (!match) return null;
+
+        const city = match[1]
+            .replace(/\b(?:our|new|the|in|at|within|and|or)\b\s*$/i, '')
+            .trim();
+        const state = getStateAbbreviation(match[2]);
+        if (!city || !state) return null;
+        return { city, state, location: `${city}, ${state}` };
+    }
+
+    function parseCurrentJobLocation(job) {
+        const direct = parseHospitalLocationText(job?.location || '');
+        if (direct) return direct;
+        const combined = normalizeHospitalLocation(job?.city || '', job?.state || '');
+        return parseHospitalLocationText(combined);
+    }
+
+    function extractMedVetHospitalBrand(descriptionText, currentHospital) {
+        const existing = (currentHospital || '').trim();
+        if (/^westvet\b/i.test(existing)) return 'WestVet';
+        if (/\bwestvet\b/i.test(descriptionText || '')) return 'WestVet';
+        return 'MedVet';
+    }
+
+    function extractHospitalLocationFromDescription(descriptionText) {
+        if (!descriptionText) return null;
+        const text = descriptionText.replace(/\s+/g, ' ');
+        const locationPattern = '([A-Z][A-Za-z .\'-]+?\\s*,\\s*(?:[A-Z]{2}|' + Object.values(stateAbbreviations).join('|') + '))';
+        const patterns = [
+            new RegExp(`\\b(?:join|support|serve|grow)[^.]{0,120}?\\bour\\s+(?:new\\s+)?${locationPattern}\\s*,?\\s+hospital\\b`, 'i'),
+            new RegExp(`\\bjoin\\s+the\\s+team\\s+in\\s+our\\s+${locationPattern}\\s*,?\\s+hospital\\b`, 'i'),
+            new RegExp(`\\bwithin\\s+our\\s+${locationPattern}\\s*,?\\s+hospital\\b`, 'i'),
+            new RegExp(`\\bat\\s+our\\s+${locationPattern}\\s*,?\\s+hospital\\b`, 'i'),
+            new RegExp(`\\bhospital\\s+in\\s+${locationPattern}\\b`, 'i'),
+            new RegExp(`\\bnew\\s+location\\s+in\\s+${locationPattern}\\b`, 'i')
+        ];
+
+        for (const pattern of patterns) {
+            const match = text.match(pattern);
+            if (match) {
+                const parsed = parseHospitalLocationText(match[1]);
+                if (parsed) return parsed;
+            }
+        }
+
+        return null;
+    }
+
+    function extractHospitalCityFromDescription(descriptionText) {
+        if (!descriptionText) return '';
+        const text = descriptionText.replace(/\s+/g, ' ');
+        const brandCityPatterns = [
+            /\b(?:MedVet|WestVet)\s+([A-Z][A-Za-z .'-]{2,45}?)\s+(?:is|has|will|seeks|seeking|looks|looking)\b/i,
+            /\bWhy\s+(?:Join|will\s+you\s+love\s+working\s+at)\s+(?:MedVet|WestVet)\s+([A-Z][A-Za-z .'-]{2,45}?)(?:\?|\.|\s)/i
+        ];
+
+        for (const pattern of brandCityPatterns) {
+            const match = text.match(pattern);
+            if (!match) continue;
+            const city = match[1]
+                .replace(/\b(?:hospital|team|here|and|partner)\b.*$/i, '')
+                .trim();
+            if (city && city.length < 50) return city;
+        }
+
+        return '';
+    }
+
+    function buildHospitalNameFromDescription(descriptionText, job, detailLocation = null) {
+        const brand = extractMedVetHospitalBrand(descriptionText, job?.hospital || job?.hospitalName || '');
+        const describedLocation = extractHospitalLocationFromDescription(descriptionText);
+        const currentLocation = parseCurrentJobLocation(job);
+        const locationFromDetail = detailLocation?.location
+            ? parseHospitalLocationText(detailLocation.location)
+            : (detailLocation?.city || detailLocation?.state ? parseHospitalLocationText(`${detailLocation.city || ''}, ${detailLocation.state || ''}`) : null);
+
+        let location = describedLocation || currentLocation || locationFromDetail;
+
+        if (!location) {
+            const cityOnly = extractHospitalCityFromDescription(descriptionText);
+            const stateFromCurrent = currentLocation?.state || getStateAbbreviation(job?.state || '');
+            if (cityOnly && stateFromCurrent) {
+                location = { city: cityOnly, state: stateFromCurrent, location: `${cityOnly}, ${stateFromCurrent}` };
+            }
+        }
+
+        if (location?.city && currentLocation?.state && !location.state) {
+            location.state = currentLocation.state;
+            location.location = `${location.city}, ${location.state}`;
+        }
+
+        if (location?.location) return `${brand} - ${location.location}`;
+        return `${brand}`;
+    }
+
+    function formatDetailLocation(loc) {
+        const city = (loc?.city || '').trim();
+        const state = getFullStateName(loc?.state || '');
+        const location = city && state ? `${city}, ${state}` : (loc?.location || '').trim();
+        return { city, state, location };
+    }
+
+    function buildHospitalNameForLocation(descriptionText, job, loc) {
+        const brand = extractMedVetHospitalBrand(descriptionText, job?.hospital || job?.hospitalName || '');
+        const formatted = formatDetailLocation(loc);
+        return formatted.location ? `${brand} - ${formatted.location}` : buildHospitalNameFromDescription(descriptionText, job, loc);
+    }
+
+    function makeLocationKey(loc) {
+        return (loc?.location || [loc?.city, loc?.state].filter(Boolean).join(', '))
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '');
+    }
+
+    function specializeDescriptionForLocation(description, loc) {
+        if (!description || !loc?.city) return description || '';
+        const formatted = formatDetailLocation(loc);
+        const stateAbbrev = getStateAbbreviation(formatted.state);
+        const escapedCity = formatted.city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+        let text = description;
+        text = text.replace(/Locations:\n(?:\s*-\s*[^\n]+\n?)+/i, `Locations:\n  - ${formatted.city}, ${formatted.state}, United States\n`);
+        text = text.replace(
+            /\bjoin\s+our\s+[A-Z][A-Za-z .'-]+?\s+and\s+[A-Z][A-Za-z .'-]+?,\s*[A-Z]{2}\s+hospitals\b/i,
+            `join our ${formatted.city}, ${formatted.state} hospital`
+        );
+        text = text.replace(
+            /\bjoin\s+our\s+[A-Z][A-Za-z .'-]+?\s+and\s+[A-Z][A-Za-z .'-]+?,\s*[A-Za-z ]+\s+hospitals\b/i,
+            `join our ${formatted.city}, ${formatted.state} hospital`
+        );
+        text = text.replace(/\b2 Locations\b/g, formatted.location);
+        text = text.replace(
+            /(Emergency Veterinarian\s+Emergency Medicine\s+)(?:[A-Z][A-Za-z .'-]+,\s*[A-Za-z ]+\s+){1,5}/i,
+            `$1${formatted.location} `
+        );
+        text = text.replace(
+            /(Emergency Veterinarian\s+Emergency Medicine\s+)(?:[A-Z][A-Za-z .'-]+,\s*[A-Z]{2}\s+){1,5}/i,
+            `$1${formatted.location} `
+        );
+        text = text.replace(new RegExp(`Why\\s+Join\\s+MedVet\\s+[A-Z][A-Za-z .'-]+\\?`, 'i'), `Why Join MedVet ${formatted.city}?`);
+        text = text.replace(new RegExp(`Why\\s+${escapedCity},\\s*(?:${stateAbbrev}|${formatted.state})\\?`, 'i'), `Why ${formatted.city}, ${formatted.state}?`);
+
+        return text;
+    }
+
     const APPROVED_POSITIONS = [
         'Associate Veterinarian',
         'Medical Director',
@@ -146,8 +318,18 @@
         'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
     };
 
+    function extractQualificationSignalSection(text) {
+        const match = (text || '').match(/(?:who you are|requirements?|qualifications?|preferred qualifications|what you'?ll need|what we'?re looking for|credentials?|must have|what we need)[:\s]*([\s\S]{0,900}?)(?=(?:benefits?|compensation|salary|about|our culture|location|equal|join us|why|facility|what we offer|ready to|key responsibilities|everything starts|come as you are|for more information)[:\s]|$)/i);
+        return match ? match[1] : '';
+    }
+
     function hasSpecialtyTrainingSignal(text) {
-        return /\bboard certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b/i.test(text || '');
+        const source = text || '';
+        const qualificationText = extractQualificationSignalSection(source);
+        const specialtyCredentialPattern = /\bboard[-\s]+certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b/i;
+        if (specialtyCredentialPattern.test(qualificationText)) return true;
+
+        return /\b(?:seeking|join(?:ing)?|hiring)\b.{0,160}\b(?:board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained)\b.{0,120}\b(?:specialist|surgeon|oncologist|cardiologist|neurologist|dermatologist|ophthalmologist|radiologist|anesthesiologist|internist|criticalist|diplomate)\b/i.test(source);
     }
 
     function matchApprovedPositionFromText(text) {
@@ -156,21 +338,21 @@
         const rules = [
             ['Medical Director', [/\bmedical director\b/i]],
             ['Lead Veterinarian', [/\blead veterinarian\b/i, /\blead vet\b/i]],
-            ['Neurologist & Neurosurgeon', [/\bneurologist\b/i, /\bneurosurgeon\b/i, /\bboard certified\b.*\bneurolog/i, /\bresidency[-\s]+trained\b.*\bneurolog/i, /\bdacvim\b.*\bneurolog/i]],
-            ['Dermatologist', [/\bdermatologist\b/i, /\bboard certified\b.*\bdermatolog/i, /\bresidency[-\s]+trained\b.*\bdermatolog/i, /\bdacvd\b/i]],
-            ['Cardiologist', [/\bcardiologist\b/i, /\bboard certified\b.*\bcardiolog/i, /\bresidency[-\s]+trained\b.*\bcardiolog/i, /\bdacvim\b.*\bcardiolog/i]],
+            ['Neurologist & Neurosurgeon', [/\bneurologist\b/i, /\bneurosurgeon\b/i, /\bboard[-\s]+certified\b.*\bneurolog/i, /\bresidency[-\s]+trained\b.*\bneurolog/i, /\bdacvim\b.*\bneurolog/i]],
+            ['Dermatologist', [/\bdermatologist\b/i, /\bboard[-\s]+certified\b.*\bdermatolog/i, /\bresidency[-\s]+trained\b.*\bdermatolog/i, /\bdacvd\b/i]],
+            ['Cardiologist', [/\bcardiologist\b/i, /\bboard[-\s]+certified\b.*\bcardiolog/i, /\bresidency[-\s]+trained\b.*\bcardiolog/i, /\bdacvim\b.*\bcardiolog/i]],
             ['Radiation Oncologist', [/\bradiation oncolog/i, /\bdacvr[-\s]?ro\b/i, /\bdacvr\b.*\bradiation\b/i]],
-            ['Medical Oncologist', [/\bmedical oncolog/i, /\bboard certified\b.*\boncolog/i, /\bresidency[-\s]+trained\b.*\boncolog/i, /\bdacvim\b.*\boncology\b/i]],
-            ['Radiologist', [/\bradiologist\b/i, /\bdiagnostic imaging specialist\b/i, /\bboard certified\b.*\bradiolog/i, /\bresidency[-\s]+trained\b.*\bradiolog/i, /\bdacvr\b/i]],
-            ['Ophthalmologist', [/\bophthalmologist\b/i, /\bboard certified\b.*\bophthalmolog/i, /\bresidency[-\s]+trained\b.*\bophthalmolog/i, /\bdacvo\b/i]],
-            ['Anesthesiologist', [/\banesthesiologist\b/i, /\bboard certified\b.*\banesth/i, /\bresidency[-\s]+trained\b.*\banesth/i, /\bdacvaa\b/i]],
-            ['Internal Medicine Specialist', [/\binternist\b/i, /\binternal medicine specialist\b/i, /\bboard certified\b.*\binternal medicine\b/i, /\bresidency[-\s]+trained\b.*\binternal medicine\b/i, /\bdacvim\b(?!.*oncology)(?!.*cardiology)(?!.*neurology)/i]],
-            ['ECC Specialist', [/\bcriticalist\b/i, /\becc specialist\b/i, /\bemergency\s*(?:&|and)?\s*critical care specialist\b/i, /\bboard certified\b.*\bcritical/i, /\bresidency[-\s]+trained\b.*\bcritical/i, /\bdacvecc\b/i]],
+            ['Medical Oncologist', [/\bmedical oncolog/i, /\bboard[-\s]+certified\b.*\boncolog/i, /\bresidency[-\s]+trained\b.*\boncolog/i, /\bdacvim\b.*\boncology\b/i]],
+            ['Radiologist', [/\bradiologist\b/i, /\bdiagnostic imaging specialist\b/i, /\bboard[-\s]+certified\b.*\bradiolog/i, /\bresidency[-\s]+trained\b.*\bradiolog/i, /\bdacvr\b/i]],
+            ['Ophthalmologist', [/\bophthalmologist\b/i, /\bboard[-\s]+certified\b.*\bophthalmolog/i, /\bresidency[-\s]+trained\b.*\bophthalmolog/i, /\bdacvo\b/i]],
+            ['Anesthesiologist', [/\banesthesiologist\b/i, /\bboard[-\s]+certified\b.*\banesth/i, /\bresidency[-\s]+trained\b.*\banesth/i, /\bdacvaa\b/i]],
+            ['Internal Medicine Specialist', [/\binternist\b/i, /\binternal medicine specialist\b/i, /\bboard[-\s]+certified\b.*\binternal medicine\b/i, /\bresidency[-\s]+trained\b.*\binternal medicine\b/i, /\bdacvim\b(?!.*oncology)(?!.*cardiology)(?!.*neurology)/i]],
+            ['ECC Specialist', [/\bcriticalist\b/i, /\becc specialist\b/i, /\bemergency\s*(?:&|and)?\s*critical care specialist\b/i, /\bboard[-\s]+certified\b.*\bcritical/i, /\bresidency[-\s]+trained\b.*\bcritical/i, /\bdacvecc\b/i]],
             ['Avian and Exotic Specialis', [/\bavian\b/i, /\bexotics?\b/i]],
             ['DABVP Specialist', [/\bdabvp\b/i]],
-            ['Dental Specialist', [/\bdental specialist\b/i, /\bveterinary dentist\b/i, /\boral surgeon\b/i, /\bboard certified\b.*\bdent/i, /\bresidency[-\s]+trained\b.*\bdent/i, /\bdavdc\b/i]],
-            ['Sports Medicine & Rehabilitation Specialist', [/\brehabilitation veterinarian\b/i, /\bsports medicine\b/i, /\brehabilitation specialist\b/i, /\bboard certified\b.*\brehabilitation\b/i, /\bresidency[-\s]+trained\b.*\brehabilitation\b/i]],
-            ['Surgeon', [/\bveterinary surgeon\b/i, /\bsurgeon\b/i, /\bboard certified\b.*\bsurgeon\b/i, /\bresidency[-\s]+trained\b.*\bsurgeon\b/i, /\bdacvs\b/i, /\bacvs\b/i]],
+            ['Dental Specialist', [/\bdental specialist\b/i, /\bveterinary dentist\b/i, /\boral surgeon\b/i, /\bboard[-\s]+certified\b.*\bdent/i, /\bresidency[-\s]+trained\b.*\bdent/i, /\bdavdc\b/i]],
+            ['Sports Medicine & Rehabilitation Specialist', [/\brehabilitation veterinarian\b/i, /\bsports medicine\b/i, /\brehabilitation specialist\b/i, /\bboard[-\s]+certified\b.*\brehabilitation\b/i, /\bresidency[-\s]+trained\b.*\brehabilitation\b/i]],
+            ['Surgeon', [/\bveterinary surgeon\b/i, /\bsurgeon\b/i, /\bboard[-\s]+certified\b.*\bsurgeon\b/i, /\bresidency[-\s]+trained\b.*\bsurgeon\b/i, /\bdacvs\b/i, /\bacvs\b/i]],
             ['Credentialed Veterinary Technician Specialist', [/\bcredentialed veterinary technician specialist\b/i, /\btechnician specialist\b/i, /\bvts\b/i]]
         ];
 
@@ -291,7 +473,7 @@
             if (t.includes(sp)) return 'Specialty Care';
         }
 
-        const specialtyCerts = ['board certified', 'residency trained', 'residential trained',
+        const specialtyCerts = ['board certified', 'board-certified', 'residency trained', 'residency-trained', 'residential trained', 'residential-trained',
             'diplomate', 'dacvecc', 'dacvim', 'dacvr', 'dacvs', 'dacvd', 'dacvo', 'dacvaa',
             'dact', 'davdc', 'dabvp', 'acvs', 'acvim'];
         for (const cert of specialtyCerts) {
@@ -412,8 +594,8 @@
         // Extract qualifications/requirements section from description
         function extractQualificationsSection(text) {
             const patterns = [
-                /(?:requirements?|qualifications?|what you'?ll need|what we'?re looking for|credentials?|must have|what we need)[:\s]*([\s\S]{0,800}?)(?=(?:benefits?|compensation|salary|about|our culture|location|equal|join us|why|facility|what we offer|ready to)[:\s])/i,
-                /(?:requirements?|qualifications?|what you'?ll need|what we'?re looking for|credentials?|must have|what we need)[:\s]*([\s\S]{0,500})/i
+                /(?:who you are|requirements?|qualifications?|preferred qualifications|what you'?ll need|what we'?re looking for|credentials?|must have|what we need)[:\s]*([\s\S]{0,900}?)(?=(?:benefits?|compensation|salary|about|our culture|location|equal|join us|why|facility|what we offer|ready to|key responsibilities|everything starts|come as you are|for more information)[:\s])/i,
+                /(?:who you are|requirements?|qualifications?|preferred qualifications|what you'?ll need|what we'?re looking for|credentials?|must have|what we need)[:\s]*([\s\S]{0,650})/i
             ];
             for (const pattern of patterns) {
                 const match = text.match(pattern);
@@ -425,7 +607,7 @@
         function extractRoleSignalText(text) {
             if (!text) return '';
 
-            const rolePattern = /\b(?:medical director|lead veterinarian|lead vet|board certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
+            const rolePattern = /\b(?:medical director|lead veterinarian|lead vet|board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
             const blockedPattern = /\b(?:our services|services include|specialties include|benefits|medical(?:,\s*|\s+)dental|dental insurance|our hospital|our team has|state[-\s]?of[-\s]?the[-\s]?art|we offer|years of experience in specialty and emergency services)\b/i;
             const qualificationsSection = extractQualificationsSection(text);
             const collected = [];
@@ -479,7 +661,7 @@
             }
 
             // Check title for board cert / diplomate / DACV* indicators
-            const specialtyCerts = ['board certified', 'residency trained', 'residential trained',
+            const specialtyCerts = ['board certified', 'board-certified', 'residency trained', 'residency-trained', 'residential trained', 'residential-trained',
                 'diplomate', 'dacvecc', 'dacvim', 'dacvr', 'dacvs', 'dacvd', 'dacvo', 'dacvaa',
                 'dact', 'davdc', 'dabvp', 'acvs', 'acvim'];
             for (const cert of specialtyCerts) {
@@ -639,6 +821,18 @@
                 text = text.replace(/^Position at\s*/i, '');
                 const searchText = text.substring(0, 500);
 
+                // Match patterns like "Cincinnati and West Chester, OH hospitals"
+                const sharedStateMatches = searchText.matchAll(/\b([A-Z][A-Za-z .'-]+?)\s+and\s+([A-Z][A-Za-z .'-]+?)\s*,\s*([A-Z]{2})\s+hospitals?\b/g);
+                for (const match of sharedStateMatches) {
+                    const state = match[3].trim();
+                    for (const rawCity of [match[1], match[2]]) {
+                        const city = rawCity.replace(/\b(?:our|join|the|in|at|within)\b/gi, '').trim();
+                        if (city && city.length < 50) {
+                            locations.push({ city, state, location: `${city}, ${state}` });
+                        }
+                    }
+                }
+
                 // Match patterns like "City, ST"
                 const matches = searchText.matchAll(/\b([A-Za-z][\w\s.'()-]*[A-Za-z])\s*,\s*([A-Z]{2})\b/g);
                 for (const match of matches) {
@@ -725,21 +919,36 @@
             if (!text) return '';
 
             const yearToken = '(?:years?|yrs?\\.?)';
-            const candidateLines = [];
+            const candidateSources = [];
             const qualificationsSection = extractQualificationsSection(text);
+            const normalizedText = text
+                .replace(/([a-z])([A-Z][a-z])/g, '$1. $2')
+                .replace(/\s+/g, ' ');
 
             if (qualificationsSection) {
-                candidateLines.push(...qualificationsSection.split('\n'));
+                candidateSources.push(qualificationsSection);
             }
-            candidateLines.push(...text.split('\n'));
 
-            const prioritizedLines = candidateLines
-                .map(line => line.trim())
-                .filter(Boolean)
-                .filter(line => /\b(?:experience|experienced|minimum|min\.?|at least|required|requirements?|qualifications?|practice setting|years in practice)\b/i.test(line))
-                .filter(line => !/\b(?:our team has|over\s+\d+\s+years of experience|years of experience in specialty and emergency services|serving\s+the\s+community|we offer|benefits|medical(?:,\s*|\s+)dental)\b/i.test(line));
+            for (const keyword of ['ideal candidate', 'who you are', 'qualifications', 'seeking an experienced', 'seeking a daytime', 'unique opportunity']) {
+                const keywordPattern = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
+                let keywordMatch;
+                while ((keywordMatch = keywordPattern.exec(normalizedText)) !== null) {
+                    candidateSources.push(normalizedText.substring(Math.max(0, keywordMatch.index - 80), keywordMatch.index + 750));
+                }
+            }
+
+            const signalPattern = new RegExp(`\\b(?:experience|experienced|internship[-\\s]+trained|\\d+\\s*[-–—]\\s*\\d+\\s*${yearToken})\\b`, 'ig');
+            let signalMatch;
+            while ((signalMatch = signalPattern.exec(normalizedText)) !== null) {
+                candidateSources.push(normalizedText.substring(Math.max(0, signalMatch.index - 180), signalMatch.index + 260));
+            }
+
+            candidateSources.push(...text.split(/\n|(?<=[.!?])\s+/));
+
+            const noisePattern = /\b(?:commensurate with skills and experience|total compensation|employment decisions|equal employment|medvet experience|client(?:s)?(?: and their pets)?\s+experience|patient.*experience|referral partner.*experience|team with diverse education and experience|experienced clinical leadership|experienced ER doctor team|experienced ER doctors who are comfortable|experienced veterinary technicians|experienced doctors|experienced support team|experienced emergency doctors|experienced caregivers|talented.*experienced doctors|our team has|over\s+\d+\s+years of experience|years of experience in specialty and emergency services|serving\s+the\s+community|we offer|benefits|medical(?:,\s*|\s+)dental)\b/i;
 
             const patterns = [
+                { pattern: new RegExp(`\\binternship[-\\s]+trained\\s+and/or\\s+have\\s+(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'), type: 'range' },
                 new RegExp(`\\b(\\d+)\\s*[-â€“â€”]\\s*(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
                 new RegExp(`\\b(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
                 new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s*[-â€“â€”]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
@@ -751,7 +960,7 @@
                 new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:in\\s+(?:practice|a\\s+practice\\s+setting)|practice\\s+setting)\\b`, 'i')
             ];
 
-            function formatExperience(match) {
+            function formatExperience(match, type = 'years') {
                 const minYears = match[1];
                 const maxYears = match[2];
                 if (minYears && maxYears) {
@@ -768,10 +977,18 @@
                 return `${years} ${years === '1' ? 'year' : 'years'}`;
             }
 
-            for (const source of prioritizedLines) {
-                for (const pattern of patterns) {
+            for (const source of candidateSources.map(source => source.trim()).filter(Boolean)) {
+                for (const entry of patterns) {
+                    const pattern = entry.pattern || entry;
+                    const type = entry.type || 'years';
                     const match = source.match(pattern);
-                    if (match) return formatExperience(match);
+                    if (!match) continue;
+                    const matchedText = match[0] || '';
+                    if (noisePattern.test(matchedText) || (noisePattern.test(source) && type === 'years' && !/\b(?:ideal candidate|who you are|have|has|with|minimum|min\.?|at least|required|requires?)\b/i.test(source))) {
+                        continue;
+                    }
+                    const formatted = formatExperience(match, type);
+                    if (formatted) return formatted;
                 }
             }
 
@@ -1926,19 +2143,21 @@
             return;
         }
 
-        // Find jobs that need details (no areaOfPractice, position, or experience)
+        // Find jobs that need details or a MedVet/WestVet hospital suffix.
         // Can work with job title even if no description exists
         const jobsToFetch = jobs.map((job, index) => ({ job, index }))
             .filter(item => {
                 if (!item.job.title) return false;
-                const needsDetails = !item.job.areaOfPractice || !item.job.position || !item.job.experience;
+                if (item.job.parentJobId) return false;
+                const needsHospitalName = !/^(?:MedVet|WestVet)\s+-\s+[^,]+,\s*(?:[A-Z]{2}|[A-Za-z ]+)$/i.test(item.job.hospital || '');
+                const needsDetails = !item.job.areaOfPractice || !item.job.position || !item.job.experience || needsHospitalName;
                 return needsDetails;
             });
 
         if (jobsToFetch.length === 0) {
             if (confirm('All jobs already have details. Do you want to re-analyze all jobs?')) {
                 detailsQueue = jobs.map((job, index) => ({ job, index }))
-                    .filter(item => item.job.title);
+                    .filter(item => item.job.title && !item.job.parentJobId);
             } else {
                 return;
             }
@@ -2057,20 +2276,21 @@
 
         if (positionTitle) {
             const extracted = extractDetailsFromDescription(positionTitle, description);
+            const fallbackHospitalName = buildHospitalNameFromDescription(description, job);
 
-            // Build detailsList with ALL locations for multi-location jobs
+            // Use extracted locations only to improve the hospital suffix; listing location fields stay unchanged.
             if (extracted.locations && extracted.locations.length > 0) {
                 detailsList = extracted.locations.map(loc => ({
                     areaOfPractice: extracted.areaOfPractice,
                     position: extracted.position,
                     salary: normalizeSalaryText(extracted.salary),
-                    hospitalName: extracted.hospitalName,
+                    hospitalName: buildHospitalNameForLocation(description, job, loc) || fallbackHospitalName || extracted.hospitalName,
                     jobType: extracted.jobType,
                     experience: extracted.experience,
-                    description: description,
-                    city: loc.city || '',
-                    state: loc.state || '',
-                    location: loc.location || ''
+                    description: specializeDescriptionForLocation(description, loc),
+                    city: formatDetailLocation(loc).city,
+                    state: formatDetailLocation(loc).state,
+                    location: formatDetailLocation(loc).location
                 }));
             } else {
                 // No locations found â€” still create one entry with details
@@ -2078,7 +2298,7 @@
                     areaOfPractice: extracted.areaOfPractice,
                     position: extracted.position,
                     salary: normalizeSalaryText(extracted.salary),
-                    hospitalName: extracted.hospitalName,
+                    hospitalName: fallbackHospitalName || extracted.hospitalName,
                     jobType: extracted.jobType,
                     experience: extracted.experience,
                     description: description,
@@ -2151,67 +2371,76 @@
                     finalPosition = '';
                 }
 
+                const parentJobId = originalJob.parentJobId || originalJob.jobId;
+                for (let i = jobs.length - 1; i >= 0; i--) {
+                    const job = jobs[i];
+                    const isExistingGeneratedChild =
+                        job?.parentJobId === parentJobId ||
+                        (job?.isNewLocation && job?.jobId !== parentJobId && originalJob.link && job?.sourceLink === originalJob.link);
+                    if (isExistingGeneratedChild) {
+                        jobs.splice(i, 1);
+                    }
+                }
+                const parentIndex = jobs.findIndex(job => job.jobId === parentJobId);
+                const saveIndex = parentIndex >= 0 ? parentIndex : jobIndex;
+                const parentJob = jobs[saveIndex] || originalJob;
+
                 // Update original job with extracted details
-                originalJob.areaOfPractice = finalAOP;
-                originalJob.position = finalPosition || '';
-                originalJob.salary = normalizeSalaryText(firstDetail.salary || originalJob.salary || '');
-                originalJob.hospital = firstDetail.hospitalName || originalJob.hospital || '';
-                originalJob.jobType = firstDetail.jobType || originalJob.jobType || 'Full-Time';
-                originalJob.experience = firstDetail.experience || originalJob.experience || '';
-                if (firstDetail.city) originalJob.city = firstDetail.city;
-                if (firstDetail.state) originalJob.state = firstDetail.state;
-                if (firstDetail.location) originalJob.location = firstDetail.location;
-                // Update description if we got a better one
-                if (firstDetail.description && firstDetail.description.length > (originalJob.description || '').length) {
-                    originalJob.description = firstDetail.description;
+                parentJob.areaOfPractice = finalAOP;
+                parentJob.position = finalPosition || '';
+                parentJob.salary = normalizeSalaryText(firstDetail.salary || parentJob.salary || '');
+                parentJob.hospital = firstDetail.hospitalName || parentJob.hospital || '';
+                parentJob.jobType = firstDetail.jobType || parentJob.jobType || 'Full-Time';
+                parentJob.experience = firstDetail.experience || parentJob.experience || '';
+                parentJob.isNewLocation = detailsList.length > 1;
+                if (firstDetail.city) parentJob.city = firstDetail.city;
+                if (firstDetail.state) parentJob.state = firstDetail.state;
+                if (firstDetail.location) parentJob.location = firstDetail.location;
+                // Keep each generated row's description focused on its own location.
+                if (firstDetail.description) {
+                    parentJob.description = firstDetail.description;
                 }
 
-                // Handle multi-location jobs
                 if (detailsList.length > 1) {
-                    const currentHospital = originalJob.hospital || '';
-
-                    // Check if hospital name already has a city suffix (e.g. "The Oncology Service-Leesburg")
-                    // Only swap city suffixes if the pattern exists â€” don't add suffixes to names that don't have one
-                    const baseHospitalMatch = currentHospital.match(/^(.+?)\s*[-â€“]\s*([^-â€“]+)$/);
-                    const hasCitySuffix = !!baseHospitalMatch;
-                    const baseHospitalName = hasCitySuffix ? baseHospitalMatch[1].trim() : '';
-
-                    // Update parent job's hospital name with first location's city (only if it already had a suffix)
-                    if (hasCitySuffix) {
-                        const firstLocCity = detailsList[0].city || '';
-                        if (firstLocCity) {
-                            originalJob.hospital = `${baseHospitalName}-${firstLocCity}`;
-                        }
-                    }
-
-                    originalJob.isNewLocation = true;
                     const newJobs = [];
+                    const existingIds = new Set(jobs.map(job => job.jobId).filter(Boolean));
+
                     for (let i = 1; i < detailsList.length; i++) {
-                        const loc = detailsList[i];
-                        const baseJobId = originalJob.jobId.split('-')[0];
-                        // Only build city-specific hospital name if the original had a city suffix
-                        let childHospital = currentHospital;
-                        if (hasCitySuffix) {
-                            const childCity = loc.city || '';
-                            if (childCity) {
-                                childHospital = `${baseHospitalName}-${childCity}`;
-                            }
+                        const locDetail = detailsList[i];
+                        const locationKey = makeLocationKey(locDetail);
+                        let childJobId = `${parentJobId}-loc-${locationKey || i + 1}`;
+                        let duplicateCounter = 2;
+                        while (existingIds.has(childJobId)) {
+                            childJobId = `${parentJobId}-loc-${locationKey || i + 1}-${duplicateCounter}`;
+                            duplicateCounter++;
                         }
+                        existingIds.add(childJobId);
+
                         const newJob = {
-                            ...originalJob,
-                            jobId: `${baseJobId}-${i + 1}`,
-                            hospital: childHospital,
-                            city: '',
-                            state: '',
-                            location: loc.location || `${loc.city}, ${loc.state}`,
+                            ...parentJob,
+                            jobId: childJobId,
+                            parentJobId,
+                            hospital: locDetail.hospitalName || parentJob.hospital || '',
+                            city: locDetail.city || '',
+                            state: locDetail.state || '',
+                            location: locDetail.location || [locDetail.city, locDetail.state].filter(Boolean).join(', '),
+                            areaOfPractice: finalAOP,
+                            position: finalPosition || '',
+                            salary: normalizeSalaryText(locDetail.salary || parentJob.salary || ''),
+                            jobType: locDetail.jobType || parentJob.jobType || 'Full-Time',
+                            experience: locDetail.experience || parentJob.experience || '',
+                            description: locDetail.description || parentJob.description || '',
                             streetAddress: '',
                             zipCode: '',
+                            website: '',
+                            phone: '',
                             isNewLocation: true,
-                            sourceLink: originalJob.link || ''
+                            sourceLink: parentJob.link || parentJob.sourceLink || ''
                         };
                         newJobs.push(newJob);
                     }
-                    jobs.splice(jobIndex + 1, 0, ...newJobs);
+
+                    jobs.splice(saveIndex + 1, 0, ...newJobs);
                 }
 
                 chrome.storage.local.set({ scrapedJobs: jobs, records: jobs }, () => {

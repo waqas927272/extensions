@@ -106,6 +106,27 @@ document.addEventListener('DOMContentLoaded', () => {
         return stateAbbreviations[state.toUpperCase()] || state;
     }
 
+    function getDescriptionLines(text) {
+        return String(text || '')
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(Boolean);
+    }
+
+    function getJobDescriptionBody(text) {
+        const lines = getDescriptionLines(text);
+        const start = lines.findIndex(line => /^job description$/i.test(line));
+        const end = lines.findIndex((line, index) => index > start && /^qualifications$/i.test(line));
+
+        if (start >= 0 && end > start) {
+            return lines.slice(start + 1, end).join('\n');
+        }
+        if (start >= 0) {
+            return lines.slice(start + 1).join('\n');
+        }
+        return lines.join('\n');
+    }
+
     const APPROVED_POSITIONS = [
         'Associate Veterinarian',
         'Medical Director',
@@ -128,7 +149,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
     const APPROVED_POSITION_SET = new Set(APPROVED_POSITIONS);
     const VALID_POSITIONS_BY_AOP = {
-        'Emergency Care': ['Associate Veterinarian'],
+        'Emergency Care': ['Associate Veterinarian', 'Medical Director'],
         'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
         'Specialty Care': [
             'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
@@ -137,11 +158,22 @@ document.addEventListener('DOMContentLoaded', () => {
             'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
             'Radiologist', 'Surgeon'
         ],
-        'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
+        'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian', 'Medical Director']
     };
 
+    function hasEccSpecialtyTrainingSignal(text) {
+        const source = String(text || '');
+        const trainingBeforeRole = /\b(?:board certified|board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained)\b[\s\S]{0,120}\b(?:ecc|critical care|criticalist|emergency\s*(?:care|medicine)?|er)\b/i;
+        const roleBeforeTraining = /\b(?:ecc|critical care|criticalist|emergency\s*(?:care|medicine)?|er)\b[\s\S]{0,120}\b(?:board certified|board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained)\b/i;
+        return trainingBeforeRole.test(source) || roleBeforeTraining.test(source) || /\bdacvecc\b/i.test(source);
+    }
+
     function hasSpecialtyTrainingSignal(text) {
-        return /\bboard certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b/i.test(text || '');
+        const source = String(text || '');
+        const specialtyTerms = '(?:ecc|critical care|criticalist|emergency\\s*(?:care|medicine)?|er|oncolog|cardiolog|neurolog|dermatolog|radiolog|ophthalmolog|anesth|internal medicine|surgeon|surgery|dent|dacv\\w+|dabvp|davdc)';
+        const trainingBeforeSpecialty = new RegExp(`\\b(?:board certified|board[-\\s]+certified|residency[-\\s]+trained|residential[-\\s]+trained|diplomate)\\b[\\s\\S]{0,120}\\b${specialtyTerms}\\b`, 'i');
+        const specialtyBeforeTraining = new RegExp(`\\b${specialtyTerms}\\b[\\s\\S]{0,120}\\b(?:board certified|board[-\\s]+certified|residency[-\\s]+trained|residential[-\\s]+trained|diplomate)\\b`, 'i');
+        return hasEccSpecialtyTrainingSignal(source) || trainingBeforeSpecialty.test(source) || specialtyBeforeTraining.test(source);
     }
 
     function matchApprovedPositionFromText(text) {
@@ -216,7 +248,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (t.includes('technician specialist') || (t.match(/\bvts\b/) && t.includes('specialist'))) return 'Credentialed Veterinary Technician Specialist';
 
         // === GENERIC VETERINARIAN ROLES ===
-        if (t.includes('partner veterinarian') || t.includes('partner vet')) return 'Partner Veterinarian';
+        if (t.includes('partner veterinarian') || t.includes('partner vet') || t.includes('equity owner')) return 'Partner Veterinarian';
         if (/\b(?:associate\s+)?(?:emergency|er|urgent care|urgent)?\s*(?:veterinarian|vet|dvm)\b/.test(t)) return 'Associate Veterinarian';
         if (/\bassociate veterinarian\b|\bassociate vet\b/.test(t)) return 'Associate Veterinarian';
 
@@ -271,6 +303,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function getAOPFromTitle(title) {
         const t = title.toLowerCase();
 
+        if (/\bpriority\s*pet\b/i.test(t)) return 'Urgent Care';
+
         // Specialty indicators
         const specialtyNames = ['oncologist', 'cardiologist', 'neurologist', 'neurosurgeon',
             'dermatologist', 'ophthalmologist', 'anesthesiologist', 'theriogenologist',
@@ -312,12 +346,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!raw) return '';
             const isHourly = /(?:per\s+)?(?:hour|hr|\/hr)/i.test(raw);
             const amounts = [];
-            const amountRegex = /\$?([\d,]+(?:\.\d{2})?)\s*k?\b/gi;
+            const hasThousandSuffix = /\$?\s*\d+(?:\.\d+)?\s*k\b/i.test(raw);
+            const amountRegex = /\$?\s*([\d,]+(?:\.\d{2})?)\s*k?\b/gi;
             let match;
             while ((match = amountRegex.exec(raw)) !== null) {
                 let num = parseFloat(match[1].replace(/,/g, ''));
                 const afterMatch = raw.substring(match.index + match[0].length - 1, match.index + match[0].length + 1);
-                if (/k/i.test(match[0]) || /k/i.test(afterMatch)) {
+                if (/k/i.test(match[0]) || /k/i.test(afterMatch) || (hasThousandSuffix && num < 1000)) {
                     num = num * 1000;
                 }
                 if (num > 0) amounts.push(num);
@@ -348,6 +383,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Fallback to text pattern matching
             const salaryPatterns = [
+                // AAH SmartRecruiters descriptions: "Salary Range can vary from $120,000 to $140,000"
+                /(?:salary|pay|compensation)\s+range\s+can\s+vary\s+from\s+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+(?:to|-|–|—)\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
+                // "Compensation Range-$175,000-250,000" or "Salary range- $100,000-$300,000"
+                /(?:salary|pay|compensation)\s+range\s*[-:]\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|–|—|to)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
+                // "general range for a base salary is $130,000 - $190,000"
+                /(?:range\s+for\s+a\s+)?base\s+salary\s+(?:is|of|from|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|–|—|to)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
+                // "base salary starting at $115,000"
+                /(?:base\s+salary|salary|pay|compensation)\s+starting\s+at\s+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
                 // "Base salary ranges: $150k - $171k" or "base salary range of $140,000 – 160,000"
                 /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
                 /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
@@ -427,6 +470,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const category = getIndustryCategory(descriptionText).toLowerCase();
 
             if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
+            if (/\bpriority\s*pet\b/i.test(`${positionText}\n${descriptionText}`)) return 'Urgent Care';
 
             // STEP 0: Title-specific overrides — these are MORE specific than Jobvite categories.
             // e.g. "Urgent Care Veterinarian" is categorized as "Veterinarian (ER)" on Jobvite,
@@ -522,7 +566,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (t.includes('technician specialist') || (t.match(/\bvts\b/) && t.includes('specialist'))) return 'Credentialed Veterinary Technician Specialist';
 
             // === GENERIC VETERINARIAN ROLES ===
-            if (t.includes('partner veterinarian') || t.includes('partner vet')) return 'Partner Veterinarian';
+            if (t.includes('partner veterinarian') || t.includes('partner vet') || t.includes('equity owner')) return 'Partner Veterinarian';
             if (/\b(?:associate\s+)?(?:emergency|er|urgent care|urgent)?\s*(?:veterinarian|vet|dvm)\b/.test(t)) return 'Associate Veterinarian';
             if (/\bassociate veterinarian\b|\bassociate vet\b/.test(t)) return 'Associate Veterinarian';
 
@@ -537,7 +581,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Validate position is allowed for given AOP per CorrectJobNames.txt
         function validatePositionForAOP(position, aop) {
             const validPositions = {
-                'Emergency Care': ['Associate Veterinarian'],
+                'Emergency Care': ['Associate Veterinarian', 'Medical Director'],
                 'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
                 'Specialty Care': [
                     'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
@@ -546,7 +590,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
                     'Radiologist', 'Surgeon'
                 ],
-                'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian'],
+                'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian', 'Medical Director'],
             };
 
             // For compound AOPs like "General Practice Care / Emergency Care / Urgent Care",
@@ -640,6 +684,29 @@ document.addEventListener('DOMContentLoaded', () => {
             return uniqueLocations;
         }
 
+        function extractCompleteAddress(text) {
+            const lines = getDescriptionLines(text);
+            const addressPattern = /^(?<street>\d{1,6}\s+.+?),\s*(?<city>[A-Za-z][A-Za-z\s.'-]*?),\s*(?<state>[A-Z]{2})\s+(?<zip>\d{5}(?:-\d{4})?)(?:,\s*(?:USA|United States))?$/i;
+
+            for (let i = lines.length - 1; i >= 0; i--) {
+                const line = lines[i].replace(/\s+/g, ' ').trim();
+                const match = line.match(addressPattern);
+                if (!match?.groups) continue;
+
+                const stateAbbrev = match.groups.state.toUpperCase();
+                return {
+                    streetAddress: match.groups.street.trim(),
+                    city: match.groups.city.trim(),
+                    state: getFullStateName(stateAbbrev),
+                    stateAbbrev,
+                    zipCode: match.groups.zip.trim(),
+                    location: `${match.groups.city.trim()}, ${stateAbbrev}`
+                };
+            }
+
+            return { streetAddress: '', city: '', state: '', stateAbbrev: '', zipCode: '', location: '' };
+        }
+
         // Extract hospital name from stored description (which now includes JSON-LD data)
         function extractHospitalName(text) {
             // First try to extract from structured JSON-LD data in the text
@@ -670,6 +737,12 @@ document.addEventListener('DOMContentLoaded', () => {
         function extractJobType(text) {
             if (!text) return 'Full-Time';
             const lower = text.toLowerCase();
+
+            // Trust the repeated SmartRecruiters employment line when present near the top/bottom.
+            const employmentLine = getDescriptionLines(text).find(line => /^(?:full|part)[-\s]?time$/i.test(line));
+            if (employmentLine) {
+                return /^part/i.test(employmentLine) ? 'Part-Time' : 'Full-Time';
+            }
 
             // First check the structured Employment Type field from JSON-LD
             const empTypeMatch = lower.match(/employment type:\s*([^\n]+)/i);
@@ -757,6 +830,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const areaOfPractice = determineAreaOfPractice(positionTitle, descriptionText);
         const position = determinePosition(positionTitle, descriptionText, areaOfPractice);
         const locations = extractLocations(descriptionText);
+        const completeAddress = extractCompleteAddress(descriptionText);
         const hospitalName = extractHospitalName(descriptionText);
         const jobType = extractJobType(descriptionText);
         const experience = extractExperience(descriptionText);
@@ -766,6 +840,11 @@ document.addEventListener('DOMContentLoaded', () => {
             areaOfPractice,
             position,
             locations,
+            streetAddress: completeAddress.streetAddress,
+            addressCity: completeAddress.city,
+            addressState: completeAddress.state,
+            addressLocation: completeAddress.location,
+            zipCode: completeAddress.zipCode,
             hospitalName,
             jobType,
             experience
@@ -1955,9 +2034,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     jobType: extracted.jobType,
                     experience: extracted.experience,
                     description: description,
-                    city: loc.city || '',
-                    state: loc.state || '',
-                    location: loc.location || ''
+                    city: extracted.addressCity || loc.city || '',
+                    state: extracted.addressState || getFullStateName(loc.state || ''),
+                    location: extracted.addressLocation || loc.location || '',
+                    streetAddress: extracted.streetAddress || '',
+                    zipCode: extracted.zipCode || ''
                 }));
             } else {
                 // No locations found — still create one entry with details
@@ -1969,9 +2050,11 @@ document.addEventListener('DOMContentLoaded', () => {
                     jobType: extracted.jobType,
                     experience: extracted.experience,
                     description: description,
-                    city: '',
-                    state: '',
-                    location: ''
+                    city: extracted.addressCity || '',
+                    state: extracted.addressState || '',
+                    location: extracted.addressLocation || '',
+                    streetAddress: extracted.streetAddress || '',
+                    zipCode: extracted.zipCode || ''
                 }];
             }
         }
@@ -2045,8 +2128,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 originalJob.hospital = firstDetail.hospitalName || originalJob.hospital || '';
                 originalJob.jobType = firstDetail.jobType || originalJob.jobType || 'Full-Time';
                 originalJob.experience = firstDetail.experience || originalJob.experience || '';
+                if (firstDetail.streetAddress) originalJob.streetAddress = firstDetail.streetAddress;
+                if (firstDetail.zipCode) originalJob.zipCode = firstDetail.zipCode;
                 if (firstDetail.city) originalJob.city = firstDetail.city;
-                if (firstDetail.state) originalJob.state = firstDetail.state;
+                if (firstDetail.state) originalJob.state = getFullStateName(firstDetail.state);
                 if (firstDetail.location) originalJob.location = firstDetail.location;
                 // Update description if we got a better one
                 if (firstDetail.description && firstDetail.description.length > (originalJob.description || '').length) {
@@ -2088,11 +2173,11 @@ document.addEventListener('DOMContentLoaded', () => {
                             ...originalJob,
                             jobId: `${baseJobId}-${i + 1}`,
                             hospital: childHospital,
-                            city: '',
-                            state: '',
+                            city: loc.city || '',
+                            state: getFullStateName(loc.state || ''),
                             location: loc.location || `${loc.city}, ${loc.state}`,
-                            streetAddress: '',
-                            zipCode: '',
+                            streetAddress: loc.streetAddress || '',
+                            zipCode: loc.zipCode || '',
                             isNewLocation: true,
                             sourceLink: originalJob.link || ''
                         };

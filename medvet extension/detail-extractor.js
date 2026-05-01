@@ -213,7 +213,12 @@
     };
 
     function hasSpecialtyTrainingSignal(text) {
-        return /\bboard certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b/i.test(text || '');
+        const source = text || '';
+        const qualificationText = extractQualificationsSection(source) || '';
+        const specialtyCredentialPattern = /\bboard[-\s]+certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b/i;
+        if (specialtyCredentialPattern.test(qualificationText)) return true;
+
+        return /\b(?:seeking|join(?:ing)?|hiring)\b.{0,160}\b(?:board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained)\b.{0,120}\b(?:specialist|surgeon|oncologist|cardiologist|neurologist|dermatologist|ophthalmologist|radiologist|anesthesiologist|internist|criticalist|diplomate)\b/i.test(source);
     }
 
     function getAOPParts(aop) {
@@ -255,21 +260,21 @@
         const rules = [
             ['Medical Director', [/\bmedical director\b/i]],
             ['Lead Veterinarian', [/\blead veterinarian\b/i, /\blead vet\b/i]],
-            ['Neurologist & Neurosurgeon', [/\bneurologist\b/i, /\bneurosurgeon\b/i, /\bboard certified\b.*\bneurolog/i, /\bresidency[-\s]+trained\b.*\bneurolog/i, /\bdacvim\b.*\bneurolog/i]],
-            ['Dermatologist', [/\bdermatologist\b/i, /\bboard certified\b.*\bdermatolog/i, /\bresidency[-\s]+trained\b.*\bdermatolog/i, /\bdacvd\b/i]],
-            ['Cardiologist', [/\bcardiologist\b/i, /\bboard certified\b.*\bcardiolog/i, /\bresidency[-\s]+trained\b.*\bcardiolog/i, /\bdacvim\b.*\bcardiolog/i]],
+            ['Neurologist & Neurosurgeon', [/\bneurologist\b/i, /\bneurosurgeon\b/i, /\bboard[-\s]+certified\b.*\bneurolog/i, /\bresidency[-\s]+trained\b.*\bneurolog/i, /\bdacvim\b.*\bneurolog/i]],
+            ['Dermatologist', [/\bdermatologist\b/i, /\bboard[-\s]+certified\b.*\bdermatolog/i, /\bresidency[-\s]+trained\b.*\bdermatolog/i, /\bdacvd\b/i]],
+            ['Cardiologist', [/\bcardiologist\b/i, /\bboard[-\s]+certified\b.*\bcardiolog/i, /\bresidency[-\s]+trained\b.*\bcardiolog/i, /\bdacvim\b.*\bcardiolog/i]],
             ['Radiation Oncologist', [/\bradiation oncolog/i, /\bdacvr[-\s]?ro\b/i, /\bdacvr\b.*\bradiation\b/i]],
-            ['Medical Oncologist', [/\bmedical oncolog/i, /\bboard certified\b.*\boncolog/i, /\bresidency[-\s]+trained\b.*\boncolog/i, /\bdacvim\b.*\boncology\b/i]],
-            ['Radiologist', [/\bradiologist\b/i, /\bdiagnostic imaging specialist\b/i, /\bboard certified\b.*\bradiolog/i, /\bresidency[-\s]+trained\b.*\bradiolog/i, /\bdacvr\b/i]],
-            ['Ophthalmologist', [/\bophthalmologist\b/i, /\bboard certified\b.*\bophthalmolog/i, /\bresidency[-\s]+trained\b.*\bophthalmolog/i, /\bdacvo\b/i]],
-            ['Anesthesiologist', [/\banesthesiologist\b/i, /\bboard certified\b.*\banesth/i, /\bresidency[-\s]+trained\b.*\banesth/i, /\bdacvaa\b/i]],
-            ['Internal Medicine Specialist', [/\binternist\b/i, /\binternal medicine specialist\b/i, /\bboard certified\b.*\binternal medicine\b/i, /\bresidency[-\s]+trained\b.*\binternal medicine\b/i, /\bdacvim\b(?!.*oncology)(?!.*cardiology)(?!.*neurology)/i]],
-            ['ECC Specialist', [/\bcriticalist\b/i, /\becc specialist\b/i, /\bemergency\s*(?:&|and)?\s*critical care specialist\b/i, /\bboard certified\b.*\bcritical/i, /\bresidency[-\s]+trained\b.*\bcritical/i, /\bdacvecc\b/i]],
+            ['Medical Oncologist', [/\bmedical oncolog/i, /\bboard[-\s]+certified\b.*\boncolog/i, /\bresidency[-\s]+trained\b.*\boncolog/i, /\bdacvim\b.*\boncology\b/i]],
+            ['Radiologist', [/\bradiologist\b/i, /\bdiagnostic imaging specialist\b/i, /\bboard[-\s]+certified\b.*\bradiolog/i, /\bresidency[-\s]+trained\b.*\bradiolog/i, /\bdacvr\b/i]],
+            ['Ophthalmologist', [/\bophthalmologist\b/i, /\bboard[-\s]+certified\b.*\bophthalmolog/i, /\bresidency[-\s]+trained\b.*\bophthalmolog/i, /\bdacvo\b/i]],
+            ['Anesthesiologist', [/\banesthesiologist\b/i, /\bboard[-\s]+certified\b.*\banesth/i, /\bresidency[-\s]+trained\b.*\banesth/i, /\bdacvaa\b/i]],
+            ['Internal Medicine Specialist', [/\binternist\b/i, /\binternal medicine specialist\b/i, /\bboard[-\s]+certified\b.*\binternal medicine\b/i, /\bresidency[-\s]+trained\b.*\binternal medicine\b/i, /\bdacvim\b(?!.*oncology)(?!.*cardiology)(?!.*neurology)/i]],
+            ['ECC Specialist', [/\bcriticalist\b/i, /\becc specialist\b/i, /\bemergency\s*(?:&|and)?\s*critical care specialist\b/i, /\bboard[-\s]+certified\b.*\bcritical/i, /\bresidency[-\s]+trained\b.*\bcritical/i, /\bdacvecc\b/i]],
             ['Avian and Exotic Specialis', [/\bavian\b/i, /\bexotics?\b/i]],
             ['DABVP Specialist', [/\bdabvp\b/i]],
-            ['Dental Specialist', [/\bdental specialist\b/i, /\bveterinary dentist\b/i, /\boral surgeon\b/i, /\bboard certified\b.*\bdent/i, /\bresidency[-\s]+trained\b.*\bdent/i, /\bdavdc\b/i]],
-            ['Sports Medicine & Rehabilitation Specialist', [/\brehabilitation veterinarian\b/i, /\bsports medicine\b/i, /\brehabilitation specialist\b/i, /\bboard certified\b.*\brehabilitation\b/i, /\bresidency[-\s]+trained\b.*\brehabilitation\b/i]],
-            ['Surgeon', [/\bveterinary surgeon\b/i, /\bsurgeon\b/i, /\bboard certified\b.*\bsurgeon\b/i, /\bresidency[-\s]+trained\b.*\bsurgeon\b/i, /\bdacvs\b/i, /\bacvs\b/i]],
+            ['Dental Specialist', [/\bdental specialist\b/i, /\bveterinary dentist\b/i, /\boral surgeon\b/i, /\bboard[-\s]+certified\b.*\bdent/i, /\bresidency[-\s]+trained\b.*\bdent/i, /\bdavdc\b/i]],
+            ['Sports Medicine & Rehabilitation Specialist', [/\brehabilitation veterinarian\b/i, /\bsports medicine\b/i, /\brehabilitation specialist\b/i, /\bboard[-\s]+certified\b.*\brehabilitation\b/i, /\bresidency[-\s]+trained\b.*\brehabilitation\b/i]],
+            ['Surgeon', [/\bveterinary surgeon\b/i, /\bsurgeon\b/i, /\bboard[-\s]+certified\b.*\bsurgeon\b/i, /\bresidency[-\s]+trained\b.*\bsurgeon\b/i, /\bdacvs\b/i, /\bacvs\b/i]],
             ['Credentialed Veterinary Technician Specialist', [/\bcredentialed veterinary technician specialist\b/i, /\btechnician specialist\b/i, /\bvts\b/i]]
         ];
 
@@ -318,7 +323,7 @@
         }
 
         // Check title for board cert / DACV* / diplomate
-        const specialtyCerts = ['board certified', 'residency trained', 'residential trained',
+        const specialtyCerts = ['board certified', 'board-certified', 'residency trained', 'residency-trained', 'residential trained', 'residential-trained',
             'diplomate', 'dacvecc', 'dacvim', 'dacvr', 'dacvs', 'dacvd', 'dacvo', 'dacvaa',
             'dact', 'davdc', 'dabvp', 'acvs', 'acvim'];
         for (const cert of specialtyCerts) {
@@ -360,8 +365,8 @@
     // ===== Extract qualifications/requirements section =====
     function extractQualificationsSection(text) {
         const patterns = [
-            /(?:requirements?|qualifications?|what you'?ll need|what we'?re looking for|credentials?|must have|what we need)[:\s]*([\s\S]{0,800}?)(?=(?:benefits?|compensation|salary|about|our culture|location|equal|join us|why|facility|what we offer|ready to)[:\s])/i,
-            /(?:requirements?|qualifications?|what you'?ll need|what we'?re looking for|credentials?|must have|what we need)[:\s]*([\s\S]{0,500})/i
+            /(?:who you are|requirements?|qualifications?|preferred qualifications|what you'?ll need|what we'?re looking for|credentials?|must have|what we need)[:\s]*([\s\S]{0,900}?)(?=(?:benefits?|compensation|salary|about|our culture|location|equal|join us|why|facility|what we offer|ready to|key responsibilities|everything starts|come as you are|for more information)[:\s])/i,
+            /(?:who you are|requirements?|qualifications?|preferred qualifications|what you'?ll need|what we'?re looking for|credentials?|must have|what we need)[:\s]*([\s\S]{0,650})/i
         ];
         for (const pattern of patterns) {
             const match = text.match(pattern);
@@ -373,7 +378,7 @@
     function extractRoleSignalText(text) {
         if (!text) return '';
 
-        const rolePattern = /\b(?:medical director|lead veterinarian|lead vet|board certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
+        const rolePattern = /\b(?:medical director|lead veterinarian|lead vet|board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
         const blockedPattern = /\b(?:our services|services include|specialties include|benefits|medical(?:,\s*|\s+)dental|dental insurance|our hospital|our team has|state[-\s]?of[-\s]?the[-\s]?art|we offer|years of experience in specialty and emergency services)\b/i;
         const qualificationsSection = extractQualificationsSection(text);
         const collected = [];
@@ -633,6 +638,84 @@
     }
 
     function extractExperience(descriptionText) {
+        if (!descriptionText) return '';
+
+        const yearToken = '(?:years?|yrs?\\.?)';
+        const qualificationsSection = extractQualificationsSection(descriptionText);
+        const candidateSources = [];
+        const normalizedText = descriptionText
+            .replace(/([a-z])([A-Z][a-z])/g, '$1. $2')
+            .replace(/\s+/g, ' ');
+
+        if (qualificationsSection) {
+            candidateSources.push(qualificationsSection);
+        }
+
+        for (const keyword of ['ideal candidate', 'who you are', 'qualifications', 'seeking an experienced', 'seeking a daytime', 'unique opportunity']) {
+            const keywordPattern = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig');
+            let keywordMatch;
+            while ((keywordMatch = keywordPattern.exec(normalizedText)) !== null) {
+                candidateSources.push(normalizedText.substring(Math.max(0, keywordMatch.index - 80), keywordMatch.index + 750));
+            }
+        }
+
+        const signalPattern = new RegExp(`\\b(?:experience|experienced|internship[-\\s]+trained|\\d+\\s*[-–—]\\s*\\d+\\s*${yearToken})\\b`, 'ig');
+        let signalMatch;
+        while ((signalMatch = signalPattern.exec(normalizedText)) !== null) {
+            candidateSources.push(normalizedText.substring(Math.max(0, signalMatch.index - 180), signalMatch.index + 260));
+        }
+
+        candidateSources.push(...descriptionText.split(/\n|(?<=[.!?])\s+/));
+
+        const noisePattern = /\b(?:commensurate with skills and experience|total compensation|employment decisions|equal employment|medvet experience|client(?:s)?(?: and their pets)?\s+experience|patient.*experience|referral partner.*experience|team with diverse education and experience|experienced clinical leadership|experienced ER doctor team|experienced ER doctors who are comfortable|experienced veterinary technicians|experienced doctors|experienced support team|experienced emergency doctors|experienced caregivers|talented.*experienced doctors|our team has|over\s+\d+\s+years of experience|years of experience in specialty and emergency services|serving\s+the\s+community|we offer|benefits|medical(?:,\s*|\s+)dental)\b/i;
+
+        const patterns = [
+            { pattern: new RegExp(`\\binternship[-\\s]+trained\\s+and/or\\s+have\\s+(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'), type: 'range' },
+            { pattern: new RegExp(`\\b(\\d+)\\s*[-â€“â€”]\\s*(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'), type: 'years' },
+            { pattern: new RegExp(`\\b(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'), type: 'years' },
+            { pattern: new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s*[-â€“â€”]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'), type: 'years' },
+            { pattern: new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\b`, 'i'), type: 'years' },
+            { pattern: new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\s*[-â€“â€”]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'), type: 'years' },
+            { pattern: new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'), type: 'years' },
+            { pattern: new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\+?\\s*${yearToken}\\b`, 'i'), type: 'years' },
+            { pattern: new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\+?\\s*${yearToken}\\b`, 'i'), type: 'years' },
+            { pattern: new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:in\\s+(?:practice|a\\s+practice\\s+setting)|practice\\s+setting)\\b`, 'i'), type: 'years' }
+        ];
+
+        function formatExperience(match, type = 'years') {
+            const minYears = match[1];
+            const maxYears = match[2];
+            if (minYears && maxYears) {
+                return `${minYears}-${maxYears} years`;
+            }
+
+            const years = minYears || maxYears;
+            if (!years) return '';
+
+            if (/\+/.test(match[0]) || /\b(?:minimum|min\.?|at least)\b/i.test(match[0])) {
+                return `${years}+ years`;
+            }
+
+            return `${years} ${years === '1' ? 'year' : 'years'}`;
+        }
+
+        for (const source of candidateSources.map(source => source.trim()).filter(Boolean)) {
+            for (const entry of patterns) {
+                const match = source.match(entry.pattern);
+                if (!match) continue;
+                const matchedText = match[0] || '';
+                if (noisePattern.test(matchedText) || (noisePattern.test(source) && entry.type === 'years' && !/\b(?:ideal candidate|who you are|have|has|with|minimum|min\.?|at least|required|requires?)\b/i.test(source))) {
+                    continue;
+                }
+                const formatted = formatExperience(match, entry.type);
+                if (formatted) return formatted;
+            }
+        }
+
+        return '';
+    }
+
+    function extractExperienceLegacy(descriptionText) {
         if (!descriptionText) return '';
 
         const yearToken = '(?:years?|yrs?\\.?)';
