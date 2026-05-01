@@ -509,6 +509,11 @@
     // ===== Format salary to standard "$X–$Y per year" or "$X per hour" =====
     function formatSalary(raw) {
         if (!raw) return '';
+        raw = (raw || '')
+            .replace(/\u00e2\u20ac\u201c|\u00e2\u20ac\u009d|\u2013|\u2014/g, ' - ')
+            .replace(/\s+-\s+/g, ' - ')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
 
         // Check if it's hourly
         const isHourly = /(?:per\s+)?(?:hour|hr|\/hr)/i.test(raw);
@@ -525,6 +530,17 @@
                 num = num * 1000;
             }
             if (num > 0) amounts.push(num);
+        }
+
+        if (!isHourly && amounts.length >= 2) {
+            const maxAmount = Math.max(...amounts);
+            for (let i = 0; i < amounts.length; i++) {
+                if (amounts[i] >= 100 && amounts[i] < 1000 && maxAmount >= 10000) {
+                    amounts[i] = amounts[i] * 1000;
+                }
+            }
+        } else if (!isHourly && amounts.length === 1 && amounts[0] >= 100 && amounts[0] < 1000 && /\b(?:salary|compensation|pay)\b/i.test(raw)) {
+            amounts[0] = amounts[0] * 1000;
         }
 
         if (amounts.length === 0) return raw;
@@ -576,9 +592,17 @@
 
         // 2. Extract from description text
         if (!descriptionText) return '';
-        const text = descriptionText;
+        const text = ((descriptionText || '').split(/===\s*FULL JOB DESCRIPTION\s*===/i).pop() || descriptionText || '')
+            .replace(/\u00e2\u20ac\u201c|\u00e2\u20ac\u009d|\u2013|\u2014/g, ' - ')
+            .replace(/\s+-\s+/g, ' - ')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
 
+        const money = String.raw`\$[\d,]+(?:\.\d{1,2})?\s*(?:\/k|k)?`;
+        const secondAmount = String.raw`\$?\s*[\d,]+(?:\.\d{1,2})?\s*(?:\/k|k)?`;
+        const sep = String.raw`(?:-|\u2013|\u2014|\u00e2\u20ac\u201c|\u00e2\u20ac\u009d|to)`;
         const salaryPatterns = [
+            new RegExp(String.raw`(?:base\s+salary\s+range|salary\s+range|compensation\s+range|pay\s+range)[^$]{0,140}${money}\s*${sep}\s*${secondAmount}`, 'i'),
             // "Base salary ranges: $150k - $171k" or "base salary range of $140,000 – 160,000"
             /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
             /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,

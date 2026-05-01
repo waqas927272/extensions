@@ -83,42 +83,21 @@
             if (addressData) return addressData;
         }
 
-        // Fallback: try first result explicitly one more time
-        const fallbackLinks = document.querySelectorAll('a.hfpxzc');
-        if (fallbackLinks.length > 0) {
-            fallbackLinks[0].click();
-            const retryEnd = Date.now() + 5000;
-            while (Date.now() < retryEnd) {
-                await wait(POLL);
-                addressData = tryExtractFromPlaceDetail();
-                if (addressData) return addressData;
-            }
-        }
-
         // Last resort: try extracting from whatever is on the page now
         return tryExtractFromPageBody() || emptyResult();
 
     } catch (e) {
-        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', placeName: '', error: e.message };
+        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: e.message };
     }
 
     // ===== Extract hospital name from the Google Maps URL query =====
     // URL format: https://www.google.com/maps/search/Hospital+Name+City+State
     function getHospitalNameFromUrl() {
-        const injectedQuery = (window.__AAH_MAPS_QUERY || '').trim();
-        if (injectedQuery) {
-            return injectedQuery;
-        }
         const url = window.location.href;
         const searchMatch = url.match(/\/maps\/search\/([^?#]+)/);
         if (searchMatch) {
             const decoded = decodeURIComponent(searchMatch[1]).replace(/\+/g, ' ').trim();
-            return decoded;
-        }
-        const searchInput = document.querySelector('#searchboxinput') ||
-            document.querySelector('input[aria-label="Search Google Maps"]');
-        if (searchInput && searchInput.value) {
-            return searchInput.value.trim();
+            return decoded.split(',')[0].trim();
         }
         return '';
     }
@@ -128,6 +107,8 @@
     function findBestMatch(links, searchQuery) {
         if (!searchQuery || links.length === 0) return null;
 
+        const stopWords = new Set(['the', 'and', 'for', 'with', 'veterinary', 'animal', 'pet', 'hospital', 'clinic', 'center', 'centre']);
+
         // Normalize for comparison: lowercase, remove special chars
         const normalize = (str) => str.toLowerCase()
             .replace(/&/g, 'and')
@@ -135,29 +116,30 @@
             .replace(/\s+/g, ' ')
             .trim();
 
-        const cleanedQuery = searchQuery
-            .replace(/\s*-\s*[^,]+,\s*[A-Za-z]{2,}\s*$/i, ' ')
-            .trim();
-        const queryNorm = normalize(cleanedQuery || searchQuery);
-        const queryWords = queryNorm.split(' ').filter(w => w.length > 2); // Skip short words
+        const queryNorm = normalize(searchQuery);
+        const queryWords = queryNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w));
 
         let bestLink = null;
         let bestScore = 0;
 
         for (const link of links) {
             const label = (link.getAttribute('aria-label') || '').replace(/·.*$/, '').trim();
-            const labelNorm = normalize(label);
+            const normalizedLabel = label.split(',')[0].trim();
+            const labelNorm = normalize(normalizedLabel);
+            const labelWords = new Set(labelNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w)));
 
             // Count how many query words appear in the label
             let matchCount = 0;
             for (const word of queryWords) {
-                if (labelNorm.includes(word)) {
+                if (labelNorm.includes(word) || labelWords.has(word)) {
                     matchCount++;
                 }
             }
 
-            // Score = percentage of query words that matched
-            const score = queryWords.length > 0 ? matchCount / queryWords.length : 0;
+            // Score = percentage of query words that matched, with small boosts for close name matches
+            let score = queryWords.length > 0 ? matchCount / queryWords.length : 0;
+            if (labelNorm === queryNorm) score += 0.5;
+            if (labelNorm.startsWith(queryNorm) || queryNorm.startsWith(labelNorm)) score += 0.2;
 
             if (score > bestScore) {
                 bestScore = score;
@@ -165,8 +147,7 @@
             }
         }
 
-        // Require at least 30% word overlap to consider it a match
-        return bestScore >= 0.3 ? bestLink : null;
+        return bestScore >= 0.34 ? bestLink : null;
     }
 
     // ===== Extract website URL from place detail panel =====
@@ -184,6 +165,15 @@
         const websiteBtn = document.querySelector('button[data-tooltip="Open website"]');
         if (websiteBtn) {
             const ariaLabel = websiteBtn.getAttribute('aria-label') || '';
+            const cleaned = ariaLabel.replace(/^Website:\s*/i, '').trim();
+            if (cleaned) return cleaned;
+        }
+        // Method 3: any website-labelled link/button in the place panel
+        const websiteFallback = document.querySelector('a[aria-label^="Website:"], button[aria-label^="Website:"], a[data-tooltip="Open website"]');
+        if (websiteFallback) {
+            const href = websiteFallback.getAttribute('href') || '';
+            if (href && !href.startsWith('javascript:')) return href;
+            const ariaLabel = websiteFallback.getAttribute('aria-label') || '';
             const cleaned = ariaLabel.replace(/^Website:\s*/i, '').trim();
             if (cleaned) return cleaned;
         }
@@ -210,6 +200,16 @@
             const phone = link.getAttribute('href').replace('tel:', '').trim();
             if (phone) return phone;
         }
+        // Method 3: generic phone-labelled buttons/spans
+        const phoneFallback = document.querySelector('button[aria-label^="Phone:"], button[data-item-id*="phone"], [aria-label^="Phone:"]');
+        if (phoneFallback) {
+            const dataId = phoneFallback.getAttribute('data-item-id') || '';
+            const phoneFromId = dataId.replace(/^phone:tel:/, '').replace(/^phone:/, '').trim();
+            if (phoneFromId) return phoneFromId;
+            const ariaLabel = phoneFallback.getAttribute('aria-label') || '';
+            const cleaned = ariaLabel.replace(/^Phone:\s*/i, '').trim();
+            if (cleaned) return cleaned;
+        }
         return '';
     }
 
@@ -226,7 +226,6 @@
                 const result = { fullAddress };
                 Object.assign(result, parseAddress(fullAddress));
                 // Also extract website and phone while we're on the detail panel
-                result.placeName = tryExtractPlaceName();
                 result.website = tryExtractWebsite();
                 result.phone = tryExtractPhone();
                 if (result.streetAddress) return result;
@@ -247,7 +246,6 @@
                 if (/\b[A-Z]{2}\s+\d{5}/.test(text) && /\d+\s+\w/.test(text)) {
                     const result = { fullAddress: text };
                     Object.assign(result, parseAddress(text));
-                    result.placeName = tryExtractPlaceName();
                     result.website = tryExtractWebsite();
                     result.phone = tryExtractPhone();
                     if (result.streetAddress) return result;
@@ -263,7 +261,6 @@
                 const clean = label.replace(/^Address:\s*/i, '').trim();
                 const result = { fullAddress: clean };
                 Object.assign(result, parseAddress(clean));
-                result.placeName = tryExtractPlaceName();
                 result.website = tryExtractWebsite();
                 result.phone = tryExtractPhone();
                 if (result.streetAddress) return result;
@@ -281,7 +278,6 @@
         if (match) {
             const result = { fullAddress: match[1].trim() };
             Object.assign(result, parseAddress(result.fullAddress));
-            result.placeName = tryExtractPlaceName();
             result.website = tryExtractWebsite();
             result.phone = tryExtractPhone();
             if (result.streetAddress) return result;
@@ -291,7 +287,7 @@
 
     // ===== Empty result helper =====
     function emptyResult() {
-        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', placeName: '' };
+        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
     }
 
     // ===== Parse a full US address string into components =====
@@ -364,16 +360,3 @@
     }
 
 })();
-    function tryExtractPlaceName() {
-        const selectors = [
-            'h1.DUwDvf',
-            'h1[data-attrid="title"]',
-            'h1.fontHeadlineLarge'
-        ];
-        for (const sel of selectors) {
-            const el = document.querySelector(sel);
-            const txt = (el?.textContent || '').trim();
-            if (txt) return txt;
-        }
-        return '';
-    }

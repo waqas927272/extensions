@@ -320,6 +320,7 @@
         // Format salary to standard "$Xâ€“$Y per year" or "$X per hour"
         function formatSalary(raw) {
             if (!raw) return '';
+            raw = normalizeSalaryText(raw);
             const isHourly = /(?:per\s+)?(?:hour|hr|\/hr)/i.test(raw);
             const amounts = [];
             const amountRegex = /\$?([\d,]+(?:\.\d{2})?)\s*k?\b/gi;
@@ -331,6 +332,16 @@
                     num = num * 1000;
                 }
                 if (num > 0) amounts.push(num);
+            }
+            if (!isHourly && amounts.length >= 2) {
+                const maxAmount = Math.max(...amounts);
+                for (let i = 0; i < amounts.length; i++) {
+                    if (amounts[i] >= 100 && amounts[i] < 1000 && maxAmount >= 10000) {
+                        amounts[i] = amounts[i] * 1000;
+                    }
+                }
+            } else if (!isHourly && amounts.length === 1 && amounts[0] >= 100 && amounts[0] < 1000 && /\b(?:salary|compensation|pay)\b/i.test(raw)) {
+                amounts[0] = amounts[0] * 1000;
             }
             if (amounts.length === 0) return raw;
             const fmt = (n) => {
@@ -349,6 +360,7 @@
         // Extract salary from stored description (which now includes JSON-LD data)
         function extractSalary(text) {
             if (!text) return '';
+            const bodyText = normalizeSalaryText(text.split(/===\s*FULL JOB DESCRIPTION\s*===/i).pop() || text);
 
             // Try to extract from JSON-LD data in the text
             const jsonLdMatch = text.match(/Salary Range:\s*([^\n]+)/i);
@@ -357,7 +369,11 @@
             }
 
             // Fallback to text pattern matching
+            const money = String.raw`\$[\d,]+(?:\.\d{1,2})?\s*(?:\/k|k)?`;
+            const secondAmount = String.raw`\$?\s*[\d,]+(?:\.\d{1,2})?\s*(?:\/k|k)?`;
+            const sep = String.raw`(?:-|\u2013|\u2014|\u00e2\u20ac\u201c|\u00e2\u20ac\u009d|to)`;
             const salaryPatterns = [
+                new RegExp(String.raw`(?:base\s+salary\s+range|salary\s+range|compensation\s+range|pay\s+range)[^$]{0,140}${money}\s*${sep}\s*${secondAmount}`, 'i'),
                 // "Base salary ranges: $150k - $171k" or "base salary range of $140,000 â€“ 160,000"
                 /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-â€“â€”]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
                 /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
@@ -381,7 +397,7 @@
                 /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hour|hr|\/hr)/i,
             ];
             for (const pattern of salaryPatterns) {
-                const m = text.match(pattern);
+                const m = bodyText.match(pattern);
                 if (m) return formatSalary(m[0].trim());
             }
             return '';
@@ -1254,7 +1270,7 @@
 
     function normalizeSalaryText(salary) {
         return (salary || '')
-            .replace(/â€“|â€”|–|—/g, ' - ')
+            .replace(/\u00e2\u20ac\u201c|\u00e2\u20ac\u009d|\u2013|\u2014/g, ' - ')
             .replace(/\s+-\s+/g, ' - ')
             .replace(/\s{2,}/g, ' ')
             .trim();

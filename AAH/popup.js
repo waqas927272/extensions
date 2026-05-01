@@ -3,67 +3,45 @@ document.addEventListener('DOMContentLoaded', () => {
     const stopScrapingButton = document.getElementById('stopScraping');
     const viewRecordsButton = document.getElementById('viewRecords');
     const loadingIndicator = document.getElementById('loadingIndicator');
-    const totalJobsCount = document.getElementById('totalJobsCount');
-    const scrapedJobsCount = document.getElementById('scrapedJobsCount');
-    const skippedJobsCount = document.getElementById('skippedJobsCount');
-    const addressesFoundCount = document.getElementById('addressesFoundCount');
-    const addressesMissingCount = document.getElementById('addressesMissingCount');
-    const skipKeywordList = document.getElementById('skipKeywordList');
-    const summaryTimestamp = document.getElementById('summaryTimestamp');
+    const scrapingSummary = document.getElementById('scrapingSummary');
+    const summaryTotal = document.getElementById('summaryTotal');
+    const summarySkipped = document.getElementById('summarySkipped');
+    const summaryScraped = document.getElementById('summaryScraped');
+    const summaryKeywords = document.getElementById('summaryKeywords');
 
-    function formatTimestamp(value) {
-        if (!value) return 'No scrape completed yet';
-        const date = new Date(value);
-        if (Number.isNaN(date.getTime())) return 'Latest scrape summary';
-        return `Completed ${date.toLocaleString()}`;
-    }
+    function renderScrapingSummary(summary) {
+        if (!summary || !scrapingSummary) return;
 
-    function renderSkipKeywords(items = []) {
-        skipKeywordList.innerHTML = '';
+        summaryTotal.textContent = summary.totalJobs || 0;
+        summarySkipped.textContent = summary.skippedJobs || 0;
+        summaryScraped.textContent = summary.scrapedJobs || 0;
+        summaryKeywords.innerHTML = '';
 
-        if (!items.length) {
-            const empty = document.createElement('div');
-            empty.className = 'empty-summary';
-            empty.textContent = 'No skipped jobs recorded.';
-            skipKeywordList.appendChild(empty);
-            return;
+        if (Array.isArray(summary.skippedByKeyword) && summary.skippedByKeyword.length > 0) {
+            summary.skippedByKeyword.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'summary-keyword-row';
+
+                const count = document.createElement('strong');
+                count.textContent = item.count || 0;
+
+                const keyword = document.createElement('span');
+                keyword.textContent = item.keyword || 'unknown';
+
+                row.appendChild(count);
+                row.appendChild(keyword);
+                summaryKeywords.appendChild(row);
+            });
+        } else {
+            summaryKeywords.textContent = 'None';
         }
 
-        items.forEach(item => {
-            const row = document.createElement('div');
-            row.className = 'skip-keyword-row';
-
-            const label = document.createElement('span');
-            label.textContent = item.keyword || 'unknown';
-
-            const count = document.createElement('strong');
-            count.textContent = item.count || 0;
-
-            row.append(label, count);
-            skipKeywordList.appendChild(row);
-        });
+        scrapingSummary.classList.remove('hidden');
     }
 
-    function renderSummary(jobs = [], summary = null) {
-        const addressCount = jobs.filter(job => job.streetAddress || job.zipCode || job.fullAddress).length;
-        const missingAddressCount = Math.max(jobs.length - addressCount, 0);
-
-        totalJobsCount.textContent = summary?.totalJobs ?? jobs.length;
-        scrapedJobsCount.textContent = summary?.scrapedJobs ?? jobs.length;
-        skippedJobsCount.textContent = summary?.skippedJobs ?? 0;
-        addressesFoundCount.textContent = `${addressCount} found`;
-        addressesMissingCount.textContent = missingAddressCount;
-        summaryTimestamp.textContent = formatTimestamp(summary?.completedAt);
-        renderSkipKeywords(summary?.skippedByKeyword || []);
-    }
-
-    function loadSummary() {
-        chrome.storage.local.get(['scrapedJobs', 'scrapingSummary'], (result) => {
-            renderSummary(result.scrapedJobs || [], result.scrapingSummary || null);
-        });
-    }
-
-    loadSummary();
+    chrome.storage.local.get(['scrapingSummary'], (data) => {
+        renderScrapingSummary(data.scrapingSummary);
+    });
 
     // Listener for messages from background.js to update UI
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -78,8 +56,10 @@ document.addEventListener('DOMContentLoaded', () => {
             } else if (request.status === 'completed' || request.status === 'stopped') {
                 loadingIndicator.classList.add('hidden');
                 if (spinnerText) spinnerText.textContent = 'Scraping... Please wait.'; // Reset for next time
-                loadSummary();
                 if (request.status === 'completed') {
+                    chrome.storage.local.get(['scrapingSummary'], (data) => {
+                        renderScrapingSummary(data.scrapingSummary);
+                    });
                     if (request.message && request.message.includes('Fetch Details')) {
                         alert(request.message);
                     } else {
@@ -98,9 +78,9 @@ document.addEventListener('DOMContentLoaded', () => {
   
     startScrapingButton.addEventListener('click', () => {
         chrome.runtime.sendMessage({ action: 'startScraping' });
-        renderSummary([], null);
         // The loading indicator will be shown by the 'scrapingStatus' message from background.js
         loadingIndicator.classList.remove('hidden');
+        scrapingSummary.classList.add('hidden');
         const spinnerText = loadingIndicator.querySelector('span');
         if (spinnerText) spinnerText.textContent = 'Initializing scraping...';
     });

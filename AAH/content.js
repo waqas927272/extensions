@@ -52,7 +52,8 @@ function scrapeCurrentPage() {
       const title = (jobTitle || '').toLowerCase();
       if (/\bmentorship\b/.test(title)) return 'mentorship';
       const hasProtectedRole = /\bassociate\s+veterinarian\b/.test(title) ||
-        /\bmedical\s+director\b/.test(title);
+        /\bmedical\s+director\b/.test(title) ||
+        /\bdvm\s+veterinary\s+partner\s*(?:&|and)\s*(?:hospital\s+)?equity\s+owner\b/.test(title);
       if (hasProtectedRole) return null;
 
       const skipRules = [
@@ -77,7 +78,6 @@ function scrapeCurrentPage() {
         { label: 'veterinary student ambassador', pattern: /\bveterinary\s+student\s+ambassador\b/ },
         { label: 'externship', pattern: /\bexternship\b/ },
         { label: 'relief veterinarian', pattern: /\brelief\s+veterinarian\b/ },
-        { label: 'dvm veterinary partner and hospital equity owner', pattern: /\bdvm\s+veterinary\s+partner\s*(?:&|and)\s*hospital\s+equity\s+owner\b/ },
         { label: 'seasonal veterinarian', pattern: /\bseasonal\s+veterinarian\b/ }
       ];
 
@@ -130,8 +130,6 @@ function scrapeCurrentPage() {
           const hospitalNameEl = row.querySelector('th:nth-child(1)');
           const jobTitleEl = row.querySelector('th:nth-child(2) a');
           const locationEl = row.querySelector('th:nth-child(3)');
-          const jobTypeEl = row.querySelector('th:nth-child(4)');
-
           if (hospitalNameEl && jobTitleEl && locationEl) {
             totalJobs++;
             const hospitalListingValue = (hospitalNameEl.innerText || '').trim();
@@ -144,19 +142,10 @@ function scrapeCurrentPage() {
             }
             const link = jobTitleEl.href;
             const locationText = locationEl.innerText.trim();
-            const jobType = jobTypeEl ? jobTypeEl.innerText.trim() : '';
             const rawJobId = link ? link.split('/').pop() : '';
             const jobId = rawJobId ? 'AAH-' + rawJobId : '';
 
-            let city = '';
-            let state = '';
             let country = 'USA'; // Assuming USA for now, if more countries are present, this logic needs refinement
-
-            const parsedLocation = parseLocationText(locationText);
-            city = parsedLocation.city;
-            state = parsedLocation.state;
-
-            const finalLocation = (city && state) ? `${city}, ${state}` : parsedLocation.location;
 
             jobs.push({
               title: jobTitle,
@@ -164,12 +153,12 @@ function scrapeCurrentPage() {
               hospitalName: hospitalName,
               hospitalRaw: hospitalListingValue,
               position: jobTitle, // As per assumption
-              city: city,
-              state: state,
+              city: '',
+              state: '',
               country: country,
-              location: finalLocation,
+              location: locationText,
               link: link,
-              jobType: jobType,
+              jobType: '',
               jobId: jobId
             });
           }

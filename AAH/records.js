@@ -1,4 +1,4 @@
-﻿document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', () => {
     const tableBody = document.querySelector('#jobRecordsTable tbody');
     const tableHeaders = document.querySelectorAll('#jobRecordsTable th');
     const clearRecordsButton = document.getElementById('clearRecords');
@@ -10,9 +10,6 @@
     const searchInput = document.getElementById('searchInput');
     const exportCsvButton = document.getElementById('exportCsv');
     const toastContainer = document.getElementById('toastContainer');
-    const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
-    const selectAllHeader = document.getElementById('selectAllHeader');
-    const selectAllJobsCheckbox = document.getElementById('selectAllJobs');
     const descriptionModal = document.getElementById('descriptionModal');
     const modalDescriptionContent = document.getElementById('modalDescriptionContent');
     const closeDescriptionModal = document.getElementById('closeDescriptionModal');
@@ -20,8 +17,6 @@
     let currentSortColumn = null;
     let currentSortDirection = 'asc';
     let allJobs = [];
-    let currentlyDisplayedJobs = [];
-    let selectedJobKeys = new Set();
     let isGettingDescriptions = false;
     let isFetchingDetails = false;
     let isFetchingAddresses = false;
@@ -30,6 +25,7 @@
     let currentDetailsIndex = 0;
     let addressQueue = [];
     let currentAddressIndex = 0;
+    let addressCache = new Map();
     const getDescriptionsBtn = document.getElementById('getDescriptionsBtn');
     const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
     const fetchAddressesBtn = document.getElementById('fetchAddressesBtn');
@@ -66,7 +62,7 @@
 
         if (isLocalhost) {
             // Development environment - use localhost without double slash
-            return 'http://localhost/zoho-api/api/webhook-receiver.php';
+            return 'http:/localhost/zoho-api/api/webhook-receiver.php';
         } else {
             // Production environment - try to detect the domain
             // User will need to update this for their production URL
@@ -110,130 +106,82 @@
         return stateAbbreviations[state.toUpperCase()] || state;
     }
 
-    function isCleanCityName(city) {
-        if (!city) return false;
-        const value = city.trim();
-        const lower = value.toLowerCase();
-        const badWords = [
-            'description', 'position', 'associate', 'veterinarian', 'hospital',
-            'care', 'center', 'clinic', 'location', 'practice', 'team',
-            'beautiful', 'supportive', 'community', 'focused', 'general',
-            'located', 'opportunity', 'join', 'seeking', 'looking'
-        ];
+    const APPROVED_POSITIONS = [
+        'Associate Veterinarian',
+        'Medical Director',
+        'Anesthesiologist',
+        'Cardiologist',
+        'Credentialed Veterinary Technician Specialist',
+        'DABVP Specialist',
+        'Dental Specialist',
+        'Dermatologist',
+        'ECC Specialist',
+        'Internal Medicine Specialist',
+        'Lead Veterinarian',
+        'Medical Oncologist',
+        'Neurologist & Neurosurgeon',
+        'Ophthalmologist',
+        'Radiation Oncologist',
+        'Radiologist',
+        'Surgeon',
+        'Partner Veterinarian'
+    ];
+    const APPROVED_POSITION_SET = new Set(APPROVED_POSITIONS);
+    const VALID_POSITIONS_BY_AOP = {
+        'Emergency Care': ['Associate Veterinarian'],
+        'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
+        'Specialty Care': [
+            'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
+            'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
+            'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
+            'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
+            'Radiologist', 'Surgeon'
+        ],
+        'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
+    };
 
-        if (value.length < 2 || value.length > 35) return false;
-        if (/\b(in|near|at|with|for)\b/i.test(value)) return false;
-        if (badWords.some(word => lower.includes(word))) return false;
-        if (!/^[A-Za-z][A-Za-z\s.'-]*$/.test(value)) return false;
-
-        return true;
+    function hasSpecialtyTrainingSignal(text) {
+        return /\bboard certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b/i.test(text || '');
     }
 
-    function normalizeCityName(city) {
-        if (!city) return '';
-        const value = city.trim();
-        if (isCleanCityName(value)) return value;
+    function matchApprovedPositionFromText(text) {
+        if (!text) return '';
 
-        const phraseMatch = value.match(/\b(?:located\s+in|in|near|at)\s+(?:beautiful\s+)?([A-Za-z][A-Za-z\s.'-]*?)\s*$/i);
-        if (phraseMatch && isCleanCityName(phraseMatch[1])) {
-            return phraseMatch[1].trim();
+        const rules = [
+            ['Medical Director', [/\bmedical director\b/i]],
+            ['Lead Veterinarian', [/\blead veterinarian\b/i, /\blead vet\b/i]],
+            ['Neurologist & Neurosurgeon', [/\bneurologist\b/i, /\bneurosurgeon\b/i, /\bboard certified\b.*\bneurolog/i, /\bresidency[-\s]+trained\b.*\bneurolog/i, /\bdacvim\b.*\bneurolog/i]],
+            ['Dermatologist', [/\bdermatologist\b/i, /\bboard certified\b.*\bdermatolog/i, /\bresidency[-\s]+trained\b.*\bdermatolog/i, /\bdacvd\b/i]],
+            ['Cardiologist', [/\bcardiologist\b/i, /\bboard certified\b.*\bcardiolog/i, /\bresidency[-\s]+trained\b.*\bcardiolog/i, /\bdacvim\b.*\bcardiolog/i]],
+            ['Radiation Oncologist', [/\bradiation oncolog/i, /\bdacvr[-\s]?ro\b/i, /\bdacvr\b.*\bradiation\b/i]],
+            ['Medical Oncologist', [/\bmedical oncolog/i, /\bboard certified\b.*\boncolog/i, /\bresidency[-\s]+trained\b.*\boncolog/i, /\bdacvim\b.*\boncology\b/i]],
+            ['Radiologist', [/\bradiologist\b/i, /\bdiagnostic imaging specialist\b/i, /\bboard certified\b.*\bradiolog/i, /\bresidency[-\s]+trained\b.*\bradiolog/i, /\bdacvr\b/i]],
+            ['Ophthalmologist', [/\bophthalmologist\b/i, /\bboard certified\b.*\bophthalmolog/i, /\bresidency[-\s]+trained\b.*\bophthalmolog/i, /\bdacvo\b/i]],
+            ['Anesthesiologist', [/\banesthesiologist\b/i, /\bboard certified\b.*\banesth/i, /\bresidency[-\s]+trained\b.*\banesth/i, /\bdacvaa\b/i]],
+            ['Internal Medicine Specialist', [/\binternist\b/i, /\binternal medicine specialist\b/i, /\bboard certified\b.*\binternal medicine\b/i, /\bresidency[-\s]+trained\b.*\binternal medicine\b/i, /\bdacvim\b(?!.*oncology)(?!.*cardiology)(?!.*neurology)/i]],
+            ['ECC Specialist', [/\bcriticalist\b/i, /\becc specialist\b/i, /\bemergency\s*(?:&|and)?\s*critical care specialist\b/i, /\bboard certified\b.*\bcritical/i, /\bresidency[-\s]+trained\b.*\bcritical/i, /\bdacvecc\b/i]],
+            ['DABVP Specialist', [/\bdabvp\b/i]],
+            ['Dental Specialist', [/\bdental specialist\b/i, /\bveterinary dentist\b/i, /\boral surgeon\b/i, /\bboard certified\b.*\bdent/i, /\bresidency[-\s]+trained\b.*\bdent/i, /\bdavdc\b/i]],
+            ['Surgeon', [/\bveterinary surgeon\b/i, /\bsurgeon\b/i, /\bboard certified\b.*\bsurgeon\b/i, /\bresidency[-\s]+trained\b.*\bsurgeon\b/i, /\bdacvs\b/i, /\bacvs\b/i]],
+            ['Credentialed Veterinary Technician Specialist', [/\bcredentialed veterinary technician specialist\b/i, /\btechnician specialist\b/i, /\bvts\b/i]]
+        ];
+
+        for (const [position, patterns] of rules) {
+            if (patterns.some(pattern => pattern.test(text))) {
+                if (position === 'Medical Oncologist' && /\bradiation oncolog/i.test(text)) continue;
+                if (position === 'Radiologist' && /\bradiation oncolog/i.test(text)) continue;
+                if (position === 'Surgeon' && /\bneuro(?:logy|surgeon)\b/i.test(text)) continue;
+                if (position === 'Dental Specialist' && /\bassistant\b/i.test(text)) continue;
+                return position;
+            }
         }
 
         return '';
     }
 
-    function parseListingLocation(location) {
-        if (!location) return null;
-        const parts = location.split(',').map(s => s.trim()).filter(Boolean);
-        if (parts.length < 2) return null;
-        const city = normalizeCityName(parts[0]);
-        const state = parts[1];
-        if (!city || !/^[A-Z]{2}$/.test(state)) return null;
-        return { city, state, location: `${city}, ${state}` };
-    }
-
-    function normalizeLocationText(location) {
-        const parsed = parseListingLocation(location);
-        return parsed ? parsed.location : '';
-    }
-
-    function getSavedDescriptionField(descriptionText, fieldName) {
-        if (!descriptionText) return '';
-        const escapedField = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const match = descriptionText.match(new RegExp(`^${escapedField}:\\s*([^\\n]+)`, 'im'));
-        return match ? match[1].trim() : '';
-    }
-
-    function isUsableHospitalName(hospitalName) {
-        if (!hospitalName) return false;
-        const cleaned = hospitalName.trim();
-        if (!cleaned) return false;
-        return !/^united\s+veterinary\s+care$/i.test(cleaned) && !/^uvc$/i.test(cleaned);
-    }
-
-    function shouldSkipFetchDetails(job) {
-        const title = (job?.title || '').toLowerCase();
-        const hasProtectedRole = /\bassociate\s+veterinarian\b/.test(title) ||
-            /\bmedical\s+director\b/.test(title);
-        if (hasProtectedRole) return false;
-
-        return /\bveterinary\s+receptionist\b/.test(title) ||
-            /\bveterinary\s+customer\s+service\s+representative\b/.test(title) ||
-            /\bveterinary\s+technician\b/.test(title) ||
-            /\bvet(?:erinary)?\s+tech(?:nician)?\b/.test(title) ||
-            /\bkennel\b/.test(title) ||
-            /\bveterinary\s+assistant\b/.test(title) ||
-            /\bvet(?:erinary)?\s+assistant\b/.test(title) ||
-            /\bveterinary\s+practice\s+manager\b/.test(title) ||
-            /\bveterinary\s+laboratory\s+technician\b/.test(title) ||
-            /\bpet\s+bather\b/.test(title) ||
-            /\bveterinary\s+surgery\s+technician\b/.test(title) ||
-            /\bveterinary\s+groomer\b/.test(title) ||
-            /\banimal\s+care\s+technician\b/.test(title) ||
-            /\bveterinary\s+student\s+ambassador\b/.test(title) ||
-            /\bexternship\b/.test(title) ||
-            /\brelief\s+veterinarian\b/.test(title) ||
-            /\bdvm\s+veterinary\s+partner\s*(?:&|and)\s*hospital\s+equity\s+owner\b/.test(title) ||
-            /\bseasonal\s+veterinarian\b/.test(title);
-    }
-
-    function getJobSelectionKey(job) {
-        return [
-            job?.jobId || '',
-            job?.link || '',
-            job?.title || '',
-            job?.hospital || '',
-            job?.location || ''
-        ].join('|');
-    }
-
-    function refreshDisplayedJobs() {
-        const searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
-        let jobsToDisplay = [...allJobs];
-
-        if (searchTerm) {
-            jobsToDisplay = jobsToDisplay.filter(job =>
-                (job.title || '').toLowerCase().includes(searchTerm) ||
-                (job.hospital || '').toLowerCase().includes(searchTerm) ||
-                (job.city || '').toLowerCase().includes(searchTerm) ||
-                (job.state || '').toLowerCase().includes(searchTerm) ||
-                (job.location || '').toLowerCase().includes(searchTerm) ||
-                (job.streetAddress || '').toLowerCase().includes(searchTerm) ||
-                (job.zipCode || '').toLowerCase().includes(searchTerm) ||
-                (job.phone || '').toLowerCase().includes(searchTerm) ||
-                (job.website || '').toLowerCase().includes(searchTerm) ||
-                (job.areaOfPractice || '').toLowerCase().includes(searchTerm) ||
-                (job.position || '').toLowerCase().includes(searchTerm) ||
-                (job.jobType || '').toLowerCase().includes(searchTerm) ||
-                (job.experience || '').toLowerCase().includes(searchTerm)
-            );
-        }
-
-        if (currentSortColumn) {
-            jobsToDisplay = sortRecords(currentSortColumn, currentSortDirection, jobsToDisplay);
-        }
-
-        displayRecords(jobsToDisplay);
+    function getPositionFromDescription(text) {
+        const matched = matchApprovedPositionFromText(text || '');
+        return APPROVED_POSITION_SET.has(matched) ? matched : '';
     }
 
     // ============ TOP-LEVEL POSITION MATCHING (used by both detail extraction and save) ============
@@ -242,7 +190,7 @@
     // The listing title (e.g. "Veterinary Cardiologist") is always more specific than
     // generic detail page content, so we use it as the primary position signal.
     function getPositionFromTitle(title) {
-        const t = title.toLowerCase();
+        const t = (title || '').toLowerCase();
 
         // === HIGHEST PRIORITY: Leadership positions ===
         // "Group Medical Director - The Oncology Service" → Medical Director, NOT Medical Oncologist
@@ -258,7 +206,6 @@
         if (t.includes('radiologist') || t.includes('diagnostic imaging') || t.includes('radiology')) return 'Radiologist';
         if (t.includes('ophthalmologist') || t.includes('ophthalmology')) return 'Ophthalmologist';
         if (t.includes('anesthesiologist') || t.includes('anesthesia')) return 'Anesthesiologist';
-        if (t.includes('theriogenologist') || t.includes('theriogenology')) return 'Theriogenologist';
         if (t.includes('internist') || t.includes('internal medicine')) return 'Internal Medicine Specialist';
         if (t.includes('criticalist') || t.match(/\becc\b/) || t.includes('emergency medicine')) return 'ECC Specialist';
         if (t.includes('dabvp')) return 'DABVP Specialist';
@@ -268,44 +215,46 @@
         // === VTS/CREDENTIALED SPECIALIST ===
         if (t.includes('technician specialist') || (t.match(/\bvts\b/) && t.includes('specialist'))) return 'Credentialed Veterinary Technician Specialist';
 
-        // === ANIMAL TYPE & PRACTICE SCOPE ===
-        if (t.includes('equine') || t.includes('bovine') || t.includes('large animal')) return 'Equine/Bovine Veterinarian/Large Animal';
-        if (t.includes('avian') || t.includes('exotics')) return 'Avian & Exotics Veterinarian / Associate Exotics';
-
-        // === OTHER ===
-        if (t.includes('partner veterinarian')) return 'Partner Veterinarian';
+        // === GENERIC VETERINARIAN ROLES ===
+        if (t.includes('partner veterinarian') || t.includes('partner vet')) return 'Partner Veterinarian';
+        if (/\b(?:associate\s+)?(?:emergency|er|urgent care|urgent)?\s*(?:veterinarian|vet|dvm)\b/.test(t)) return 'Associate Veterinarian';
+        if (/\bassociate veterinarian\b|\bassociate vet\b/.test(t)) return 'Associate Veterinarian';
 
         return '';
     }
 
+    function getAOPParts(aop) {
+        return (aop || '').split('/').map(part => part.trim()).filter(Boolean);
+    }
+
     // Validate that a position is allowed for the given AOP
     function getValidatedPosition(position, aop) {
-        const validPositions = {
-            'Emergency Care': ['Associate Veterinarian'],
-            'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
-            'Specialty Care': [
-                'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
-                'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
-                'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
-                'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
-                'Radiologist', 'Surgeon'
-            ],
-            'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian'],
-        };
+        if (!APPROVED_POSITION_SET.has(position)) return '';
 
-        const aopParts = aop.split('/').map(s => s.trim());
+        const aopParts = getAOPParts(aop);
+        if (aopParts.length === 0) return position;
+
         for (const part of aopParts) {
-            const allowed = validPositions[part];
+            const allowed = VALID_POSITIONS_BY_AOP[part];
             if (allowed && allowed.includes(position)) return position;
         }
 
-        const hasKnownAOP = aopParts.some(part => validPositions[part]);
-        if (hasKnownAOP) return 'Associate Veterinarian';
+        return '';
+    }
 
-        const allValid = new Set(Object.values(validPositions).flat());
-        if (allValid.has(position)) return position;
+    function getDefaultPositionForAOP(aop, title = '') {
+        const aopParts = getAOPParts(aop);
+        const t = (title || '').toLowerCase();
 
-        return 'Associate Veterinarian';
+        if (aopParts.includes('Urgent Care') && (t.includes('partner veterinarian') || t.includes('partner vet'))) {
+            return 'Partner Veterinarian';
+        }
+
+        if (aopParts.some(part => ['General Practice Care', 'Emergency Care', 'Urgent Care'].includes(part))) {
+            return 'Associate Veterinarian';
+        }
+
+        return '';
     }
 
     // Determine AOP from the Jobvite category string
@@ -357,34 +306,28 @@
 
     // ============ LOCAL DETAIL EXTRACTION (mirrors detail-extractor.js) ============
 
-    function extractDetailsFromDescription(positionTitle, descriptionText, listingLocation = '') {
+    function extractDetailsFromDescription(positionTitle, descriptionText) {
         // Format salary to standard "$X–$Y per year" or "$X per hour"
-        function formatSalary(raw, context = '') {
+        function formatSalary(raw) {
             if (!raw) return '';
-            const salaryContext = `${raw} ${context}`;
-            const isHourly = /(?:per\s+)?(?:hour|hr)|\/\s*hr|hourly/i.test(salaryContext);
-            const isAnnual = /(?:per\s+)?(?:year|annually|annual|annum)|yearly/i.test(salaryContext);
-            const rangePattern = /\$?[\d,]+(?:\.\d{2})?\s*(?:\/?k)?\s*(?:-|\?|\u2010|\u2011|\u2012|\u2013|\u2014|\u2015|\uFFFD|to|\u00e2\S{0,3})\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/?k)?/i;
-            const amountSource = rangePattern.test(raw) ? raw : (salaryContext.match(rangePattern)?.[0] || raw);
-            const rangeUsesK = /\b\d[\d,]*(?:\.\d+)?\s*(?:\/?k)?\s*(?:[-–—]|to)\s*\$?\d[\d,]*(?:\.\d+)?\s*(?:\/?k)\b/i.test(raw);
+            const isHourly = /(?:per\s+)?(?:hour|hr|\/hr)/i.test(raw);
             const amounts = [];
-            const amountRegex = /\$?([\d,]+(?:\.\d{2})?)\s*(?:\/?k)?\b/gi;
+            const amountRegex = /\$?([\d,]+(?:\.\d{2})?)\s*k?\b/gi;
             let match;
-            while ((match = amountRegex.exec(amountSource)) !== null) {
+            while ((match = amountRegex.exec(raw)) !== null) {
                 let num = parseFloat(match[1].replace(/,/g, ''));
-                const afterMatch = amountSource.substring(match.index + match[0].length - 1, match.index + match[0].length + 1);
-                if (rangeUsesK || /\b\d[\d,]*(?:\.\d+)?\s*(?:\/?k)?\s*(?:-|\u2013|\u2014|to)\s*\$?\d[\d,]*(?:\.\d+)?\s*(?:\/?k)\b/i.test(amountSource) || /k/i.test(match[0]) || /k/i.test(afterMatch)) {
+                const afterMatch = raw.substring(match.index + match[0].length - 1, match.index + match[0].length + 1);
+                if (/k/i.test(match[0]) || /k/i.test(afterMatch)) {
                     num = num * 1000;
                 }
                 if (num > 0) amounts.push(num);
             }
             if (amounts.length === 0) return raw;
-            const maxAmount = Math.max(...amounts);
             const fmt = (n) => {
                 if (Number.isInteger(n)) return '$' + n.toLocaleString('en-US');
                 return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             };
-            const unit = isHourly || (!isAnnual && maxAmount > 0 && maxAmount < 300) ? 'per hour' : 'per year';
+            const unit = isHourly ? 'per hour' : 'per year';
             if (amounts.length >= 2) {
                 const min = Math.min(amounts[0], amounts[1]);
                 const max = Math.max(amounts[0], amounts[1]);
@@ -396,32 +339,15 @@
         // Extract salary from stored description (which now includes JSON-LD data)
         function extractSalary(text) {
             if (!text) return '';
-            const normalizedText = text
-                .replace(/\u00e2\u20ac\u201c|\u00e2\u20ac\u201d|\u00e2\u02c6\u2019/g, '-')
-                .replace(/[\u2012\u2013\u2014\u2212]/g, '-');
 
             // Try to extract from JSON-LD data in the text
-            const jsonLdMatch = normalizedText.match(/Salary Range:\s*([^\n]+)/i);
+            const jsonLdMatch = text.match(/Salary Range:\s*([^\n]+)/i);
             if (jsonLdMatch) {
-                const salaryLine = (jsonLdMatch[1] || '').trim();
-                // Only trust this fast path when it actually contains numeric salary data.
-                // Otherwise, continue to broader fallback matching below.
-                if (/\d/.test(salaryLine)) {
-                    const formatted = formatSalary(salaryLine);
-                    if (/\d/.test(formatted)) return formatted;
-                }
+                return formatSalary(jsonLdMatch[1].trim());
             }
 
             // Fallback to text pattern matching
             const salaryPatterns = [
-                /(?:compensation|salary|pay)\s+range\s*[-:]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*-\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*,?\s*(?:depending|based)\s+on[^\n.]*)?/i,
-                /(?:base\s+)?(?:salary|compensation|pay)\s+range(?:\s+can\s+vary)?\s*(?:from|of|is|:)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|to)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual|hour|hr|hourly))?/i,
-                /(?:base\s+)?(?:salary|compensation|pay)\s+range(?:\s+can\s+vary)?\s*between\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*and\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual|hour|hr|hourly))?/i,
-                /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|\u2013|\u2014)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
-                /(?:(?:pay|salary|compensation)\s+range)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|\u2013|\u2014)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
-                /(?:salary|compensation|pay)[:\s]+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|\u2013|\u2014)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual|hour|hr))?/i,
-                /\$[\d,]+(?:\.\d{2})?\s*(?:-|\u2013|\u2014)\s*\$[\d,]+(?:\.\d{2})?/i,
-                /\$[\d,]+\s*(?:\/k|k)\s*(?:-|\u2013|\u2014)+\s*\$?[\d,]+\s*(?:\/k|k)/i,
                 // "Base salary ranges: $150k - $171k" or "base salary range of $140,000 – 160,000"
                 /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
                 /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
@@ -445,18 +371,8 @@
                 /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hour|hr|\/hr)/i,
             ];
             for (const pattern of salaryPatterns) {
-                const m = normalizedText.match(pattern);
-                if (m) {
-                    const context = normalizedText.substring(Math.max(0, m.index - 80), Math.min(normalizedText.length, m.index + m[0].length + 80));
-                    return formatSalary(m[0].trim(), context);
-                }
-            }
-
-            // Last-resort fallback for messy formatting like:
-            // "Compensation Range- $175,000-250,000, depending on ..."
-            const keywordWindow = normalizedText.match(/(?:compensation|salary|pay)[\s\S]{0,80}\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|to|and)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i);
-            if (keywordWindow) {
-                return formatSalary(keywordWindow[0].trim(), keywordWindow[0]);
+                const m = text.match(pattern);
+                if (m) return formatSalary(m[0].trim());
             }
             return '';
         }
@@ -480,10 +396,28 @@
             return null;
         }
 
-        function hasSpecialtyCertificationSignal(text) {
-            if (!text) return false;
-            return /\bboard[\s-]+certified\b/i.test(text) ||
-                /\bresidenc(?:y|e)[\s-]+trained\b/i.test(text);
+        function extractRoleSignalText(text) {
+            if (!text) return '';
+
+            const rolePattern = /\b(?:medical director|lead veterinarian|lead vet|board certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
+            const blockedPattern = /\b(?:our services|services include|specialties include|benefits|medical(?:,\s*|\s+)dental|dental insurance|our hospital|our team has|state[-\s]?of[-\s]?the[-\s]?art|we offer|years of experience in specialty and emergency services)\b/i;
+            const qualificationsSection = extractQualificationsSection(text);
+            const collected = [];
+            const seen = new Set();
+
+            if (qualificationsSection) {
+                seen.add(qualificationsSection);
+                collected.push(qualificationsSection);
+            }
+
+            for (const rawLine of text.split('\n')) {
+                const line = rawLine.trim();
+                if (!line || !rolePattern.test(line) || blockedPattern.test(line) || seen.has(line)) continue;
+                seen.add(line);
+                collected.push(line);
+            }
+
+            return collected.join('\n');
         }
 
         // Determine Area of Practice
@@ -492,13 +426,12 @@
             const title = positionText.toLowerCase();
             const category = getIndustryCategory(descriptionText).toLowerCase();
 
+            if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
+
             // STEP 0: Title-specific overrides — these are MORE specific than Jobvite categories.
             // e.g. "Urgent Care Veterinarian" is categorized as "Veterinarian (ER)" on Jobvite,
             // but "urgent care" in the title is a more precise signal than the broad ER bucket.
             if (title.includes('urgent care')) return 'Urgent Care';
-
-            // Board-certified or residency-trained roles are specialty roles even if Jobvite category is broad.
-            if (hasSpecialtyCertificationSignal(descriptionText)) return 'Specialty Care';
 
             // STEP 1: Use industry/category - most reliable signal for broad categories
             if (category) {
@@ -561,7 +494,7 @@
         // Match position from title keywords
         // PRIORITY ORDER: Leadership first (to avoid false matches on service names), then specialty, then generic
         function matchPositionFromTitle(title) {
-            const t = title.toLowerCase();
+            const t = (title || '').toLowerCase();
 
             // === HIGHEST PRIORITY: Leadership positions ===
             // Must be checked FIRST — "Group Medical Director - The Oncology Service" should be
@@ -578,7 +511,6 @@
             if (t.includes('radiologist') || t.includes('diagnostic imaging') || t.includes('radiology')) return 'Radiologist';
             if (t.includes('ophthalmologist') || t.includes('ophthalmology')) return 'Ophthalmologist';
             if (t.includes('anesthesiologist') || t.includes('anesthesia')) return 'Anesthesiologist';
-            if (t.includes('theriogenologist') || t.includes('theriogenology')) return 'Theriogenologist';
             if (t.includes('internist') || t.includes('internal medicine')) return 'Internal Medicine Specialist';
             if (t.includes('criticalist') || t.match(/\becc\b/) || t.includes('emergency medicine')) return 'ECC Specialist';
             if (t.includes('dabvp')) return 'DABVP Specialist';
@@ -589,36 +521,17 @@
             // === VTS/CREDENTIALED SPECIALIST (check before generic technician) ===
             if (t.includes('technician specialist') || (t.match(/\bvts\b/) && t.includes('specialist'))) return 'Credentialed Veterinary Technician Specialist';
 
-            // === ANIMAL TYPE & PRACTICE SCOPE ===
-            if (t.includes('equine') || t.includes('bovine') || t.includes('large animal')) return 'Equine/Bovine Veterinarian/Large Animal';
-            if (t.includes('avian') || t.includes('exotics')) return 'Avian & Exotics Veterinarian / Associate Exotics';
-
-            // === GENERAL VETERINARY ROLES ===
-            if (t.includes('partner veterinarian')) return 'Partner Veterinarian';
+            // === GENERIC VETERINARIAN ROLES ===
+            if (t.includes('partner veterinarian') || t.includes('partner vet')) return 'Partner Veterinarian';
+            if (/\b(?:associate\s+)?(?:emergency|er|urgent care|urgent)?\s*(?:veterinarian|vet|dvm)\b/.test(t)) return 'Associate Veterinarian';
+            if (/\bassociate veterinarian\b|\bassociate vet\b/.test(t)) return 'Associate Veterinarian';
 
             return '';
         }
 
         // Match position from qualifications section
         function matchPositionFromQualifications(descriptionText) {
-            const qualSection = extractQualificationsSection(descriptionText);
-            if (!qualSection) return '';
-            const q = qualSection.toLowerCase();
-            if (q.includes('dacvecc')) return 'ECC Specialist';
-            if (q.includes('dacvim') && q.includes('oncology')) return 'Medical Oncologist';
-            if (q.includes('dacvr') && q.includes('radiation')) return 'Radiation Oncologist';
-            if (q.includes('dacvim') && q.includes('neurology')) return 'Neurologist & Neurosurgeon';
-            if (q.includes('dacvim') && q.includes('cardiology')) return 'Cardiologist';
-            if (q.includes('dacvim')) return 'Internal Medicine Specialist';
-            if (q.includes('davdc')) return 'Dental Specialist';
-            if (q.includes('dacvd')) return 'Dermatologist';
-            if (q.includes('dacvs') || q.includes('acvs')) return 'Surgeon';
-            if (q.includes('dacvr')) return 'Radiologist';
-            if (q.includes('dacvo')) return 'Ophthalmologist';
-            if (q.includes('dacvaa')) return 'Anesthesiologist';
-            if (q.includes('dact')) return 'Theriogenologist';
-            if (q.includes('dabvp')) return 'DABVP Specialist';
-            return '';
+            return getPositionFromDescription(extractRoleSignalText(descriptionText));
         }
 
         // Validate position is allowed for given AOP per CorrectJobNames.txt
@@ -658,30 +571,19 @@
         // Determine Position
         function determinePosition(positionText, descriptionText, areaOfPractice) {
             let position = matchPositionFromTitle(positionText);
-            if (!position && areaOfPractice === 'Specialty Care') {
+            if (!position) {
                 position = matchPositionFromQualifications(descriptionText);
             }
-            if (position) {
-                position = validatePositionForAOP(position, areaOfPractice);
-            }
-            // Special case: if title explicitly says "Medical Director" but AOP validation
-            // downgraded it (e.g., ER category), keep it as Medical Director
-            if (position === 'Associate Veterinarian' && positionText.toLowerCase().includes('medical director')) {
-                position = 'Medical Director';
-            }
-            if (!position) position = 'Associate Veterinarian';
-            return position;
+            return APPROVED_POSITION_SET.has(position) ? position : '';
         }
 
         // Extract locations from stored description (which now includes JSON-LD data)
         function extractLocations(text) {
             const locations = [];
-            const listingLoc = parseListingLocation(listingLocation);
-            if (listingLoc) locations.push(listingLoc);
 
             // First try to extract from structured JSON-LD data in the text
             // Format from description-scraper: "  - City, ST, Country" or "  - City, State"
-            const locationsSection = locations.length === 0 ? text.match(/Locations:\n((?:\s*-\s*[^\n]+\n?)+)/i) : null;
+            const locationsSection = text.match(/Locations:\n((?:\s*-\s*[^\n]+\n?)+)/i);
             if (locationsSection) {
                 const locationLines = locationsSection[1].split('\n');
                 for (const line of locationLines) {
@@ -690,7 +592,7 @@
                     // Remove leading "- " and split by comma
                     const parts = trimmed.replace(/^-\s*/, '').split(',').map(s => s.trim()).filter(s => s);
                     if (parts.length >= 2) {
-                        const city = normalizeCityName(parts[0]);
+                        const city = parts[0];
                         let state = parts[1];
                         // Try to find a 2-letter state abbreviation elsewhere in the text for this city
                         if (state.length > 2) {
@@ -699,9 +601,7 @@
                                 state = stateAbbrev[1];
                             }
                         }
-                        if (city && /^[A-Z]{2}$/.test(state)) {
-                            locations.push({ city, state, location: `${city}, ${state}` });
-                        }
+                        locations.push({ city, state, location: `${city}, ${state}` });
                     }
                 }
             }
@@ -716,10 +616,11 @@
                 // Match patterns like "City, ST"
                 const matches = searchText.matchAll(/\b([A-Za-z][\w\s.'()-]*[A-Za-z])\s*,\s*([A-Z]{2})\b/g);
                 for (const match of matches) {
-                    let city = normalizeCityName(match[1]);
+                    let city = match[1].trim();
                     const state = match[2].trim();
 
-                    if (city && /^[A-Z]{2}$/.test(state)) {
+                    const invalidWords = ['description', 'position', 'associate', 'veterinarian', 'hospital', 'care', 'center', 'clinic', 'location'];
+                    if (!invalidWords.some(word => city.toLowerCase().includes(word)) && city.length > 1 && city.length < 50) {
                         locations.push({ city, state, location: `${city}, ${state}` });
                     }
                 }
@@ -794,160 +695,375 @@
             return 'Full-Time';
         }
 
-        const savedTitle = getSavedDescriptionField(descriptionText, 'Title');
-        const effectiveTitle = savedTitle || positionTitle || '';
+        function extractExperience(text) {
+            if (!text) return '';
+
+            const yearToken = '(?:years?|yrs?\\.?)';
+            const candidateLines = [];
+            const qualificationsSection = extractQualificationsSection(text);
+
+            if (qualificationsSection) {
+                candidateLines.push(...qualificationsSection.split('\n'));
+            }
+            candidateLines.push(...text.split('\n'));
+
+            const prioritizedLines = candidateLines
+                .map(line => line.trim())
+                .filter(Boolean)
+                .filter(line => /\b(?:experience|experienced|minimum|min\.?|at least|required|requirements?|qualifications?|practice setting|years in practice)\b/i.test(line))
+                .filter(line => !/\b(?:our team has|over\s+\d+\s+years of experience|years of experience in specialty and emergency services|serving\s+the\s+community|we offer|benefits|medical(?:,\s*|\s+)dental)\b/i.test(line));
+
+            const patterns = [
+                new RegExp(`\\b(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
+                new RegExp(`\\b(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
+                new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
+                new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\b`, 'i'),
+                new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
+                new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
+                new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
+                new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
+                new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:in\\s+(?:practice|a\\s+practice\\s+setting)|practice\\s+setting)\\b`, 'i')
+            ];
+
+            function formatExperience(match) {
+                const minYears = match[1];
+                const maxYears = match[2];
+                if (minYears && maxYears) {
+                    return `${minYears}-${maxYears} years`;
+                }
+
+                const years = minYears || maxYears;
+                if (!years) return '';
+
+                if (/\+/.test(match[0]) || /\b(?:minimum|min\.?|at least)\b/i.test(match[0])) {
+                    return `${years}+ years`;
+                }
+
+                return `${years} ${years === '1' ? 'year' : 'years'}`;
+            }
+
+            for (const source of prioritizedLines) {
+                for (const pattern of patterns) {
+                    const match = source.match(pattern);
+                    if (match) return formatExperience(match);
+                }
+            }
+
+            return '';
+        }
 
         // Run all extractions
         const salary = extractSalary(descriptionText);
-        const areaOfPractice = determineAreaOfPractice(effectiveTitle, descriptionText);
-        const position = determinePosition(effectiveTitle, descriptionText, areaOfPractice);
+        const areaOfPractice = determineAreaOfPractice(positionTitle, descriptionText);
+        const position = determinePosition(positionTitle, descriptionText, areaOfPractice);
         const locations = extractLocations(descriptionText);
         const hospitalName = extractHospitalName(descriptionText);
         const jobType = extractJobType(descriptionText);
+        const experience = extractExperience(descriptionText);
 
         return {
-            title: effectiveTitle,
             salary,
             areaOfPractice,
             position,
             locations,
             hospitalName,
-            jobType
+            jobType,
+            experience
         };
     }
 
-    function formatPhoneToPlus1(phone) {
-        if (!phone) return '';
-        const digits = String(phone).replace(/[^\d]/g, '');
-        let core = '';
-        if (digits.length === 11 && digits.startsWith('1')) core = digits.slice(1);
-        else if (digits.length === 10) core = digits;
-        if (!core) return '';
-        return `+1 (${core.slice(0, 3)}) ${core.slice(3, 6)}-${core.slice(6)}`;
-    }
-
-    // Google Maps address fetcher:
-    // Opens Google Maps search URL directly with raw hospital listing value and scrapes place details.
-    async function fetchAddressFromGoogleMaps(rawHospitalValue) {
-        const searchQuery = String(rawHospitalValue || '').trim();
+    // Google Maps scraping function to get street address and zip code
+    // Opens a Google Maps search tab, injects scraper that:
+    //   1. Waits for search results to load
+    //   2. Matches the hospital name from aria-labels on search result links
+    //   3. Clicks the matching result
+    //   4. Waits for place detail panel and extracts address
+    // Retries with simplified search query if first attempt fails.
+    async function fetchAddressFromGoogleMaps(hospitalName, location, originalHospitalName = '') {
+        // Build search query: "Hospital Name, City, State"
+        const searchQuery = `${hospitalName}, ${location}`;
         const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
-        if (!searchQuery) {
-            return { streetAddress: '', city: '', state: '', fullAddress: '', website: '', phone: '', zipCode: '', placeName: '' };
+
+        function emptyAddressResult() {
+            return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
         }
 
-        const extractZip = (text) => {
-            if (!text) return '';
-            const m = String(text).match(/\b(\d{5}(?:-\d{4})?)\b/);
-            return m ? m[1] : '';
-        };
+        const expectedLocation = parseExpectedLocation(location);
 
-        function scrapeGoogleMapsTab(url, queryLabel) {
-            return new Promise((resolve) => {
-                let tabId = null;
-                let listener = null;
-                let settled = false;
-                const waitForTabComplete = (targetTabId, timeoutMs = 12000) => new Promise((res) => {
-                    let done = false;
-                    const finishWait = () => {
-                        if (done) return;
-                        done = true;
-                        chrome.tabs.onUpdated.removeListener(onUpdatedWait);
-                        res();
-                    };
-                    const onUpdatedWait = (updatedTabId, info) => {
-                        if (updatedTabId === targetTabId && info.status === 'complete') finishWait();
-                    };
-                    chrome.tabs.onUpdated.addListener(onUpdatedWait);
-                    setTimeout(finishWait, timeoutMs);
-                });
+        function normalizeForCompare(value) {
+            return (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        }
 
-                const runMapsScraper = async (targetTabId, retries = 2) => {
-                    for (let i = 0; i <= retries; i++) {
-                        try {
-                            const results = await chrome.scripting.executeScript({
-                                target: { tabId: targetTabId },
-                                files: ['google-maps-scraper.js']
-                            });
-                            return results?.[0]?.result || {};
-                        } catch (err) {
-                            const msg = String(err?.message || err || '');
-                            const isFrameReset = /Frame with ID 0 was removed|No frame with id 0|Cannot access contents of url/i.test(msg);
-                            if (!isFrameReset || i === retries) throw err;
-                            await new Promise(r => setTimeout(r, 1200));
-                            await waitForTabComplete(targetTabId, 8000);
+        function normalizeStateForCompare(value) {
+            const state = (value || '').trim();
+            if (!state) return '';
+            if (/^[A-Z]{2}$/i.test(state)) return state.toUpperCase();
+
+            const normalizedState = normalizeForCompare(state);
+            const match = Object.entries(stateAbbreviations).find(([, fullName]) => {
+                return normalizeForCompare(fullName) === normalizedState;
+            });
+            return match ? match[0] : state.toUpperCase();
+        }
+
+        function parseExpectedLocation(locationText) {
+            const parts = (locationText || '').split(',').map(part => part.trim()).filter(Boolean);
+            return {
+                city: parts[0] || '',
+                state: parts.length >= 2 ? normalizeStateForCompare(parts[1]) : ''
+            };
+        }
+
+        function resultMatchesExpectedLocation(result) {
+            const resultCity = normalizeForCompare(result.city || '');
+            const resultState = normalizeStateForCompare(result.state || '');
+            const expectedCity = normalizeForCompare(expectedLocation.city);
+            const expectedState = expectedLocation.state;
+
+            if (expectedCity && resultCity && resultCity !== expectedCity) return false;
+            if (expectedState && resultState && resultState !== expectedState) return false;
+            return true;
+        }
+
+        function filterDataForExpectedLocation(data, sourceLabel) {
+            const result = data || emptyAddressResult();
+            const hasLocationSignal = !!(result.streetAddress || result.zipCode || result.fullAddress || result.city || result.state);
+
+            if (hasLocationSignal && !resultMatchesExpectedLocation(result)) {
+                console.warn(`Ignoring address result outside requested location "${location}" from "${sourceLabel}": ${result.fullAddress || [result.city, result.state, result.zipCode].filter(Boolean).join(', ')}`);
+                return emptyAddressResult();
+            }
+
+            return result;
+        }
+
+        function mergeMapsData(primary, secondary, sourceLabel = '') {
+            const safeSecondary = filterDataForExpectedLocation(secondary, sourceLabel);
+            return {
+                streetAddress: primary.streetAddress || safeSecondary.streetAddress || '',
+                zipCode: primary.zipCode || safeSecondary.zipCode || '',
+                city: primary.city || safeSecondary.city || '',
+                state: primary.state || safeSecondary.state || '',
+                fullAddress: primary.fullAddress || safeSecondary.fullAddress || '',
+                website: primary.website || safeSecondary.website || '',
+                phone: primary.phone || safeSecondary.phone || ''
+            };
+        }
+
+        function needsMapsRetry(data) {
+            return !data.streetAddress || !data.zipCode;
+        }
+
+        function uniqueQueries(names) {
+            const seen = new Set();
+            const queries = [];
+            for (const name of names) {
+                const normalizedName = (name || '').replace(/\s+/g, ' ').replace(/\s+,/g, ',').trim();
+                if (!normalizedName) continue;
+                const query = `${normalizedName}, ${location}`.replace(/\s+/g, ' ').trim();
+                const key = query.toLowerCase();
+                if (seen.has(key)) continue;
+                seen.add(key);
+                queries.push(query);
+            }
+            return queries;
+        }
+
+        function buildHospitalNameVariants() {
+            const rawNames = [hospitalName, originalHospitalName].filter(Boolean);
+            const city = (location || '').split(',')[0]?.trim() || '';
+            const names = [];
+
+            for (const rawName of rawNames) {
+                const base = rawName.replace(/\s+/g, ' ').trim();
+                if (!base) continue;
+
+                const withoutLocationSuffix = base.replace(/\s*[-–—]\s*[A-Z][a-zA-Z\s.'-]+$/, '').trim();
+                const withoutParens = base.replace(/\s*\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+                const expandedParens = base.replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim();
+                const plain = base.replace(/&/g, 'and').replace(/[-–—()]/g, ' ').replace(/\s+/g, ' ').trim();
+
+                names.push(base, withoutLocationSuffix, withoutParens, expandedParens, plain);
+
+                if (city) {
+                    for (const candidate of [withoutLocationSuffix, withoutParens, plain]) {
+                        if (candidate && !candidate.toLowerCase().includes(city.toLowerCase())) {
+                            names.push(`${candidate} ${city}`);
                         }
                     }
-                    return {};
-                };
+                }
+            }
 
-                const finish = (value) => {
-                    if (settled) return;
-                    settled = true;
-                    clearTimeout(timeout);
-                    if (listener) chrome.tabs.onUpdated.removeListener(listener);
-                    if (tabId) chrome.tabs.remove(tabId).catch(() => {});
-                    resolve(value);
-                };
+            return names;
+        }
 
+        // Inner function: open a tab, wait for load, inject scraper, get results
+        function scrapeGoogleMapsTab(url, queryLabel) {
+            return new Promise((resolve) => {
+                // Safety timeout — 30 seconds max
                 const timeout = setTimeout(() => {
-                    console.warn(`Google Maps timeout for: "${queryLabel}"`);
-                    finish({ streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', placeName: '' });
+                    console.warn(`✗ Google Maps timeout for: "${queryLabel}"`);
+                    resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
                 }, 30000);
 
                 chrome.tabs.create({ url: url, active: false }, (tab) => {
                     if (!tab) {
-                        finish({ streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', placeName: '' });
+                        clearTimeout(timeout);
+                        resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
                         return;
                     }
 
-                    tabId = tab.id;
-                    listener = (updatedTabId, info) => {
+                    const tabId = tab.id;
+
+                    const listener = (updatedTabId, info) => {
                         if (updatedTabId === tabId && info.status === 'complete') {
+                            chrome.tabs.onUpdated.removeListener(listener);
+
+                            // Wait 2s for Google Maps SPA to start rendering,
+                            // then inject the scraper which handles its own polling + clicking
+                            setTimeout(() => {
+                                chrome.scripting.executeScript({
+                                    target: { tabId: tabId },
+                                    files: ['google-maps-scraper.js']
+                                }).then((results) => {
+                                    clearTimeout(timeout);
+                                    chrome.tabs.remove(tabId).catch(() => {});
+
+                                    const data = results?.[0]?.result || {};
+                                    resolve({
+                                        streetAddress: data.streetAddress || '',
+                                        zipCode: data.zipCode || '',
+                                        city: data.city || '',
+                                        state: data.state || '',
+                                        fullAddress: data.fullAddress || '',
+                                        website: data.website || '',
+                                        phone: data.phone || ''
+                                    });
+                                }).catch((err) => {
+                                    console.error(`Google Maps script error for "${queryLabel}":`, err);
+                                    clearTimeout(timeout);
+                                    chrome.tabs.remove(tabId).catch(() => {});
+                                    resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
+                                });
+                            }, 2000);
+                        }
+                    };
+
+                    chrome.tabs.onUpdated.addListener(listener);
+                });
+            });
+        }
+
+        function scrapeGoogleMapsTabSafe(url, queryLabel) {
+            return new Promise((resolve) => {
+                let settled = false;
+                let mapsTabId = null;
+                let listener = null;
+
+                const finish = (result) => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timeout);
+                    if (listener) chrome.tabs.onUpdated.removeListener(listener);
+                    if (mapsTabId) chrome.tabs.remove(mapsTabId).catch(() => {});
+                    resolve(result || emptyAddressResult());
+                };
+
+                const timeout = setTimeout(() => {
+                    console.warn(`Google Maps timeout for: "${queryLabel}"`);
+                    finish(emptyAddressResult());
+                }, 22000);
+
+                chrome.tabs.create({ url: url, active: false }, (tab) => {
+                    if (!tab) {
+                        finish(emptyAddressResult());
+                        return;
+                    }
+
+                    mapsTabId = tab.id;
+                    listener = (updatedTabId, info) => {
+                        if (updatedTabId === mapsTabId && info.status === 'complete') {
                             chrome.tabs.onUpdated.removeListener(listener);
                             listener = null;
 
                             setTimeout(() => {
-                                runMapsScraper(tabId, 2).then((data) => {
-                                    const hasData = !!(data.streetAddress || data.fullAddress || data.phone || data.zipCode || data.placeName);
-                                    if (hasData) {
-                                        finish({
-                                            streetAddress: data.streetAddress || '',
-                                            zipCode: data.zipCode || '',
-                                            city: data.city || '',
-                                            state: data.state || '',
-                                            fullAddress: data.fullAddress || '',
-                                            website: data.website || '',
-                                            phone: data.phone || '',
-                                            placeName: data.placeName || ''
-                                        });
-                                        return;
-                                    }
-
-                                    // Retry same URL once more in case Maps rewired the page state.
-                                    const fallbackUrl = `https://www.google.com/maps/search/${encodeURIComponent(queryLabel)}`;
-                                    chrome.tabs.update(tabId, { url: fallbackUrl }, async () => {
-                                        await waitForTabComplete(tabId, 12000);
-                                        setTimeout(() => {
-                                            runMapsScraper(tabId, 2).then((retryData) => {
-                                                finish({
-                                                    streetAddress: retryData.streetAddress || '',
-                                                    zipCode: retryData.zipCode || '',
-                                                    city: retryData.city || '',
-                                                    state: retryData.state || '',
-                                                    fullAddress: retryData.fullAddress || '',
-                                                    website: retryData.website || '',
-                                                    phone: retryData.phone || '',
-                                                    placeName: retryData.placeName || ''
-                                                });
-                                            }).catch((retryErr) => {
-                                                console.error(`Google Maps retry script error for "${queryLabel}":`, retryErr);
-                                                finish({ streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', placeName: '' });
-                                            });
-                                        }, 3000);
+                                if (settled) return;
+                                chrome.scripting.executeScript({
+                                    target: { tabId: mapsTabId },
+                                    files: ['google-maps-scraper.js']
+                                }).then((results) => {
+                                    const data = results?.[0]?.result || {};
+                                    finish({
+                                        streetAddress: data.streetAddress || '',
+                                        zipCode: data.zipCode || '',
+                                        city: data.city || '',
+                                        state: data.state || '',
+                                        fullAddress: data.fullAddress || '',
+                                        website: data.website || '',
+                                        phone: data.phone || ''
                                     });
                                 }).catch((err) => {
                                     console.error(`Google Maps script error for "${queryLabel}":`, err);
-                                    finish({ streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', placeName: '' });
+                                    finish(emptyAddressResult());
+                                });
+                            }, 1400);
+                        }
+                    };
+
+                    chrome.tabs.onUpdated.addListener(listener);
+                });
+            });
+        }
+
+        function scrapeGoogleSearchTab(queryLabel) {
+            return new Promise((resolve) => {
+                let settled = false;
+                let searchTabId = null;
+
+                const finish = (result) => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timeout);
+                    if (searchTabId) chrome.tabs.remove(searchTabId).catch(() => {});
+                    resolve(result || emptyAddressResult());
+                };
+
+                const timeout = setTimeout(() => {
+                    console.warn(`Google Search timeout for: "${queryLabel}"`);
+                    finish(emptyAddressResult());
+                }, 45000);
+
+                const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(queryLabel)}`;
+                chrome.tabs.create({ url: searchUrl, active: false }, (tab) => {
+                    if (!tab) {
+                        finish(emptyAddressResult());
+                        return;
+                    }
+
+                    const tabId = tab.id;
+                    searchTabId = tabId;
+                    const listener = (updatedTabId, info) => {
+                        if (updatedTabId === tabId && info.status === 'complete') {
+                            chrome.tabs.onUpdated.removeListener(listener);
+
+                            setTimeout(() => {
+                                chrome.scripting.executeScript({
+                                    target: { tabId: tabId },
+                                    files: ['google-search-scraper.js']
+                                }).then((results) => {
+                                    const data = results?.[0]?.result || {};
+                                    finish({
+                                        streetAddress: data.streetAddress || '',
+                                        zipCode: data.zipCode || '',
+                                        city: data.city || '',
+                                        state: data.state || '',
+                                        fullAddress: data.fullAddress || '',
+                                        website: data.website || '',
+                                        phone: data.phone || ''
+                                    });
+                                }).catch((err) => {
+                                    console.error(`Google Search script error for "${queryLabel}":`, err);
+                                    finish(emptyAddressResult());
                                 });
                             }, 2500);
                         }
@@ -958,42 +1074,130 @@
             });
         }
 
-        console.log(`Google Maps search: "${searchQuery}"`);
-        let data = await scrapeGoogleMapsTab(mapsUrl, searchQuery);
+        function scrapeGoogleSearchTabSafe(queryLabel) {
+            return new Promise((resolve) => {
+                let settled = false;
+                let searchTabId = null;
+                let listener = null;
 
-        if (!(data.streetAddress || data.fullAddress || data.phone || data.zipCode)) {
-            const simplifiedName = searchQuery
+                const finish = (result) => {
+                    if (settled) return;
+                    settled = true;
+                    clearTimeout(timeout);
+                    if (listener) chrome.tabs.onUpdated.removeListener(listener);
+                    if (searchTabId) chrome.tabs.remove(searchTabId).catch(() => {});
+                    resolve(result || emptyAddressResult());
+                };
+
+                const timeout = setTimeout(() => {
+                    console.warn(`Google Search timeout for: "${queryLabel}"`);
+                    finish(emptyAddressResult());
+                }, 26000);
+
+                const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(queryLabel)}`;
+                chrome.tabs.create({ url: searchUrl, active: false }, (tab) => {
+                    if (!tab) {
+                        finish(emptyAddressResult());
+                        return;
+                    }
+
+                    searchTabId = tab.id;
+                    listener = (updatedTabId, info) => {
+                        if (updatedTabId === searchTabId && info.status === 'complete') {
+                            chrome.tabs.onUpdated.removeListener(listener);
+                            listener = null;
+
+                            setTimeout(() => {
+                                if (settled) return;
+                                chrome.scripting.executeScript({
+                                    target: { tabId: searchTabId },
+                                    files: ['google-search-scraper.js']
+                                }).then((results) => {
+                                    const data = results?.[0]?.result || {};
+                                    finish({
+                                        streetAddress: data.streetAddress || '',
+                                        zipCode: data.zipCode || '',
+                                        city: data.city || '',
+                                        state: data.state || '',
+                                        fullAddress: data.fullAddress || '',
+                                        website: data.website || '',
+                                        phone: data.phone || ''
+                                    });
+                                }).catch((err) => {
+                                    console.error(`Google Search script error for "${queryLabel}":`, err);
+                                    finish(emptyAddressResult());
+                                });
+                            }, 1200);
+                        }
+                    };
+
+                    chrome.tabs.onUpdated.addListener(listener);
+                });
+            });
+        }
+
+        // Attempt 1: search with exact hospital name + city, state
+        console.log(`🔍 Google Maps search: "${searchQuery}"`);
+        let data = mergeMapsData(emptyAddressResult(), await scrapeGoogleMapsTabSafe(mapsUrl, searchQuery), searchQuery);
+
+        // Attempt 2: if failed, try with & → and, remove dashes/parens
+        if (needsMapsRetry(data)) {
+            const simplifiedName = hospitalName
                 .replace(/&/g, 'and')
                 .replace(/[-–—()]/g, ' ')
                 .replace(/\s+/g, ' ')
                 .trim();
-            const altQuery = simplifiedName;
+            const altQuery = `${simplifiedName}, ${location}`;
             if (altQuery !== searchQuery) {
-                const altMapsUrl = `https://www.google.com/maps`;
-                data = await scrapeGoogleMapsTab(altMapsUrl, altQuery);
+                console.log(`↻ Retry with: "${altQuery}"`);
+                const altUrl = `https://www.google.com/maps/search/${encodeURIComponent(altQuery)}`;
+                const altData = await scrapeGoogleMapsTabSafe(altUrl, altQuery);
+                data = mergeMapsData(data, altData, altQuery);
             }
         }
 
-        const finalData = {
+        // Additional Maps attempts for names with location suffixes or parenthetical acronyms.
+        if (needsMapsRetry(data)) {
+            for (const query of uniqueQueries(buildHospitalNameVariants()).slice(0, 6)) {
+                if (!needsMapsRetry(data)) break;
+                if (query === searchQuery) continue;
+                console.log(`Maps variant search: "${query}"`);
+                const variantUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}`;
+                const variantData = await scrapeGoogleMapsTabSafe(variantUrl, query);
+                data = mergeMapsData(data, variantData, query);
+            }
+        }
+
+        // Last resort: use regular Google Search and read the right-side knowledge panel.
+        if (needsMapsRetry(data)) {
+            for (const query of uniqueQueries(buildHospitalNameVariants()).slice(0, 4)) {
+                if (!needsMapsRetry(data)) break;
+                console.log(`Google Search fallback: "${query}"`);
+                const searchData = await scrapeGoogleSearchTabSafe(query);
+                data = mergeMapsData(data, searchData, query);
+            }
+        }
+
+        if (data.streetAddress || data.zipCode) {
+            console.log(`✓ SUCCESS: "${searchQuery}"`);
+            console.log(`  → Street="${data.streetAddress}", City="${data.city}", State="${data.state}", Zip="${data.zipCode}"`);
+            if (data.website) console.log(`  → Website="${data.website}"`);
+            if (data.phone) console.log(`  → Phone="${data.phone}"`);
+        } else {
+            console.warn(`✗ No address found for: "${searchQuery}"`);
+        }
+
+        return {
             streetAddress: data.streetAddress || '',
+            zipCode: data.zipCode || '',
             city: data.city || '',
             state: data.state || '',
             fullAddress: data.fullAddress || '',
             website: data.website || '',
-            phone: formatPhoneToPlus1(data.phone || ''),
-            zipCode: data.zipCode || extractZip(data.fullAddress) || '',
-            placeName: data.placeName || ''
+            phone: data.phone || ''
         };
-
-        if (finalData.streetAddress || finalData.zipCode) {
-            console.log(`Address fetch success: "${searchQuery}"`);
-            console.log(`  Street="${finalData.streetAddress}", City="${finalData.city}", State="${finalData.state}", Zip="${finalData.zipCode}"`);
-        } else {
-            console.warn(`No address found for: "${searchQuery}"`);
-        }
-
-        return finalData;
     }
+
     if (!tableBody) {
         console.error('Could not find table body!');
         return;
@@ -1045,42 +1249,13 @@
         });
     }
 
-    function updateSelectionControls() {
-        const visibleKeys = currentlyDisplayedJobs.map(getJobSelectionKey).filter(Boolean);
-        const selectedVisibleCount = visibleKeys.filter(key => selectedJobKeys.has(key)).length;
-
-        if (selectAllJobsCheckbox) {
-            selectAllJobsCheckbox.checked = visibleKeys.length > 0 && selectedVisibleCount === visibleKeys.length;
-            selectAllJobsCheckbox.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleKeys.length;
-        }
-
-        if (deleteSelectedBtn) {
-            deleteSelectedBtn.disabled = selectedJobKeys.size === 0;
-            deleteSelectedBtn.innerHTML = selectedJobKeys.size > 0
-                ? `
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z"/>
-          </svg>
-          Delete Selected (${selectedJobKeys.size})
-        `
-                : `
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z"/>
-          </svg>
-          Delete Selected
-        `;
-        }
-    }
-
     function displayRecords(jobs) {
         tableBody.innerHTML = '';
-        currentlyDisplayedJobs = jobs;
         updateJobCount(jobs.length);
 
         if (jobs.length === 0) {
             table.style.display = 'none';
             emptyState.classList.remove('hidden');
-            updateSelectionControls();
             return;
         }
 
@@ -1089,74 +1264,65 @@
 
         jobs.forEach((job, index) => {
             const row = tableBody.insertRow();
-            const jobKey = getJobSelectionKey(job);
 
             // Mark new jobs with green background
             if (job.isNewLocation) {
-                row.style.backgroundColor = '#d1fae5';
+                row.style.backgroundColor = '#eaf3fb';
             }
 
-            const selectCell = row.insertCell(0);
-            selectCell.style.textAlign = 'center';
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.checked = selectedJobKeys.has(jobKey);
-            checkbox.addEventListener('change', () => {
-                if (checkbox.checked) selectedJobKeys.add(jobKey);
-                else selectedJobKeys.delete(jobKey);
-                updateSelectionControls();
-            });
-            selectCell.appendChild(checkbox);
-
             // Serial Number
-            const serialCell = row.insertCell(1);
+            const serialCell = row.insertCell(0);
             serialCell.textContent = index + 1;
             serialCell.style.fontWeight = '600';
             serialCell.style.color = '#475569';
             serialCell.style.textAlign = 'center';
 
-            row.insertCell(2).textContent = job.title;
-            const jobIdCell = row.insertCell(3);
+            row.insertCell(1).textContent = job.title;
+            const jobIdCell = row.insertCell(2);
             jobIdCell.textContent = job.jobId || 'N/A';
             jobIdCell.style.fontFamily = "'Consolas', 'Monaco', monospace";
             jobIdCell.style.fontSize = '12px';
             jobIdCell.style.color = '#64748b';
-            row.insertCell(4).textContent = job.hospital || '-';
-            row.insertCell(5).textContent = 'Alliance Animal (Parent Client)';
-            row.insertCell(6).textContent = job.streetAddress || '-';
-            row.insertCell(7).textContent = job.city || '-';
-            row.insertCell(8).textContent = job.state || '-';
-            row.insertCell(9).textContent = job.zipCode || '-';
-            row.insertCell(10).textContent = job.phone || '-';
+            row.insertCell(3).textContent = job.hospital;
+            row.insertCell(4).textContent = 'Alliance Animal Health (Parent Client)';
+            row.insertCell(5).textContent = job.streetAddress || '-';
+            row.insertCell(6).textContent = job.city;
+            row.insertCell(7).textContent = job.state;
+            row.insertCell(8).textContent = job.zipCode || '-';
+
+            // Phone column
+            row.insertCell(9).textContent = job.phone || '-';
 
             // Website column — show as clickable link if available
-            const websiteCell = row.insertCell(11);
+            const websiteCell = row.insertCell(10);
             if (job.website) {
                 const websiteLink = document.createElement('a');
                 websiteLink.href = job.website;
                 websiteLink.textContent = 'Visit';
                 websiteLink.target = '_blank';
-                websiteLink.style.color = '#2563eb';
+                websiteLink.style.color = '#003c71';
                 websiteCell.appendChild(websiteLink);
             } else {
                 websiteCell.textContent = '-';
             }
 
-            row.insertCell(12).textContent = job.location || '-';
-            row.insertCell(13).textContent = job.areaOfPractice || '-';
-            row.insertCell(14).textContent = job.position || '-';
-            row.insertCell(15).textContent = job.salary || '-';
-            row.insertCell(16).textContent = job.jobType || '-';
-            row.insertCell(17).textContent = job.experience || '-';
+            row.insertCell(11).textContent = job.location;
 
-            const linkCell = row.insertCell(18);
+            // Detail Columns
+            row.insertCell(12).textContent = job.areaOfPractice || '-';
+            row.insertCell(13).textContent = job.position || '-';
+            row.insertCell(14).textContent = job.salary || '-';
+            row.insertCell(15).textContent = job.jobType || '-';
+            row.insertCell(16).textContent = job.experience || '-';
+
+            const linkCell = row.insertCell(17);
             const link = document.createElement('a');
             link.href = job.link;
             link.textContent = 'View Job';
             link.target = '_blank';
             linkCell.appendChild(link);
 
-            const descCell = row.insertCell(19);
+            const descCell = row.insertCell(18);
             if (job.description) {
                 const descButton = document.createElement('button');
                 descButton.type = 'button';
@@ -1168,7 +1334,6 @@
                 descCell.innerHTML = '<span style="color: #94a3b8; font-style: italic; font-size: 12px;">Not scraped</span>';
             }
         });
-        updateSelectionControls();
     }
 
     function filterJobs(searchTerm) {
@@ -1226,7 +1391,7 @@
                 `"${(job.title || '').replace(/"/g, '""')}"`,
                 `"${(job.jobId || '').replace(/"/g, '""')}"`,
                 `"${(job.hospital || '').replace(/"/g, '""')}"`,
-                `"Alliance Animal (Parent Client)"`,
+                `"Alliance Animal Health (Parent Client)"`,
                 `"${(job.streetAddress || '').replace(/"/g, '""')}"`,
                 `"${(job.city || '').replace(/"/g, '""')}"`,
                 `"${(job.state || '').replace(/"/g, '""')}"`,
@@ -1249,7 +1414,7 @@
         const url = URL.createObjectURL(blob);
 
         link.setAttribute('href', url);
-        link.setAttribute('download', `uvc_jobs_${new Date().toISOString().split('T')[0]}.csv`);
+        link.setAttribute('download', `aah_jobs_${new Date().toISOString().split('T')[0]}.csv`);
         link.style.visibility = 'hidden';
 
         document.body.appendChild(link);
@@ -1300,20 +1465,21 @@
         exportCsvButton.addEventListener('click', exportToCSV);
     }
 
-    // Clear details only (area of practice, position, salary)
+    // Clear details only (area of practice, position, salary, experience)
     const clearDetailsBtn = document.getElementById('clearDetailsBtn');
     clearDetailsBtn.addEventListener('click', () => {
-        if (confirm('Are you sure you want to clear all job details? This will remove Area of Practice, Position, Salary, and Job Type from all jobs.')) {
+        if (confirm('Are you sure you want to clear all job details? This will remove Area of Practice, Position, Salary, Job Type, and Experience from all jobs.')) {
             chrome.storage.local.get(['scrapedJobs'], (data) => {
                 const jobs = data.scrapedJobs || [];
                 let clearedCount = 0;
 
                 jobs.forEach(job => {
-                    if (job.areaOfPractice || job.position || job.salary || job.jobType) {
+                    if (job.areaOfPractice || job.position || job.salary || job.jobType || job.experience) {
                         job.areaOfPractice = '';
                         job.position = '';
                         job.salary = '';
                         job.jobType = '';
+                        job.experience = '';
                         clearedCount++;
                     }
                 });
@@ -1340,8 +1506,6 @@
                         job.description = '';
                         clearedCount++;
                     }
-                    delete job.descriptionFetchFailed;
-                    delete job.descriptionError;
                 });
 
                 chrome.storage.local.set({ scrapedJobs: jobs }, () => {
@@ -1387,84 +1551,11 @@
         if (confirm('Are you sure you want to clear all scraped job records?')) {
             chrome.storage.local.set({ scrapedJobs: [] }, () => {
                 allJobs = [];
-                selectedJobKeys.clear();
                 displayRecords([]);
                 showToast('All records cleared!', 'success');
             });
         }
     });
-
-    if (selectAllJobsCheckbox) {
-        selectAllJobsCheckbox.addEventListener('change', () => {
-            const visibleJobs = currentlyDisplayedJobs.length ? currentlyDisplayedJobs : allJobs;
-            visibleJobs.forEach(job => {
-                const key = getJobSelectionKey(job);
-                if (selectAllJobsCheckbox.checked) selectedJobKeys.add(key);
-                else selectedJobKeys.delete(key);
-            });
-            refreshDisplayedJobs();
-        });
-    }
-
-    if (selectAllHeader) {
-        selectAllHeader.addEventListener('click', (event) => {
-            if (event.target === selectAllJobsCheckbox) return;
-            const searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
-            let visibleJobs = [...allJobs];
-
-            if (searchTerm) {
-                visibleJobs = visibleJobs.filter(job =>
-                    (job.title || '').toLowerCase().includes(searchTerm) ||
-                    (job.hospital || '').toLowerCase().includes(searchTerm) ||
-                    (job.city || '').toLowerCase().includes(searchTerm) ||
-                    (job.state || '').toLowerCase().includes(searchTerm) ||
-                    (job.location || '').toLowerCase().includes(searchTerm) ||
-                    (job.streetAddress || '').toLowerCase().includes(searchTerm) ||
-                    (job.zipCode || '').toLowerCase().includes(searchTerm) ||
-                    (job.phone || '').toLowerCase().includes(searchTerm) ||
-                    (job.website || '').toLowerCase().includes(searchTerm) ||
-                    (job.areaOfPractice || '').toLowerCase().includes(searchTerm) ||
-                    (job.position || '').toLowerCase().includes(searchTerm) ||
-                    (job.jobType || '').toLowerCase().includes(searchTerm) ||
-                    (job.experience || '').toLowerCase().includes(searchTerm)
-                );
-            }
-
-            if (currentSortColumn) {
-                visibleJobs = sortRecords(currentSortColumn, currentSortDirection, visibleJobs);
-            }
-
-            if (visibleJobs.length === 0) return;
-
-            const allVisibleSelected = visibleJobs.every(job => selectedJobKeys.has(getJobSelectionKey(job)));
-            visibleJobs.forEach(job => {
-                const key = getJobSelectionKey(job);
-                if (allVisibleSelected) selectedJobKeys.delete(key);
-                else selectedJobKeys.add(key);
-            });
-            refreshDisplayedJobs();
-        });
-    }
-
-    if (deleteSelectedBtn) {
-        deleteSelectedBtn.addEventListener('click', () => {
-            const selectedCount = allJobs.filter(job => selectedJobKeys.has(getJobSelectionKey(job))).length;
-            if (!selectedCount) {
-                showToast('No jobs selected.', 'error');
-                return;
-            }
-
-            if (!confirm(`Delete ${selectedCount} selected job(s)?`)) return;
-
-            const remainingJobs = allJobs.filter(job => !selectedJobKeys.has(getJobSelectionKey(job)));
-            chrome.storage.local.set({ scrapedJobs: remainingJobs }, () => {
-                allJobs = remainingJobs;
-                selectedJobKeys.clear();
-                refreshDisplayedJobs();
-                showToast(`Deleted ${selectedCount} selected jobs.`, 'success');
-            });
-        });
-    }
 
     // Send to webhook (batch sending)
     sendToWebhookButton.addEventListener('click', async () => {
@@ -1498,9 +1589,9 @@
             job_id: job.jobId || '',
             department_id: job.jobId || '',
             hospital: job.hospital,
-            aggregator: "Alliance Animal (Parent Client)",
+            aggregator: "Alliance Animal Health (Parent Client)",
             street_address: job.streetAddress || '',
-            parent_client: "Alliance Animal (Parent Client)",
+            parent_client: "Alliance Animal Health (Parent Client)",
             city: job.city,
             state: job.state,
             zip_code: job.zipCode || '',
@@ -1511,6 +1602,7 @@
             position: job.position || '',
             salary: job.salary || '',
             job_type: job.jobType || '',
+            experience: job.experience || '',
             url: job.link,
             link: job.link,
             description: job.description || ''
@@ -1546,7 +1638,7 @@
 
             const payload = {
                 source: 'Alliance Animal Job Scraper',
-                parentClientName: 'Alliance Animal (Parent Client)',
+                parentClientName: 'Alliance Animal Health (Parent Client)',
                 syncId: syncId,
                 timestamp: new Date().toISOString(),
                 batchNumber: batchNumber,
@@ -1615,15 +1707,7 @@
         const data = await chrome.storage.local.get(['scrapedJobs']);
         const jobs = data.scrapedJobs || [];
 
-        jobs.forEach(job => {
-            if (!job.description) {
-                delete job.descriptionFetchFailed;
-                delete job.descriptionError;
-            }
-        });
-        await chrome.storage.local.set({ scrapedJobs: jobs });
-
-        const jobsWithoutDesc = jobs.filter(job => !job.description && !job.descriptionFetchFailed && job.link);
+        const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
         if (jobsWithoutDesc.length === 0) {
             showToast('All jobs already have descriptions!', 'success');
             return;
@@ -1652,7 +1736,7 @@
         const data = await chrome.storage.local.get(['scrapedJobs']);
         const jobs = data.scrapedJobs || [];
 
-        const jobsWithoutDesc = jobs.filter(job => !job.description && !job.descriptionFetchFailed && job.link);
+        const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
         const totalOriginal = jobs.filter(job => job.link).length;
         const totalWithoutDesc = jobsWithoutDesc.length;
         const processed = totalOriginal - totalWithoutDesc;
@@ -1660,7 +1744,7 @@
         // Update progress
         const progressBar = document.getElementById('progressBar');
         const progressText = document.getElementById('progressText');
-        const totalToProcess = jobs.filter(job => !job.description && !job.descriptionFetchFailed && job.link).length;
+        const totalToProcess = allJobs.filter(job => !job.description && job.link).length;
         progressText.textContent = `${processed} / ${totalToProcess + processed}`;
         progressBar.style.width = `${(processed / (totalToProcess + processed)) * 100}%`;
 
@@ -1698,7 +1782,7 @@
         }
     }
 
-    // Listen for description saved/failed messages from background.js
+    // Listen for description saved messages from background.js
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.action === 'descriptionSaved') {
             chrome.storage.local.get(['scrapedJobs'], (data) => {
@@ -1709,24 +1793,6 @@
                 if (isGettingDescriptions) {
                     setTimeout(() => processNextJob(), 1500);
                 }
-            });
-        } else if (message.action === 'descriptionFailed') {
-            chrome.storage.local.get(['scrapedJobs'], (data) => {
-                const jobs = data.scrapedJobs || [];
-                if (jobs[message.jobIndex]) {
-                    jobs[message.jobIndex].descriptionFetchFailed = true;
-                    jobs[message.jobIndex].descriptionError = message.message || 'Failed to fetch description.';
-                }
-
-                chrome.storage.local.set({ scrapedJobs: jobs }, () => {
-                    allJobs = jobs;
-                    displayRecords(allJobs);
-
-                    if (isGettingDescriptions) {
-                        showToast(`Skipped one description: ${message.message || 'failed to fetch'}`, 'error');
-                        setTimeout(() => processNextJob(), 500);
-                    }
-                });
             });
         }
     });
@@ -1747,36 +1813,19 @@
             return;
         }
 
-        // Find jobs that need details and already have saved descriptions.
-        // Details are derived from the saved job description, not from a fresh tab scrape.
+        // Find jobs that need details (no areaOfPractice, position, or experience)
+        // Can work with job title even if no description exists
         const jobsToFetch = jobs.map((job, index) => ({ job, index }))
             .filter(item => {
-                if (shouldSkipFetchDetails(item.job)) return false;
-                if (!item.job.description) return false;
-                const needsDetails = !item.job.areaOfPractice || !item.job.position;
-                const normalizedLocation = normalizeLocationText(item.job.location);
-                const needsLocationCleanup = normalizedLocation && normalizedLocation !== item.job.location;
-                const description = item.job.description || '';
-                const salary = item.job.salary || '';
-                const descriptionHasSalary = /\$[\d,]+(?:\.\d{2})?/.test(description) && /salary|pay|compensation|\$/i.test(description);
-                const salaryLooksWrongHourly = /(?:per\s+)?(?:hour|hr)|\/\s*hr|hourly/i.test(description) && /per year/i.test(salary);
-                const needsSalaryCleanup = (!salary && descriptionHasSalary) || salaryLooksWrongHourly;
-                const needsSpecialtyAOPCleanup = item.job.areaOfPractice !== 'Specialty Care' &&
-                    (/\bboard[\s-]+certified\b/i.test(description) || /\bresidenc(?:y|e)[\s-]+trained\b/i.test(description));
-                return needsDetails || needsLocationCleanup || needsSalaryCleanup || needsSpecialtyAOPCleanup;
+                if (!item.job.title) return false;
+                const needsDetails = !item.job.areaOfPractice || !item.job.position || !item.job.experience;
+                return needsDetails;
             });
 
-        const jobsWithDescriptions = jobs.map((job, index) => ({ job, index }))
-            .filter(item => item.job.description && !shouldSkipFetchDetails(item.job));
-
-        if (jobsWithDescriptions.length === 0) {
-            showToast('No saved descriptions found. Click "Get Descriptions" first, then Fetch Details.', 'error');
-            return;
-        }
-
         if (jobsToFetch.length === 0) {
-            if (confirm('All jobs with saved descriptions already have details. Do you want to re-analyze them?')) {
-                detailsQueue = jobsWithDescriptions;
+            if (confirm('All jobs already have details. Do you want to re-analyze all jobs?')) {
+                detailsQueue = jobs.map((job, index) => ({ job, index }))
+                    .filter(item => item.job.title);
             } else {
                 return;
             }
@@ -1787,7 +1836,7 @@
         isFetchingDetails = true;
         currentDetailsIndex = 0;
         fetchDetailsBtn.disabled = true;
-        fetchDetailsBtn.textContent = 'Analyzing Descriptions...';
+        fetchDetailsBtn.textContent = 'Fetching Details...';
 
         // Show progress
         const progressSection = document.getElementById('progressSection');
@@ -1795,7 +1844,7 @@
         const progressText = document.getElementById('progressText');
         const progressLabel = document.getElementById('progressLabel');
         progressSection.classList.remove('hidden');
-        progressLabel.textContent = 'Analyzing Saved Descriptions';
+        progressLabel.textContent = 'Analyzing Job Details';
         progressText.textContent = `0 / ${detailsQueue.length}`;
         progressBar.style.width = '0%';
 
@@ -1889,12 +1938,12 @@
         const job = currentJobs[currentIndex];
         let detailsList = [];
 
-        // Extract details locally from the already-saved description.
+        // Extract details locally from job title + already-fetched description
         const positionTitle = job.title || '';
         const description = job.description || '';
 
-        if (description) {
-            const extracted = extractDetailsFromDescription(positionTitle, description, job.location || '');
+        if (positionTitle) {
+            const extracted = extractDetailsFromDescription(positionTitle, description);
 
             // Build detailsList with ALL locations for multi-location jobs
             if (extracted.locations && extracted.locations.length > 0) {
@@ -1904,6 +1953,7 @@
                     salary: extracted.salary,
                     hospitalName: extracted.hospitalName,
                     jobType: extracted.jobType,
+                    experience: extracted.experience,
                     description: description,
                     city: loc.city || '',
                     state: loc.state || '',
@@ -1917,6 +1967,7 @@
                     salary: extracted.salary,
                     hospitalName: extracted.hospitalName,
                     jobType: extracted.jobType,
+                    experience: extracted.experience,
                     description: description,
                     city: '',
                     state: '',
@@ -1955,120 +2006,48 @@
                 // the listing title to get the correct position.
                 const listingTitle = originalJob.title || '';
                 const detailAOP = firstDetail.areaOfPractice || '';
+                const descText = firstDetail.description || originalJob.description || '';
 
                 // Step 1: Determine AOP — prefer detail extractor's AOP (from page category), fall back to title
-                let finalAOP = detailAOP || getAOPFromTitle(listingTitle) || 'General Practice Care';
-                const listingTitleLower = listingTitle.toLowerCase();
-
-                // Step 1b: If AOP is a multi-value compound, force a single AOP by title rules.
-                // Rule priority:
-                // 1) Urgent in title -> Urgent Care
-                // 2) Emergency/ER in title -> Emergency Care
-                // 3) Associate Veterinarian in title -> General Practice Care
-                if (finalAOP.includes('/')) {
-                    if (listingTitleLower.includes('urgent')) {
-                        finalAOP = 'Urgent Care';
-                    } else if (
-                        listingTitleLower.includes('emergency') ||
-                        /\ber\b/.test(listingTitleLower) ||
-                        listingTitleLower.includes('er vet') ||
-                        listingTitleLower.includes('er dvm')
-                    ) {
-                        finalAOP = 'Emergency Care';
-                    } else if (/\bassociate\s+veterinarian\b/.test(listingTitleLower)) {
-                        finalAOP = 'General Practice Care';
-                    }
-                }
+                let finalAOP = hasSpecialtyTrainingSignal(descText)
+                    ? 'Specialty Care'
+                    : (detailAOP || getAOPFromTitle(listingTitle) || 'General Practice Care');
 
                 // Step 2: Match position from listing title
-                let finalPosition = firstDetail.position || getPositionFromTitle(listingTitle);
+                let finalPosition = getPositionFromTitle(listingTitle) || firstDetail.position || '';
 
                 // Step 3: If listing title had no match but AOP is Specialty, try qualifications from description
                 if (!finalPosition && finalAOP === 'Specialty Care') {
-                    const desc = (firstDetail.description || originalJob.description || '').toLowerCase();
-                    if (desc.includes('dacvecc')) finalPosition = 'ECC Specialist';
-                    else if (desc.includes('dacvim') && desc.includes('oncology')) finalPosition = 'Medical Oncologist';
-                    else if (desc.includes('dacvr') && desc.includes('radiation')) finalPosition = 'Radiation Oncologist';
-                    else if (desc.includes('dacvim') && desc.includes('neurology')) finalPosition = 'Neurologist & Neurosurgeon';
-                    else if (desc.includes('dacvim') && desc.includes('cardiology')) finalPosition = 'Cardiologist';
-                    else if (desc.includes('dacvim')) finalPosition = 'Internal Medicine Specialist';
-                    else if (desc.includes('davdc')) finalPosition = 'Dental Specialist';
-                    else if (desc.includes('dacvd')) finalPosition = 'Dermatologist';
-                    else if (desc.includes('dacvs') || desc.includes('acvs')) finalPosition = 'Surgeon';
-                    else if (desc.includes('dacvr')) finalPosition = 'Radiologist';
-                    else if (desc.includes('dacvo')) finalPosition = 'Ophthalmologist';
-                    else if (desc.includes('dacvaa')) finalPosition = 'Anesthesiologist';
-                    else if (desc.includes('dact')) finalPosition = 'Theriogenologist';
-                    else if (desc.includes('dabvp')) finalPosition = 'DABVP Specialist';
+                    finalPosition = '';
                 }
 
                 // Step 4: Validate position against AOP
                 if (finalPosition) {
                     finalPosition = getValidatedPosition(finalPosition, finalAOP);
                 }
+                if (!finalPosition) {
+                    finalPosition = getDefaultPositionForAOP(finalAOP, listingTitle);
+                }
 
                 // Step 5: Medical Director override — if title says "Medical Director", keep it
-                if ((!finalPosition || finalPosition === 'Associate Veterinarian') && listingTitleLower.includes('medical director')) {
-                    finalPosition = 'Medical Director';
+                if ((!finalPosition || finalPosition === 'Associate Veterinarian') && listingTitle.toLowerCase().includes('medical director')) {
+                    finalPosition = APPROVED_POSITION_SET.has('Medical Director') ? 'Medical Director' : '';
                 }
 
-                // Step 6: Default
-                if (!finalPosition) {
-                    finalPosition = 'Associate Veterinarian';
-                }
-
-                // Step 7: Force single AOP when extractor returns compound AOP.
-                // Rules:
-                // - If title indicates urgent -> Urgent Care
-                // - Else if title indicates emergency/ER -> Emergency Care
-                // - Else if associate veterinarian role -> General Practice Care
-                // - Else default General Practice Care
-                if (typeof finalAOP === 'string' && finalAOP.includes('/')) {
-                    if (listingTitleLower.includes('urgent')) {
-                        finalAOP = 'Urgent Care';
-                    } else if (
-                        listingTitleLower.includes('emergency') ||
-                        /\ber\b/.test(listingTitleLower) ||
-                        listingTitleLower.includes('er vet') ||
-                        listingTitleLower.includes('er dvm')
-                    ) {
-                        finalAOP = 'Emergency Care';
-                    } else if (
-                        /\bassociate\s+veterinarian\b/.test(listingTitleLower) ||
-                        finalPosition === 'Associate Veterinarian'
-                    ) {
-                        finalAOP = 'General Practice Care';
-                    } else {
-                        finalAOP = 'General Practice Care';
-                    }
+                if (!APPROVED_POSITION_SET.has(finalPosition)) {
+                    finalPosition = '';
                 }
 
                 // Update original job with extracted details
                 originalJob.areaOfPractice = finalAOP;
-                originalJob.position = finalPosition;
+                originalJob.position = finalPosition || '';
                 originalJob.salary = firstDetail.salary || originalJob.salary || '';
-                if (isUsableHospitalName(firstDetail.hospitalName)) {
-                    originalJob.hospital = firstDetail.hospitalName;
-                    originalJob.hospitalName = firstDetail.hospitalName;
-                } else if (originalJob.hospital) {
-                    originalJob.hospitalName = originalJob.hospital;
-                }
+                originalJob.hospital = firstDetail.hospitalName || originalJob.hospital || '';
                 originalJob.jobType = firstDetail.jobType || originalJob.jobType || 'Full-Time';
-                const normalizedOriginalCity = normalizeCityName(originalJob.city);
-                const normalizedDetailCity = normalizeCityName(firstDetail.city);
-                if (!normalizedOriginalCity && normalizedDetailCity) originalJob.city = normalizedDetailCity;
-                else if (normalizedOriginalCity && normalizedOriginalCity !== originalJob.city) originalJob.city = normalizedOriginalCity;
-                if (!originalJob.state && firstDetail.state) originalJob.state = firstDetail.state;
-                const normalizedOriginalLocation = normalizeLocationText(originalJob.location);
-                const normalizedDetailLocation = normalizeLocationText(firstDetail.location);
-                if (normalizedOriginalLocation && normalizedOriginalLocation !== originalJob.location) {
-                    originalJob.location = normalizedOriginalLocation;
-                } else if (!originalJob.location && normalizedDetailLocation) {
-                    originalJob.location = normalizedDetailLocation;
-                }
-                if (originalJob.city && originalJob.state && originalJob.location && originalJob.location !== `${originalJob.city}, ${originalJob.state}`) {
-                    originalJob.location = `${originalJob.city}, ${originalJob.state}`;
-                }
+                originalJob.experience = firstDetail.experience || originalJob.experience || '';
+                if (firstDetail.city) originalJob.city = firstDetail.city;
+                if (firstDetail.state) originalJob.state = firstDetail.state;
+                if (firstDetail.location) originalJob.location = firstDetail.location;
                 // Update description if we got a better one
                 if (firstDetail.description && firstDetail.description.length > (originalJob.description || '').length) {
                     originalJob.description = firstDetail.description;
@@ -2096,7 +2075,7 @@
                     const newJobs = [];
                     for (let i = 1; i < detailsList.length; i++) {
                         const loc = detailsList[i];
-                        const baseJobId = originalJob.jobId || `UVC-${Date.now()}`;
+                        const baseJobId = originalJob.jobId.split('-')[0];
                         // Only build city-specific hospital name if the original had a city suffix
                         let childHospital = currentHospital;
                         if (hasCitySuffix) {
@@ -2109,9 +2088,8 @@
                             ...originalJob,
                             jobId: `${baseJobId}-${i + 1}`,
                             hospital: childHospital,
-                            hospitalName: childHospital,
-                            city: normalizeCityName(loc.city) || '',
-                            state: loc.state || '',
+                            city: '',
+                            state: '',
                             location: loc.location || `${loc.city}, ${loc.state}`,
                             streetAddress: '',
                             zipCode: '',
@@ -2147,6 +2125,90 @@
 
     // ============ FETCH ADDRESSES ============
 
+    function normalizeAddressCacheValue(value) {
+        return (value || '')
+            .toLowerCase()
+            .replace(/&/g, ' and ')
+            .replace(/\([^)]*\)/g, ' ')
+            .replace(/[-–—]/g, ' ')
+            .replace(/\b(?:hospital|clinic|center|centre|veterinary|animal|pet)\b/g, ' ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+    }
+
+    function makeAddressCacheKey(hospital, location) {
+        const hospitalKey = normalizeAddressCacheValue(hospital);
+        const locationKey = normalizeAddressCacheValue(location);
+        return hospitalKey && locationKey ? `${hospitalKey}|${locationKey}` : '';
+    }
+
+    function getAddressCacheKeys(hospital, location, originalHospital = '') {
+        const keys = new Set();
+        const names = [hospital, originalHospital].filter(Boolean);
+        for (const name of names) {
+            const key = makeAddressCacheKey(name, location);
+            if (key) keys.add(key);
+        }
+        return [...keys];
+    }
+
+    function hasUsableCachedAddress(data) {
+        return !!(data && data.streetAddress && data.zipCode);
+    }
+
+    function parseLocationParts(location) {
+        const parts = (location || '').split(',').map(part => part.trim()).filter(Boolean);
+        return {
+            city: parts[0] || '',
+            state: parts.length >= 2 ? parts[1] : ''
+        };
+    }
+
+    function normalizedLocationPart(value) {
+        return (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+
+    function jobLocationMismatch(job) {
+        const expected = parseLocationParts(job.location);
+        return !!(
+            (expected.city && job.city && normalizedLocationPart(job.city) !== normalizedLocationPart(expected.city)) ||
+            (expected.state && job.state && normalizedLocationPart(getFullStateName(job.state)) !== normalizedLocationPart(getFullStateName(expected.state)))
+        );
+    }
+
+    function rememberAddressData(keys, data) {
+        if (!hasUsableCachedAddress(data)) return;
+        for (const key of keys) {
+            addressCache.set(key, { ...data });
+        }
+    }
+
+    function getRememberedAddress(keys) {
+        for (const key of keys) {
+            const cached = addressCache.get(key);
+            if (hasUsableCachedAddress(cached)) return { ...cached };
+        }
+        return null;
+    }
+
+    function primeAddressCache(jobs) {
+        addressCache = new Map();
+        for (const job of jobs) {
+            if (!job.hospital || !job.location || !job.streetAddress || !job.zipCode) continue;
+            if (jobLocationMismatch(job)) continue;
+            const cached = {
+                streetAddress: job.streetAddress || '',
+                zipCode: job.zipCode || '',
+                city: job.city || '',
+                state: job.state || '',
+                fullAddress: [job.streetAddress, job.city, [job.state, job.zipCode].filter(Boolean).join(' ')].filter(Boolean).join(', '),
+                website: job.website || '',
+                phone: job.phone || ''
+            };
+            rememberAddressData(getAddressCacheKeys(job.hospital, job.location), cached);
+        }
+    }
+
     fetchAddressesBtn.addEventListener('click', async () => {
         if (isFetchingAddresses) {
             showToast('Already fetching addresses. Please wait...', 'error');
@@ -2156,12 +2218,12 @@
         const data = await chrome.storage.local.get(['scrapedJobs']);
         const jobs = data.scrapedJobs || [];
 
-        // Find jobs that need addresses (using LOCATION column)
+        // Find jobs that need address/contact data (using LOCATION column)
         const jobsNeedingAddresses = jobs.map((job, index) => ({ job, index }))
             .filter(item => {
-                // Jobs that don't have street address or zip code
+                // Jobs missing any core location/contact field
                 return item.job.hospital && item.job.location &&
-                    (!item.job.streetAddress || !item.job.zipCode);
+                    (!item.job.streetAddress || !item.job.zipCode || jobLocationMismatch(item.job));
             });
 
         if (jobsNeedingAddresses.length === 0) {
@@ -2180,6 +2242,7 @@
             return;
         }
 
+        primeAddressCache(jobs);
         isFetchingAddresses = true;
         currentAddressIndex = 0;
         fetchAddressesBtn.disabled = true;
@@ -2191,7 +2254,7 @@
         const progressText = document.getElementById('progressText');
         const progressLabel = document.getElementById('progressLabel');
         progressSection.classList.remove('hidden');
-        progressLabel.textContent = 'Fetching Street Addresses & Zip Codes';
+        progressLabel.textContent = 'Fetching Addresses, Websites & Phones';
         progressText.textContent = `0 / ${addressQueue.length}`;
         progressBar.style.width = '0%';
 
@@ -2214,8 +2277,47 @@
         fetchAddressesBtn.textContent = `Fetching... (${currentAddressIndex + 1}/${addressQueue.length})`;
 
         try {
-            const rawHospitalForSearch = (job.hospitalRaw || job.hospital || '').trim();
-            const addressData = await fetchAddressFromGoogleMaps(rawHospitalForSearch);
+            // Clean hospital name for search:
+            // Remove trailing location suffix for child rows: "Hospital-Leesburg" → "Hospital"
+            let searchHospital = job.hospital || '';
+            if (job.sourceLink && searchHospital) {
+                searchHospital = searchHospital.replace(/\s*[-–]\s*[A-Z][a-zA-Z\s.'-]+$/, '').trim();
+                if (!searchHospital) searchHospital = job.hospital;
+            }
+
+            // Only append "Hospital" when the name does not already look like a veterinary facility.
+            if (searchHospital && !/\b(?:hospital|clinic|center|centre|specialists?|specialty|service|services|care|emergency|referral|veterinary|animal|pet)\b/i.test(searchHospital)) {
+                searchHospital = searchHospital + ' Hospital';
+            }
+
+            // Parse city and state from location field (e.g. "Austin, TX")
+            let searchCity = '';
+            let searchState = '';
+            if (job.location) {
+                const locParts = job.location.split(',').map(s => s.trim());
+                if (locParts.length >= 2) {
+                    searchCity = locParts[0];
+                    searchState = locParts[1];
+                } else if (locParts.length === 1) {
+                    searchCity = locParts[0];
+                }
+            }
+
+            // Build search: "Hospital Name, City, State"
+            const searchLocation = [searchCity, searchState].filter(Boolean).join(', ');
+            const normalizeLocationValue = (value) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            const existingLocationMismatch =
+                (searchCity && job.city && normalizeLocationValue(job.city) !== normalizeLocationValue(searchCity)) ||
+                (searchState && job.state && normalizeLocationValue(getFullStateName(job.state)) !== normalizeLocationValue(getFullStateName(searchState)));
+
+            const cacheKeys = getAddressCacheKeys(searchHospital, searchLocation, job.hospital || '');
+            let addressData = getRememberedAddress(cacheKeys);
+            if (addressData) {
+                console.log(`Using cached address for "${searchHospital}, ${searchLocation}"`);
+            } else {
+                addressData = await fetchAddressFromGoogleMaps(searchHospital, searchLocation, job.hospital || '');
+                rememberAddressData(cacheKeys, addressData);
+            }
 
             // Update job with address data from Google Maps
             const data = await chrome.storage.local.get(['scrapedJobs']);
@@ -2224,14 +2326,19 @@
             if (jobs[index]) {
                 if (addressData.streetAddress) {
                     jobs[index].streetAddress = addressData.streetAddress;
+                } else if (existingLocationMismatch) {
+                    jobs[index].streetAddress = '';
                 }
                 if (addressData.zipCode) {
                     jobs[index].zipCode = addressData.zipCode;
+                } else if (existingLocationMismatch) {
+                    jobs[index].zipCode = '';
                 }
 
-                // City and state: prefer Google Maps data, then existing values
-                jobs[index].city = addressData.city || jobs[index].city || '';
-                jobs[index].state = getFullStateName(addressData.state || jobs[index].state || '');
+                // City and state come from the row's Location column. Fetched address data
+                // is accepted only when it matches this location.
+                jobs[index].city = searchCity || addressData.city || jobs[index].city || '';
+                jobs[index].state = getFullStateName(searchState || addressData.state || jobs[index].state || '');
 
                 // Try to extract zip from fullAddress if parsing missed it
                 if (!jobs[index].zipCode && addressData.fullAddress) {
@@ -2242,13 +2349,13 @@
                 // Website and phone from Google Maps
                 if (addressData.website) {
                     jobs[index].website = addressData.website;
+                } else if (existingLocationMismatch) {
+                    jobs[index].website = '';
                 }
                 if (addressData.phone) {
                     jobs[index].phone = addressData.phone;
-                }
-                if (addressData.placeName) {
-                    jobs[index].hospital = addressData.placeName;
-                    jobs[index].hospitalName = addressData.placeName;
+                } else if (existingLocationMismatch) {
+                    jobs[index].phone = '';
                 }
 
                 await chrome.storage.local.set({ scrapedJobs: jobs });
@@ -2265,7 +2372,7 @@
         currentAddressIndex++;
 
         // Continue processing — delay for Google Maps tab loading
-        setTimeout(() => processNextAddress(), 1500);
+        setTimeout(() => processNextAddress(), 250);
     }
 
     function finishAddressFetching() {
