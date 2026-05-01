@@ -1,27 +1,36 @@
 // google-search-scraper.js
-// Injected into Google Search. Prefer the right-side knowledge panel/business card
-// for address, phone, and website, then fall back to visible result text.
+// Injected into Google Search. Prefer the right-side knowledge/business panel.
+// If that is missing, fall back to a single matching left-side result/card and
+// only extract address, phone, and website from that same result/card.
 (async () => {
     try {
         await waitForGoogleResults();
 
-        const panelText = getKnowledgePanelText();
-        const bodyText = cleanText(document.body.innerText || '');
-        const address = extractAddress(panelText) || extractAddress(bodyText);
-        const parsed = parseAddress(address);
+        const panel = getKnowledgePanelRoot();
+        if (panel) {
+            const panelText = getKnowledgePanelText(panel);
+            const address = extractAddress(panelText, panel);
+            if (address) {
+                const parsed = parseAddress(address);
 
-        return {
-            fullAddress: address || '',
-            streetAddress: parsed.streetAddress || '',
-            city: parsed.city || '',
-            state: parsed.state || '',
-            zipCode: parsed.zipCode || '',
-            phone: extractPhoneFromPanel() || extractPhone(panelText) || extractPhone(bodyText) || '',
-            website: extractWebsiteFromPanel() || extractWebsiteFromResults() || '',
-            panelText: panelText || ''
-        };
+                return {
+                    businessName: extractBusinessNameFromPanel(panel) || '',
+                    fullAddress: address || '',
+                    streetAddress: parsed.streetAddress || '',
+                    city: parsed.city || '',
+                    state: parsed.state || '',
+                    zipCode: parsed.zipCode || '',
+                    phone: extractPhoneFromPanel(panel) || extractPhone(panelText) || '',
+                    website: extractWebsiteFromPanel(panel) || '',
+                    panelText: panelText || '',
+                    source: 'google_knowledge_panel'
+                };
+            }
+        }
+
+        return extractLeftSideResult() || emptyResult(panel ? 'no_panel_or_left_address' : 'no_panel_or_left_match');
     } catch (error) {
-        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: error.message };
+        return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: error.message };
     }
 
     function wait(ms) {
@@ -35,37 +44,58 @@
 
         while (Date.now() < deadline) {
             await wait(500);
-            const panelText = getKnowledgePanelText();
-            const bodyText = cleanText(document.body.innerText || '');
-            const text = panelText || bodyText;
+            const panel = getKnowledgePanelRoot();
+            const panelText = panel ? getKnowledgePanelText(panel) : '';
+            const searchText = cleanText((document.querySelector('#search') || document.body).innerText || '');
 
-            if (extractAddress(panelText) || extractAddress(bodyText)) return;
+            if (panel && extractAddress(panelText, panel)) return;
 
+            const text = panelText || searchText;
             if (text && text === lastText) stableCount++;
             else stableCount = 0;
             lastText = text;
 
-            if (stableCount >= 2 && (document.querySelector('#search') || document.querySelector('#rhs') || document.querySelector('[role="complementary"]'))) {
+            if (stableCount >= 2 && (panel || document.querySelector('#search'))) {
                 return;
             }
         }
     }
 
-    function getKnowledgePanelText() {
+    function getKnowledgePanelRoot() {
         const selectors = [
             '#rhs',
             '[role="complementary"]',
-            '.kp-wholepage',
+            '.kp-wholepage'
+        ];
+
+        for (const selector of selectors) {
+            for (const element of document.querySelectorAll(selector)) {
+                if (!isVisible(element)) continue;
+                const text = cleanText(element.innerText || element.textContent || '');
+                if (text && /\b(?:Address|Website|Directions|Reviews|Call|Phone)\b/i.test(text)) {
+                    return element;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    function getKnowledgePanelText(panel) {
+        if (!panel) return '';
+        const selectors = [
+            ':scope',
             '[data-attrid*="kc:/location"]',
             '[data-attrid*="address"]',
             '[data-local-attribute]',
-            '.lu_map_section'
+            '.lu_map_section',
+            '.LrzXr'
         ];
 
         const chunks = [];
         const seen = new Set();
         for (const selector of selectors) {
-            for (const element of document.querySelectorAll(selector)) {
+            for (const element of panel.querySelectorAll(selector)) {
                 if (!isVisible(element)) continue;
                 const text = cleanText(element.innerText || element.textContent || '');
                 if (!text || seen.has(text)) continue;
@@ -77,12 +107,194 @@
         return chunks.join('\n');
     }
 
+    function extractBusinessNameFromPanel(panel) {
+        if (!panel) return '';
+
+        const selectors = [
+            '[data-attrid="title"]',
+            '[data-attrid*="title"]',
+            'h2[data-attrid]',
+            'h2',
+            '[role="heading"][aria-level="2"]'
+        ];
+
+        for (const selector of selectors) {
+            for (const element of panel.querySelectorAll(selector)) {
+                const text = cleanText(element.innerText || element.textContent || '');
+                if (text && !/\b(?:directions|website|reviews|overview|hours)\b/i.test(text)) {
+                    return text.replace(/\s+-\s+Google Search$/i, '').trim();
+                }
+            }
+        }
+
+        const lines = cleanText(panel.innerText || panel.textContent || '').split('\n').map(line => line.trim()).filter(Boolean);
+        return lines[0] || '';
+    }
+
+    function extractLeftSideResult() {
+        const expected = getExpectedSearchParts();
+        const candidates = getLeftSideCandidates();
+        let best = null;
+
+        for (const element of candidates) {
+            const text = cleanText(element.innerText || element.textContent || '');
+            if (!text || text.length < 20) continue;
+
+            const address = extractAddress(text, element);
+            if (!address) continue;
+
+            const parsed = parseAddress(address);
+            const businessName = extractBusinessNameFromResult(element, text, expected);
+            const score = scoreLeftSideCandidate({ text, businessName, parsed, expected });
+            if (score < 4) continue;
+
+            const result = {
+                businessName,
+                fullAddress: address,
+                streetAddress: parsed.streetAddress || '',
+                city: parsed.city || '',
+                state: parsed.state || '',
+                zipCode: parsed.zipCode || '',
+                phone: extractPhone(text) || '',
+                website: extractWebsiteFromPanel(element) || '',
+                panelText: text,
+                source: 'google_left_result',
+                score
+            };
+
+            if (!best || score > best.score) best = result;
+        }
+
+        return best;
+    }
+
+    function getExpectedSearchParts() {
+        let query = '';
+        try {
+            query = new URL(window.location.href).searchParams.get('q') || '';
+        } catch {
+            query = '';
+        }
+
+        const parts = query.split(',').map(part => part.trim()).filter(Boolean);
+        return {
+            rawQuery: query,
+            name: parts.length >= 3 ? parts.slice(0, -2).join(', ') : (parts[0] || query),
+            city: parts.length >= 2 ? parts[parts.length - 2] : '',
+            state: parts.length >= 2 ? parts[parts.length - 1] : ''
+        };
+    }
+
+    function getLeftSideCandidates() {
+        const root = document.querySelector('#search') || document.body;
+        const selectors = [
+            '.g',
+            '.MjjYud',
+            '.VkpGBb',
+            '.rllt__details',
+            '[role="article"]',
+            '[data-hveid]',
+            '[jscontroller][data-ved]'
+        ];
+        const seen = new Set();
+        const candidates = [];
+
+        for (const selector of selectors) {
+            for (const element of root.querySelectorAll(selector)) {
+                if (!isVisible(element) || seen.has(element)) continue;
+                const text = cleanText(element.innerText || element.textContent || '');
+                if (!text || text.length > 3000) continue;
+                seen.add(element);
+                candidates.push(element);
+            }
+        }
+
+        return candidates;
+    }
+
+    function extractBusinessNameFromResult(element, text, expected) {
+        const selectors = [
+            'h3',
+            '[role="heading"]',
+            '.dbg0pd',
+            '.qBF1Pd',
+            '.OSrXXb',
+            '.SPZz6b'
+        ];
+
+        for (const selector of selectors) {
+            for (const child of element.querySelectorAll(selector)) {
+                const value = cleanText(child.innerText || child.textContent || '');
+                if (value && !/\b(?:businesses|website|directions|reviews|photos|overview)\b/i.test(value)) {
+                    return value;
+                }
+            }
+        }
+
+        const expectedName = normalizeName(expected.name);
+        const lines = cleanText(text).split('\n').map(line => line.trim()).filter(Boolean);
+        const matchingLine = lines.find(line => normalizeName(line).includes(expectedName) || expectedName.includes(normalizeName(line)));
+        return matchingLine || lines[0] || '';
+    }
+
+    function scoreLeftSideCandidate({ text, businessName, parsed, expected }) {
+        const haystack = normalizeName(`${businessName} ${text}`);
+        const expectedName = normalizeName(expected.name);
+        const expectedCity = normalizeName(expected.city);
+        const expectedState = normalizeName(expected.state);
+        let score = 0;
+
+        if (expectedName && haystack.includes(expectedName)) score += 5;
+        score += Math.min(3, countMeaningfulNameMatches(expected.name, `${businessName} ${text}`));
+
+        if (expectedCity && normalizeName(parsed.city || text).includes(expectedCity)) score += 2;
+        if (expectedState && (normalizeName(parsed.state).includes(expectedState) || haystack.includes(expectedState))) score += 1;
+        if (parsed.streetAddress && parsed.zipCode) score += 2;
+        if (requiredFacilityPhraseMatches(expected.name, `${businessName} ${text}`)) score += 1;
+
+        if (expectedName && !requiredFacilityPhraseMatches(expected.name, `${businessName} ${text}`)) score -= 2;
+        return score;
+    }
+
+    function countMeaningfulNameMatches(expectedName, text) {
+        const stopWords = new Set(['the', 'and', 'for', 'with', 'of', 'at', 'in']);
+        const expectedWords = normalizeName(expectedName).split(' ').filter(word => word.length > 2 && !stopWords.has(word));
+        const haystack = normalizeName(text);
+        return expectedWords.filter(word => haystack.includes(word)).length;
+    }
+
+    function requiredFacilityPhraseMatches(expectedName, text) {
+        const expected = normalizeName(expectedName);
+        const haystack = normalizeName(text);
+        const phrases = [
+            'animal hospital',
+            'veterinary clinic',
+            'veterinary hospital',
+            'pet hospital',
+            'animal clinic',
+            'veterinary center',
+            'animal medical center',
+            'urgent care'
+        ].filter(phrase => expected.includes(phrase));
+
+        return phrases.length === 0 || phrases.some(phrase => haystack.includes(phrase));
+    }
+
+    function normalizeName(value) {
+        return cleanText(value)
+            .toLowerCase()
+            .replace(/&/g, ' and ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
     function isVisible(element) {
         const rect = element.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0;
     }
 
-    function extractAddress(text) {
+    function extractAddress(text, panel) {
         const source = cleanText(text || '');
         if (!source) return '';
 
@@ -99,11 +311,12 @@
             if (match) return normalizeAddress(match[1]);
         }
 
-        const attrAddress = extractAddressFromAttributes();
+        const attrAddress = extractAddressFromAttributes(panel);
         return attrAddress ? normalizeAddress(attrAddress) : '';
     }
 
-    function extractAddressFromAttributes() {
+    function extractAddressFromAttributes(panel) {
+        if (!panel) return '';
         const selectors = [
             '[data-attrid*="address"]',
             '[aria-label^="Address"]',
@@ -112,7 +325,7 @@
         ];
 
         for (const selector of selectors) {
-            for (const element of document.querySelectorAll(selector)) {
+            for (const element of panel.querySelectorAll(selector)) {
                 const text = cleanText(element.innerText || element.textContent || element.getAttribute('aria-label') || '');
                 if (/\d/.test(text) && /\b[A-Z]{2}\s+\d{5}/.test(text)) return text.replace(/^Address\s*[:\n]\s*/i, '');
             }
@@ -121,8 +334,9 @@
         return '';
     }
 
-    function extractPhoneFromPanel() {
-        const telLink = document.querySelector('#rhs a[href^="tel:"], [role="complementary"] a[href^="tel:"], a[href^="tel:"]');
+    function extractPhoneFromPanel(panel) {
+        if (!panel) return '';
+        const telLink = panel.querySelector('a[href^="tel:"]');
         if (telLink) return telLink.getAttribute('href').replace(/^tel:/i, '').trim();
 
         const selectors = [
@@ -131,7 +345,7 @@
             '[data-local-attribute*="phone"]'
         ];
         for (const selector of selectors) {
-            for (const element of document.querySelectorAll(selector)) {
+            for (const element of panel.querySelectorAll(selector)) {
                 const text = cleanText(element.innerText || element.textContent || element.getAttribute('aria-label') || '');
                 const phone = extractPhone(text);
                 if (phone) return phone;
@@ -147,8 +361,8 @@
         return match ? (match[1] || match[0]).trim() : '';
     }
 
-    function extractWebsiteFromPanel() {
-        const panel = document.querySelector('#rhs') || document.querySelector('[role="complementary"]') || document;
+    function extractWebsiteFromPanel(panel) {
+        if (!panel) return '';
         const links = [...panel.querySelectorAll('a[href]')];
         for (const link of links) {
             const label = cleanText(`${link.innerText || ''} ${link.getAttribute('aria-label') || ''} ${link.getAttribute('title') || ''}`);
@@ -156,17 +370,6 @@
             if (!/^https?:\/\//i.test(href)) continue;
             if (isBlockedUrl(href)) continue;
             if (/\bwebsite\b/i.test(label) || looksLikeBusinessWebsite(href)) return href;
-        }
-        return '';
-    }
-
-    function extractWebsiteFromResults() {
-        const links = [...document.querySelectorAll('#search a[href], a[href]')];
-        for (const link of links) {
-            const href = unwrapGoogleUrl(link.href || '');
-            if (!/^https?:\/\//i.test(href)) continue;
-            if (isBlockedUrl(href)) continue;
-            if (looksLikeBusinessWebsite(href)) return href;
         }
         return '';
     }
@@ -262,5 +465,21 @@
             .replace(/[ \t]+/g, ' ')
             .replace(/\n{2,}/g, '\n')
             .trim();
+    }
+
+    function emptyResult(reason = '') {
+        return {
+            businessName: '',
+            streetAddress: '',
+            zipCode: '',
+            city: '',
+            state: '',
+            fullAddress: '',
+            website: '',
+            phone: '',
+            panelText: '',
+            source: '',
+            reason
+        };
     }
 })();

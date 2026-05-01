@@ -27,6 +27,48 @@
     <span>Scraping... Please wait.</span>
   </div>
 
+  <section class="summary-panel" aria-label="Scraping summary">
+    <div class="summary-header">
+      <div>
+        <h2>Scrape Summary</h2>
+        <p id="summaryTimestamp">No scrape completed yet</p>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-item">
+        <span class="stat-label">Total</span>
+        <strong id="totalJobsCount">0</strong>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Scraped</span>
+        <strong id="scrapedJobsCount">0</strong>
+      </div>
+      <div class="stat-item">
+        <span class="stat-label">Skipped</span>
+        <strong id="skippedJobsCount">0</strong>
+      </div>
+    </div>
+
+    <div class="address-status">
+      <div>
+        <span>Addresses</span>
+        <strong id="addressesFoundCount">0 found</strong>
+      </div>
+      <div>
+        <span>Missing</span>
+        <strong id="addressesMissingCount">0</strong>
+      </div>
+    </div>
+
+    <div class="skip-list-card">
+      <div class="skip-list-title">Skipped title keywords</div>
+      <div id="skipKeywordList" class="skip-keyword-list">
+        <div class="empty-summary">No skipped jobs recorded.</div>
+      </div>
+    </div>
+  </section>
+
   <div class="action-buttons">
     <button id="startScraping" class="btn-primary">
       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
@@ -51,7 +93,7 @@
   </div>
 
   <div class="footer">
-    <p>Navigate to the Alliance Animal careers page, click "Start Scraping", then use "View Records" -> "Fetch Details"</p>
+    <p>Navigate to the Alliance Animal careers page, click "Start Scraping", then use "View Records" -> "Get Descriptions", "Fetch Details", or "Fetch Addresses"</p>
   </div>
 
   <script src="popup.js"></script>

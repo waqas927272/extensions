@@ -4,6 +4,9 @@ let currentTabId = null;
 let currentPage = 0;
 let allScrapedJobs = [];
 let uniqueJobLinks = new Set();
+let totalJobsSeen = 0;
+let skippedJobsTotal = 0;
+let skippedJobCounts = {};
 
 async function injectContentScript(tabId) {
     try {
@@ -25,6 +28,47 @@ function sendStatusToPopup(status, message = '', scrapedCount = 0) {
     scrapedCount: scrapedCount,
     currentPage: currentPage
   }).catch(() => {});
+}
+
+function trackSkippedJobs(skippedJobs = []) {
+    skippedJobs.forEach(job => {
+        const reason = job?.reason || 'unknown';
+        skippedJobCounts[reason] = (skippedJobCounts[reason] || 0) + 1;
+        skippedJobsTotal++;
+    });
+}
+
+function buildCompletionMessage() {
+    const summary = getScrapingSummary();
+    const skippedLines = summary.skippedByKeyword
+        .map(item => `${item.count} - ${item.keyword}`);
+
+    const skippedSummary = skippedLines.length
+        ? `\n\nSkipped title keywords:\n${skippedLines.join('\n')}`
+        : '\n\nSkipped title keywords: none';
+
+    return [
+        'Scraping completed!',
+        `Total jobs: ${summary.totalJobs}`,
+        `Skipped jobs: ${summary.skippedJobs}`,
+        `Scraped jobs: ${summary.scrapedJobs}`,
+        skippedSummary,
+        '\nUse "View Records" to see them and click "Fetch Details" to get additional information.'
+    ].join('\n');
+}
+
+function getScrapingSummary() {
+    const skippedLines = Object.entries(skippedJobCounts)
+        .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+        .map(([keyword, count]) => ({ keyword, count }));
+
+    return {
+        totalJobs: totalJobsSeen,
+        skippedJobs: skippedJobsTotal,
+        scrapedJobs: allScrapedJobs.length,
+        skippedByKeyword: skippedLines,
+        completedAt: new Date().toISOString()
+    };
 }
 
 async function fetchDetailsAsync(url) {
@@ -68,6 +112,11 @@ async function scrapeAndGoToNext() {
     try {
         const response = await chrome.tabs.sendMessage(currentTabId, { action: 'scrapeCurrentPage' });
         scrapedJobsOnPage = response?.jobs || [];
+        const skippedJobsOnPage = response?.skippedJobs || [];
+        totalJobsSeen += Number.isFinite(response?.totalJobs)
+            ? response.totalJobs
+            : scrapedJobsOnPage.length + skippedJobsOnPage.length;
+        trackSkippedJobs(skippedJobsOnPage);
     } catch (e) {
         isScraping = false;
         sendStatusToPopup('error', `Error scraping page ${currentPage}: ${e.message}`);
@@ -94,7 +143,8 @@ async function scrapeAndGoToNext() {
 
     if (!clickedNext) {
         isScraping = false;
-        sendStatusToPopup('completed', `Scraping completed! Found ${allScrapedJobs.length} jobs. Use "View Records" to see them and click "Fetch Details" to get additional information.`, allScrapedJobs.length);
+        await chrome.storage.local.set({ scrapingSummary: getScrapingSummary() });
+        sendStatusToPopup('completed', buildCompletionMessage(), allScrapedJobs.length);
     } else {
         setTimeout(scrapeAndGoToNext, 2000);
     }
@@ -126,12 +176,41 @@ async function handleStartScraping(sendResponse) {
     currentPage = 0;
     allScrapedJobs = [];
     uniqueJobLinks = new Set();
+    totalJobsSeen = 0;
+    skippedJobsTotal = 0;
+    skippedJobCounts = {};
+    await chrome.storage.local.remove('scrapingSummary');
 
     sendStatusToPopup('scraping', 'Initializing scraper...');
     const injected = await injectContentScript(currentTabId);
     if (!injected) {
         isScraping = false;
         sendStatusToPopup('error', 'Failed to inject scraper into the active page.');
+        return;
+    }
+
+    sendStatusToPopup('scraping', 'Selecting DVM Career Opportunities and waiting 5 seconds...', 0);
+    try {
+        const filterResponse = await chrome.tabs.sendMessage(currentTabId, {
+            action: 'prepareJobTypeFilter',
+            targetLabel: 'DVM Career Opportunities'
+        });
+
+        if (!filterResponse?.success) {
+            isScraping = false;
+            sendStatusToPopup('error', filterResponse?.error || 'Failed to select DVM Career Opportunities.');
+            sendResponse({ status: 'error', message: filterResponse?.error || 'Failed to select DVM Career Opportunities.' });
+            return;
+        }
+    } catch (e) {
+        isScraping = false;
+        sendStatusToPopup('error', `Failed to select DVM Career Opportunities: ${e.message}`);
+        sendResponse({ status: 'error', message: e.message });
+        return;
+    }
+
+    if (!isScraping) {
+        sendResponse({ status: 'stopped' });
         return;
     }
 

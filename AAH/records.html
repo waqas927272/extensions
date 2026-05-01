@@ -613,25 +613,81 @@
       width: 0%;
     }
 
-    /* Description Column */
-    .description-cell {
-      max-height: 100px;
-      overflow-y: auto;
-      font-size: 12px;
-      line-height: 1.5;
-      white-space: pre-wrap;
-      word-break: break-word;
-      color: #475569;
-      padding: 8px 10px;
-      background: #fafaf9;
-      border-radius: 8px;
-      border: 1px solid #f1f5f9;
-      min-width: 250px;
-      max-width: 400px;
+    .view-description-btn {
+      padding: 6px 10px;
+      border: 0;
+      border-radius: 7px;
+      background: #003c71;
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .view-description-btn:hover {
+      background: #00549e;
     }
 
     .hidden {
       display: none !important;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      padding: 24px;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-content {
+      width: min(900px, 96vw);
+      max-height: 86vh;
+      overflow: auto;
+      background: white;
+      border-radius: 10px;
+      padding: 22px;
+      box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .modal-header h2 {
+      font-size: 18px;
+      color: #1e293b;
+    }
+
+    .close-button {
+      border: 0;
+      background: #f1f5f9;
+      color: #334155;
+      width: 34px;
+      height: 34px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    #modalDescriptionContent {
+      white-space: pre-wrap;
+      line-height: 1.55;
+      color: #334155;
+      font-size: 14px;
     }
 
     .toast {
@@ -871,24 +927,25 @@
       <table id="jobRecordsTable">
         <thead>
           <tr>
-            <th id="selectAllHeader">Sel</th>
+            <th id="selectAllHeader"><input type="checkbox" id="selectAllJobs" title="Select all visible jobs"></th>
             <th>#</th>
             <th data-sort="title">Job Title</th>
             <th data-sort="jobId">Job ID</th>
+            <th data-sort="hospital">Hospital</th>
+            <th>Aggregator</th>
+            <th data-sort="streetAddress">Street Address</th>
+            <th data-sort="city">City</th>
+            <th data-sort="state">State</th>
+            <th data-sort="zipCode">Zip Code</th>
+            <th data-sort="phone">Phone</th>
+            <th data-sort="website">Website</th>
+            <th data-sort="location">Location</th>
             <th data-sort="areaOfPractice">Area of Practice</th>
             <th data-sort="position">Position</th>
             <th data-sort="salary">Salary</th>
             <th data-sort="jobType">Job Type</th>
+            <th data-sort="experience">Experience</th>
             <th data-sort="link">Link</th>
-            <th data-sort="hospital">Hospital</th>
-            <th data-sort="city">City</th>
-            <th data-sort="state">State</th>
-            <th data-sort="phone">Phone</th>
-            <th>Aggregator</th>
-            <th data-sort="streetAddress">Street Address</th>
-            <th data-sort="zipCode">Zip Code</th>
-            <th data-sort="website">Website</th>
-            <th data-sort="location">Location</th>
             <th>Description</th>
           </tr>
         </thead>
@@ -906,6 +963,16 @@
         <h2>No Jobs Scraped Yet</h2>
         <p>Visit the Alliance Animal careers page and use the extension to scrape available job listings.</p>
       </div>
+    </div>
+  </div>
+
+  <div id="descriptionModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Job Description</h2>
+        <button type="button" class="close-button" id="closeDescriptionModal">&times;</button>
+      </div>
+      <div id="modalDescriptionContent"></div>
     </div>
   </div>
 

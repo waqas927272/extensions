@@ -12,10 +12,15 @@
     const toastContainer = document.getElementById('toastContainer');
     const deleteSelectedBtn = document.getElementById('deleteSelectedBtn');
     const selectAllHeader = document.getElementById('selectAllHeader');
+    const selectAllJobsCheckbox = document.getElementById('selectAllJobs');
+    const descriptionModal = document.getElementById('descriptionModal');
+    const modalDescriptionContent = document.getElementById('modalDescriptionContent');
+    const closeDescriptionModal = document.getElementById('closeDescriptionModal');
 
     let currentSortColumn = null;
     let currentSortDirection = 'asc';
     let allJobs = [];
+    let currentlyDisplayedJobs = [];
     let selectedJobKeys = new Set();
     let isGettingDescriptions = false;
     let isFetchingDetails = false;
@@ -219,7 +224,8 @@
                 (job.website || '').toLowerCase().includes(searchTerm) ||
                 (job.areaOfPractice || '').toLowerCase().includes(searchTerm) ||
                 (job.position || '').toLowerCase().includes(searchTerm) ||
-                (job.jobType || '').toLowerCase().includes(searchTerm)
+                (job.jobType || '').toLowerCase().includes(searchTerm) ||
+                (job.experience || '').toLowerCase().includes(searchTerm)
             );
         }
 
@@ -1017,13 +1023,64 @@
         totalCountElement.textContent = count;
     }
 
+    function showDescriptionModal(description) {
+        if (!descriptionModal || !modalDescriptionContent) return;
+        modalDescriptionContent.textContent = description || '';
+        descriptionModal.classList.add('show');
+    }
+
+    function hideDescriptionModal() {
+        if (!descriptionModal || !modalDescriptionContent) return;
+        descriptionModal.classList.remove('show');
+        modalDescriptionContent.textContent = '';
+    }
+
+    if (closeDescriptionModal) {
+        closeDescriptionModal.addEventListener('click', hideDescriptionModal);
+    }
+
+    if (descriptionModal) {
+        descriptionModal.addEventListener('click', (event) => {
+            if (event.target === descriptionModal) hideDescriptionModal();
+        });
+    }
+
+    function updateSelectionControls() {
+        const visibleKeys = currentlyDisplayedJobs.map(getJobSelectionKey).filter(Boolean);
+        const selectedVisibleCount = visibleKeys.filter(key => selectedJobKeys.has(key)).length;
+
+        if (selectAllJobsCheckbox) {
+            selectAllJobsCheckbox.checked = visibleKeys.length > 0 && selectedVisibleCount === visibleKeys.length;
+            selectAllJobsCheckbox.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleKeys.length;
+        }
+
+        if (deleteSelectedBtn) {
+            deleteSelectedBtn.disabled = selectedJobKeys.size === 0;
+            deleteSelectedBtn.innerHTML = selectedJobKeys.size > 0
+                ? `
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z"/>
+          </svg>
+          Delete Selected (${selectedJobKeys.size})
+        `
+                : `
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z"/>
+          </svg>
+          Delete Selected
+        `;
+        }
+    }
+
     function displayRecords(jobs) {
         tableBody.innerHTML = '';
+        currentlyDisplayedJobs = jobs;
         updateJobCount(jobs.length);
 
         if (jobs.length === 0) {
             table.style.display = 'none';
             emptyState.classList.remove('hidden');
+            updateSelectionControls();
             return;
         }
 
@@ -1047,6 +1104,7 @@
             checkbox.addEventListener('change', () => {
                 if (checkbox.checked) selectedJobKeys.add(jobKey);
                 else selectedJobKeys.delete(jobKey);
+                updateSelectionControls();
             });
             selectCell.appendChild(checkbox);
 
@@ -1063,26 +1121,16 @@
             jobIdCell.style.fontFamily = "'Consolas', 'Monaco', monospace";
             jobIdCell.style.fontSize = '12px';
             jobIdCell.style.color = '#64748b';
-            row.insertCell(4).textContent = job.areaOfPractice || '-';
-            row.insertCell(5).textContent = job.position || '-';
-            row.insertCell(6).textContent = job.salary || '-';
-            row.insertCell(7).textContent = job.jobType || '-';
-            const linkCell = row.insertCell(8);
-            const link = document.createElement('a');
-            link.href = job.link;
-            link.textContent = 'View Job';
-            link.target = '_blank';
-            linkCell.appendChild(link);
-            row.insertCell(9).textContent = job.hospital || '-';
-            row.insertCell(10).textContent = job.city || '-';
-            row.insertCell(11).textContent = job.state || '-';
-            row.insertCell(12).textContent = job.phone || '-';
-            row.insertCell(13).textContent = 'Alliance Animal (Parent Client)';
-            row.insertCell(14).textContent = job.streetAddress || '-';
-            row.insertCell(15).textContent = job.zipCode || '-';
+            row.insertCell(4).textContent = job.hospital || '-';
+            row.insertCell(5).textContent = 'Alliance Animal (Parent Client)';
+            row.insertCell(6).textContent = job.streetAddress || '-';
+            row.insertCell(7).textContent = job.city || '-';
+            row.insertCell(8).textContent = job.state || '-';
+            row.insertCell(9).textContent = job.zipCode || '-';
+            row.insertCell(10).textContent = job.phone || '-';
 
             // Website column — show as clickable link if available
-            const websiteCell = row.insertCell(16);
+            const websiteCell = row.insertCell(11);
             if (job.website) {
                 const websiteLink = document.createElement('a');
                 websiteLink.href = job.website;
@@ -1094,18 +1142,33 @@
                 websiteCell.textContent = '-';
             }
 
-            row.insertCell(17).textContent = job.location;
+            row.insertCell(12).textContent = job.location || '-';
+            row.insertCell(13).textContent = job.areaOfPractice || '-';
+            row.insertCell(14).textContent = job.position || '-';
+            row.insertCell(15).textContent = job.salary || '-';
+            row.insertCell(16).textContent = job.jobType || '-';
+            row.insertCell(17).textContent = job.experience || '-';
 
-            const descCell = row.insertCell(18);
+            const linkCell = row.insertCell(18);
+            const link = document.createElement('a');
+            link.href = job.link;
+            link.textContent = 'View Job';
+            link.target = '_blank';
+            linkCell.appendChild(link);
+
+            const descCell = row.insertCell(19);
             if (job.description) {
-                const descDiv = document.createElement('div');
-                descDiv.className = 'description-cell';
-                descDiv.textContent = job.description;
-                descCell.appendChild(descDiv);
+                const descButton = document.createElement('button');
+                descButton.type = 'button';
+                descButton.className = 'view-description-btn';
+                descButton.textContent = 'View Description';
+                descButton.addEventListener('click', () => showDescriptionModal(job.description));
+                descCell.appendChild(descButton);
             } else {
                 descCell.innerHTML = '<span style="color: #94a3b8; font-style: italic; font-size: 12px;">Not scraped</span>';
             }
         });
+        updateSelectionControls();
     }
 
     function filterJobs(searchTerm) {
@@ -1127,7 +1190,8 @@
             (job.website || '').toLowerCase().includes(term) ||
             (job.areaOfPractice || '').toLowerCase().includes(term) ||
             (job.position || '').toLowerCase().includes(term) ||
-            (job.jobType || '').toLowerCase().includes(term)
+            (job.jobType || '').toLowerCase().includes(term) ||
+            (job.experience || '').toLowerCase().includes(term)
         );
 
         displayRecords(filtered);
@@ -1154,27 +1218,28 @@
             return;
         }
 
-        const headers = ['#', 'Job Title', 'Job ID', 'Area of Practice', 'Position', 'Salary', 'Job Type', 'Link', 'Hospital', 'City', 'State', 'Phone', 'Aggregator', 'Street Address', 'Zip Code', 'Website', 'Location', 'Description'];
+        const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Aggregator', 'Street Address', 'City', 'State', 'Zip Code', 'Phone', 'Website', 'Location', 'Area of Practice', 'Position', 'Salary', 'Job Type', 'Experience', 'Link', 'Description'];
         const csvContent = [
             headers.join(','),
             ...allJobs.map((job, index) => [
                 index + 1,
                 `"${(job.title || '').replace(/"/g, '""')}"`,
                 `"${(job.jobId || '').replace(/"/g, '""')}"`,
+                `"${(job.hospital || '').replace(/"/g, '""')}"`,
+                `"Alliance Animal (Parent Client)"`,
+                `"${(job.streetAddress || '').replace(/"/g, '""')}"`,
+                `"${(job.city || '').replace(/"/g, '""')}"`,
+                `"${(job.state || '').replace(/"/g, '""')}"`,
+                `"${(job.zipCode || '').replace(/"/g, '""')}"`,
+                `"${(job.phone || '').replace(/"/g, '""')}"`,
+                `"${(job.website || '').replace(/"/g, '""')}"`,
+                `"${(job.location || '').replace(/"/g, '""')}"`,
                 `"${(job.areaOfPractice || '').replace(/"/g, '""')}"`,
                 `"${(job.position || '').replace(/"/g, '""')}"`,
                 `"${(job.salary || '').replace(/"/g, '""')}"`,
                 `"${(job.jobType || '').replace(/"/g, '""')}"`,
+                `"${(job.experience || '').replace(/"/g, '""')}"`,
                 `"${(job.link || '').replace(/"/g, '""')}"`,
-                `"${(job.hospital || '').replace(/"/g, '""')}"`,
-                `"${(job.city || '').replace(/"/g, '""')}"`,
-                `"${(job.state || '').replace(/"/g, '""')}"`,
-                `"${(job.phone || '').replace(/"/g, '""')}"`,
-                `"Alliance Animal (Parent Client)"`,
-                `"${(job.streetAddress || '').replace(/"/g, '""')}"`,
-                `"${(job.zipCode || '').replace(/"/g, '""')}"`,
-                `"${(job.website || '').replace(/"/g, '""')}"`,
-                `"${(job.location || '').replace(/"/g, '""')}"`,
                 `"${(job.description || '').replace(/"/g, '""')}"`
             ].join(','))
         ].join('\n');
@@ -1329,8 +1394,21 @@
         }
     });
 
+    if (selectAllJobsCheckbox) {
+        selectAllJobsCheckbox.addEventListener('change', () => {
+            const visibleJobs = currentlyDisplayedJobs.length ? currentlyDisplayedJobs : allJobs;
+            visibleJobs.forEach(job => {
+                const key = getJobSelectionKey(job);
+                if (selectAllJobsCheckbox.checked) selectedJobKeys.add(key);
+                else selectedJobKeys.delete(key);
+            });
+            refreshDisplayedJobs();
+        });
+    }
+
     if (selectAllHeader) {
-        selectAllHeader.addEventListener('click', () => {
+        selectAllHeader.addEventListener('click', (event) => {
+            if (event.target === selectAllJobsCheckbox) return;
             const searchTerm = searchInput ? searchInput.value.trim().toLowerCase() : '';
             let visibleJobs = [...allJobs];
 
@@ -1347,7 +1425,8 @@
                     (job.website || '').toLowerCase().includes(searchTerm) ||
                     (job.areaOfPractice || '').toLowerCase().includes(searchTerm) ||
                     (job.position || '').toLowerCase().includes(searchTerm) ||
-                    (job.jobType || '').toLowerCase().includes(searchTerm)
+                    (job.jobType || '').toLowerCase().includes(searchTerm) ||
+                    (job.experience || '').toLowerCase().includes(searchTerm)
                 );
             }
 

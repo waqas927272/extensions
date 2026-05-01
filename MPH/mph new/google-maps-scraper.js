@@ -58,15 +58,11 @@
         // Find best matching result
         const bestMatch = findBestMatch(resultLinks, hospitalName);
         if (!bestMatch) {
-            if (isLivewellQuery(hospitalName)) {
-                return emptyResult();
-            }
-            // No match found — try extracting from the first result anyway
-            // as Google Maps usually puts the most relevant result first
-            console.log('No exact match found, trying first result');
+            console.log('No acceptable Maps result match found; skipping first-result fallback');
+            return emptyResult();
         }
 
-        const targetLink = bestMatch || resultLinks[0];
+        const targetLink = bestMatch;
         console.log(`Clicking result: "${targetLink.getAttribute('aria-label')}"`);
 
         // Click the matching result to open place details
@@ -160,6 +156,23 @@
         return /\blivewell\b/i.test(value || '');
     }
 
+    function tryExtractBusinessName() {
+        const selectors = [
+            'h1.DUwDvf',
+            'h1',
+            '[role="main"] h1',
+            '[aria-level="1"][role="heading"]'
+        ];
+
+        for (const selector of selectors) {
+            const element = document.querySelector(selector);
+            const text = (element?.textContent || '').trim();
+            if (text) return text;
+        }
+
+        return '';
+    }
+
     // ===== Extract website URL from place detail panel =====
     function tryExtractWebsite() {
         // Method 1: data-item-id="authority" is the website link
@@ -235,6 +248,7 @@
             if (fullAddress && /\d/.test(fullAddress)) {
                 const result = { fullAddress };
                 Object.assign(result, parseAddress(fullAddress));
+                result.businessName = tryExtractBusinessName();
                 // Also extract website and phone while we're on the detail panel
                 result.website = tryExtractWebsite();
                 result.phone = tryExtractPhone();
@@ -256,6 +270,7 @@
                 if (/\b[A-Z]{2}\s+\d{5}/.test(text) && /\d+\s+\w/.test(text)) {
                     const result = { fullAddress: text };
                     Object.assign(result, parseAddress(text));
+                    result.businessName = tryExtractBusinessName();
                     result.website = tryExtractWebsite();
                     result.phone = tryExtractPhone();
                     if (result.streetAddress) return result;
@@ -271,6 +286,7 @@
                 const clean = label.replace(/^Address:\s*/i, '').trim();
                 const result = { fullAddress: clean };
                 Object.assign(result, parseAddress(clean));
+                result.businessName = tryExtractBusinessName();
                 result.website = tryExtractWebsite();
                 result.phone = tryExtractPhone();
                 if (result.streetAddress) return result;
@@ -288,6 +304,7 @@
         if (match) {
             const result = { fullAddress: match[1].trim() };
             Object.assign(result, parseAddress(result.fullAddress));
+            result.businessName = tryExtractBusinessName();
             result.website = tryExtractWebsite();
             result.phone = tryExtractPhone();
             if (result.streetAddress) return result;
@@ -297,7 +314,7 @@
 
     // ===== Empty result helper =====
     function emptyResult() {
-        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
+        return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
     }
 
     // ===== Parse a full US address string into components =====
