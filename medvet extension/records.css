@@ -417,11 +417,30 @@ td {
 }
 
 tr.multi-location-row {
-  background-color: #e6f4ea;
+  background-color: #d1fae5 !important;
+  border-left: 4px solid #10b981;
 }
 
 tr.multi-location-row:hover {
-  background-color: #d0ecda;
+  background-color: #a7f3d0 !important;
+}
+
+tr.hospital-name-updated-row {
+  background-color: #dbeafe !important;
+  border-left: 4px solid #2563eb;
+}
+
+tr.hospital-name-updated-row:hover {
+  background-color: #bfdbfe !important;
+}
+
+tr.address-mismatch-row {
+  background-color: #fee2e2 !important;
+  border-left: 4px solid #dc2626;
+}
+
+tr.address-mismatch-row:hover {
+  background-color: #fecaca !important;
 }
 
 tr.selected-row {

@@ -50,6 +50,10 @@
         // Title from h2.jv-header
         const header = document.querySelector('h2.jv-header');
         if (header) result.title = header.innerText.trim();
+        if (!result.title) {
+            const smartTitle = document.querySelector('.job-title[itemprop="title"], .job-title, h1[itemprop="title"]');
+            if (smartTitle) result.title = smartTitle.innerText.trim();
+        }
 
         // Category + Location from p.jv-job-detail-meta
         const meta = document.querySelector('p.jv-job-detail-meta');
@@ -108,6 +112,15 @@
             const logoImg = document.querySelector('#subsidiaryLogo img');
             if (logoImg && logoImg.alt) {
                 result.hospitalName = logoImg.alt.trim();
+            }
+        }
+        if (!result.hospitalName) {
+            const smartLogoLink = document.querySelector('.jobad-header .logo a[title], .header-logo a[title]');
+            const smartLogoImg = document.querySelector('.jobad-header .logo img[alt], .header-logo img[alt]');
+            if (smartLogoLink?.getAttribute('title')) {
+                result.hospitalName = smartLogoLink.getAttribute('title').trim();
+            } else if (smartLogoImg?.getAttribute('alt')) {
+                result.hospitalName = smartLogoImg.getAttribute('alt').replace(/\s+logo$/i, '').trim();
             }
         }
 
@@ -192,8 +205,20 @@
 
     function getFullStateName(state) {
         if (!state) return '';
-        if (state.length > 2) return state;
-        return stateAbbreviations[state.toUpperCase()] || state;
+        const cleaned = String(state).trim();
+        const upper = cleaned.toUpperCase();
+        if (stateAbbreviations[upper]) return stateAbbreviations[upper];
+        const fullMatch = Object.values(stateAbbreviations).find(full => full.toLowerCase() === cleaned.toLowerCase());
+        return fullMatch || cleaned;
+    }
+
+    function getStateAbbrev(state) {
+        if (!state) return '';
+        const cleaned = String(state).trim();
+        const upper = cleaned.toUpperCase();
+        if (stateAbbreviations[upper]) return upper;
+        const match = Object.entries(stateAbbreviations).find(([, fullName]) => fullName.toLowerCase() === cleaned.toLowerCase());
+        return match ? match[0] : '';
     }
 
     function getDescriptionLines(text) {
@@ -226,6 +251,7 @@
     const APPROVED_POSITION_SET = new Set(APPROVED_POSITIONS);
     const VALID_POSITIONS_BY_AOP = {
         'Emergency Care': ['Associate Veterinarian', 'Medical Director'],
+        'Exotic Pet Medicine': ['Associate Veterinarian'],
         'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
         'Specialty Care': [
             'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
@@ -278,7 +304,7 @@
             return 'Partner Veterinarian';
         }
 
-        if (aopParts.some(part => ['General Practice Care', 'Emergency Care', 'Urgent Care'].includes(part))) {
+        if (aopParts.some(part => ['General Practice Care', 'Emergency Care', 'Urgent Care', 'Exotic Pet Medicine'].includes(part))) {
             return 'Associate Veterinarian';
         }
 
@@ -335,11 +361,11 @@
     function determineAreaOfPractice(title, category, descriptionText) {
         if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
         if (/\bpriority\s*pet\b/i.test(`${title}\n${descriptionText}`)) return 'Urgent Care';
+        const titleLower = title.toLowerCase();
+        if (titleLower.includes('avian') || titleLower.includes('exotic')) return 'Exotic Pet Medicine';
         // STEP 1: Use category from page (most reliable — directly from jobvite)
         const aopFromCategory = categoryToAOP(category);
         if (aopFromCategory) return aopFromCategory;
-
-        const titleLower = title.toLowerCase();
 
         // STEP 2: Check title for clear specialty position names
         const specialtyNames = ['oncologist', 'cardiologist', 'neurologist', 'neurosurgeon',
@@ -372,10 +398,8 @@
         if (titleLower.includes('urgent care')) return 'Urgent Care';
 
         // STEP 5: Equine/Bovine/Exotics from title
-        if (titleLower.includes('equine') || titleLower.includes('bovine') || titleLower.includes('large animal') ||
-            titleLower.includes('avian') || titleLower.includes('exotics')) {
-            return 'General Practice Care / Emergency Care / Urgent Care';
-        }
+        if (titleLower.includes('avian') || titleLower.includes('exotic')) return 'Exotic Pet Medicine';
+        if (titleLower.includes('equine') || titleLower.includes('bovine') || titleLower.includes('large animal')) return 'General Practice Care';
 
         // STEP 6: Check qualifications section for specialty requirements
         const qualSection = extractQualificationsSection(descriptionText);
@@ -506,6 +530,7 @@
     function validatePositionForAOP(position, aop) {
         const validPositions = {
             'Emergency Care': ['Associate Veterinarian', 'Medical Director'],
+            'Exotic Pet Medicine': ['Associate Veterinarian'],
             'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
             'Specialty Care': [
                 'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
@@ -770,22 +795,66 @@
 
     function extractCompleteAddress(text) {
         const lines = getDescriptionLines(text);
-        const addressPattern = /^(?<street>\d{1,6}\s+.+?),\s*(?<city>[A-Za-z][A-Za-z\s.'-]*?),\s*(?<state>[A-Z]{2})\s+(?<zip>\d{5}(?:-\d{4})?)(?:,\s*(?:USA|United States))?$/i;
+
+        function parseAddressLine(rawLine) {
+            let line = rawLine.replace(/^\s*-\s*/, '').replace(/\s+/g, ' ').replace(/\s+,/g, ',').trim();
+            if (!line) return null;
+            if (/\||\blocations?\s+(?:and\s+locations?\s+)?(?:coming\s+soon\s+)?include\b/i.test(line)) return null;
+
+            const parts = line.split(',').map(part => part.trim()).filter(Boolean);
+            const last = parts[parts.length - 1] || '';
+            if (/^(?:USA|United States)$/i.test(last)) parts.pop();
+            if (parts.length === 2 && /^TBD$/i.test(parts[0]) && /^TBD$/i.test(parts[1])) {
+                return {
+                    streetAddress: 'TBD',
+                    city: 'TBD',
+                    state: 'TBD',
+                    stateAbbrev: '',
+                    zipCode: '',
+                    location: 'TBD'
+                };
+            }
+            if (parts.length < 3) return null;
+
+            const statePart = parts[parts.length - 1];
+            let stateAbbrev = '';
+            let stateFull = '';
+            let zipCode = '';
+            const abbrevZip = statePart.match(/^([A-Z]{2})(?:\s+(\d{5}(?:-\d{4})?))?$/);
+            if (abbrevZip) {
+                stateAbbrev = abbrevZip[1];
+                stateFull = getFullStateName(stateAbbrev);
+                zipCode = abbrevZip[2] || '';
+            } else {
+                const fullStateZip = statePart.match(/^([A-Za-z][A-Za-z\s.]+?)(?:\s+(\d{5}(?:-\d{4})?))?$/);
+                if (!fullStateZip) return null;
+                if (/^[A-Za-z]{2}$/.test(fullStateZip[1]) && !/^TBD$/i.test(fullStateZip[1])) return null;
+                stateAbbrev = getStateAbbrev(fullStateZip[1]);
+                if (!stateAbbrev && !/^TBD$/i.test(fullStateZip[1])) return null;
+                stateFull = /^TBD$/i.test(fullStateZip[1]) ? 'TBD' : getFullStateName(fullStateZip[1]);
+                zipCode = fullStateZip[2] || '';
+            }
+
+            const city = parts[parts.length - 2] || '';
+            let street = parts.slice(0, -2).join(', ').trim();
+            street = street.replace(/^TBD-?$/i, 'TBD');
+            if (!street || !city || !/^(?:TBD|[A-Za-z][A-Za-z\s.'-]*)$/i.test(city)) return null;
+            if (/\bto\b/i.test(city)) return null;
+            if (!/\d/.test(street) && !/^TBD$/i.test(street) && street.split(/\s+/).length > 6) return null;
+
+            return {
+                streetAddress: street,
+                city,
+                state: stateFull,
+                stateAbbrev,
+                zipCode,
+                location: stateAbbrev ? `${city}, ${stateAbbrev}` : city
+            };
+        }
 
         for (let i = lines.length - 1; i >= 0; i--) {
-            const line = lines[i].replace(/\s+/g, ' ').trim();
-            const match = line.match(addressPattern);
-            if (!match?.groups) continue;
-
-            const stateAbbrev = match.groups.state.toUpperCase();
-            return {
-                streetAddress: match.groups.street.trim(),
-                city: match.groups.city.trim(),
-                state: getFullStateName(stateAbbrev),
-                stateAbbrev,
-                zipCode: match.groups.zip.trim(),
-                location: `${match.groups.city.trim()}, ${stateAbbrev}`
-            };
+            const parsed = parseAddressLine(lines[i]);
+            if (parsed) return parsed;
         }
 
         return { streetAddress: '', city: '', state: '', stateAbbrev: '', zipCode: '', location: '' };
@@ -803,15 +872,39 @@
     // Get category (priority: DOM > preloaded > JSON-LD)
     const category = domData.category || preloaded.jobCategoryName || jsonLd?.industry || '';
 
-    // Get hospital name (priority: DOM > JSON-LD)
-    let hospitalName = domData.hospitalName || '';
-    if (!hospitalName && jsonLd?.hiringOrganization?.name) {
-        hospitalName = jsonLd.hiringOrganization.name;
+    function cleanHospitalName(name) {
+        return String(name || '')
+            .replace(/\s+logo$/i, '')
+            .replace(/[.,;:]+$/g, '')
+            .trim();
     }
-    // If the parent client name is generic, try to find the specific hospital in the description.
-    if (/alliance\s+animal(?:\s+health)?/i.test(hospitalName)) {
-        const hospitalMatch = fullDescription.match(/at\s+((?:[\w'.&-]+\s+){1,5}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)))\b/i);
-        if (hospitalMatch) hospitalName = hospitalMatch[1].trim();
+
+    function isGenericHospitalName(name) {
+        return !name || /^(?:Alliance Animal Health|Alliance Animal Health \(Parent Client\))$/i.test(cleanHospitalName(name));
+    }
+
+    function firstSpecificHospital(pattern) {
+        const match = fullDescription.match(pattern);
+        if (!match) return '';
+        const name = cleanHospitalName(match[1]);
+        if (!/^[A-Z0-9]/.test(name)) return '';
+        return isGenericHospitalName(name) ? '' : name;
+    }
+
+    // Get hospital name without letting the generic parent client overwrite the practice.
+    let hospitalName = cleanHospitalName(domData.hospitalName || '');
+    if (isGenericHospitalName(hospitalName)) hospitalName = '';
+    hospitalName = hospitalName
+        || firstSpecificHospital(/Hospital Name:\s*([^\n]+)/i)
+        || firstSpecificHospital(/Position at\s+([^\n]+)/i)
+        || firstSpecificHospital(/^([A-Z][^,\n]{2,90}),\s+(?:a|an|our)\s+(?:well-established|full-service|small animal|AAHA|community|progressive|modern|brand-new|established)?[^.\n]*(?:practice|hospital|clinic|center)\b/im)
+        || firstSpecificHospital(/\bAt\s+([A-Z][A-Za-z0-9'.& -]{2,90}?(?:Animal\s+(?:Clinic|Hospital|Medical\s+Center|Care|Associates)|Animal\s+Medical\s+Center|Veterinary\s+(?:Clinic|Hospital|Center|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)|Creatures?\s+Comfort|PriorityPet(?:\s+Urgent\s+Care)?))\s*,/)
+        || firstSpecificHospital(/at\s+((?:[\w'.&-]+\s+){1,5}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)|The\s+[A-Z][\w\s]+Service))\b/i)
+        || firstSpecificHospital(/^([A-Z][^.\n]{2,90}?(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)|Urgent\s+Care|The\s+[A-Z][\w\s]+Service))\s+(?:is|has been|in\s+[A-Z][^,\n]+\s+is)\b/im)
+        || firstSpecificHospital(/^([A-Z][A-Za-z0-9'.& -]{2,90}?(?:Animal\s+(?:Clinic|Hospital|Medical\s+Center|Care|Associates)|Animal\s+Medical\s+Center|Veterinary\s+(?:Clinic|Hospital|Center|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)|Urgent\s+Care|Clinic|Hospital))\s+(?:is|has been|in\s+[A-Z][^,\n]+\s+is|,\s+(?:just|a|an|our))\b/im)
+        || firstSpecificHospital(/\bAt\s+(PriorityPet(?:\s+Urgent\s+Care)?)\b/i);
+    if (!hospitalName && jsonLd?.hiringOrganization?.name && !isGenericHospitalName(jsonLd.hiringOrganization.name)) {
+        hospitalName = cleanHospitalName(jsonLd.hiringOrganization.name);
     }
 
     // Determine AOP and Position

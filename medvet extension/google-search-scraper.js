@@ -18,6 +18,7 @@
             zipCode: parsed.zipCode || '',
             phone: extractPhoneFromPanel() || extractPhone(panelText) || extractPhone(bodyText) || '',
             website: extractWebsiteFromPanel() || extractWebsiteFromResults() || '',
+            placeName: extractPlaceNameFromPanel() || '',
             panelText: panelText || ''
         };
     } catch (error) {
@@ -75,6 +76,25 @@
         }
 
         return chunks.join('\n');
+    }
+
+    function extractPlaceNameFromPanel() {
+        const selectors = [
+            '#rhs h2[data-attrid="title"]',
+            '#rhs [data-attrid="title"]',
+            '[role="complementary"] h2',
+            '[role="complementary"] h1',
+            '.kp-wholepage h2',
+            '.kp-wholepage h1'
+        ];
+        for (const selector of selectors) {
+            for (const element of document.querySelectorAll(selector)) {
+                if (!isVisible(element)) continue;
+                const text = cleanText(element.innerText || element.textContent || '');
+                if (text) return text;
+            }
+        }
+        return '';
     }
 
     function isVisible(element) {

@@ -130,6 +130,9 @@
   }
 
   chrome.runtime.sendMessage({ command: 'get-status' }, (response) => {
+    if (chrome.runtime.lastError || !response) {
+      return;
+    }
     if (response.isScraping) {
       scrapeData();
     } else {

@@ -2,6 +2,7 @@ let isScraping = false;
 let sessionScrapedCount = 0;
 let totalOnPage = 0;
 let uniqueJobLinks = new Set();
+const MEDVET_AGGREGATOR = 'MedVet Emergency & Specialty Veterinary Care (Parent Client)';
 
 let offscreenCreating; // A global promise to avoid race conditions and ensure the offscreen document is only created once.
 
@@ -13,6 +14,10 @@ function sendScrapingStatus(status, message = '', scrapedCount = sessionScrapedC
     scrapedCount,
     currentPage: 0
   }).catch(() => {});
+}
+
+function sendRuntimeMessage(message) {
+  return chrome.runtime.sendMessage(message).catch(() => {});
 }
 
 function normalizeSalaryText(salary) {
@@ -69,7 +74,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ status: 'started' });
   } else if (request.command === 'stop' || request.action === 'stopScraping') {
     isScraping = false;
-    chrome.runtime.sendMessage({ command: 'scraping_finished' }); // Inform popup
+    sendRuntimeMessage({ command: 'scraping_finished' }); // Inform popup
     sendScrapingStatus('stopped', 'Scraping stopped.', sessionScrapedCount);
     sendResponse({ status: 'stopped' });
   } else if (request.command === 'get-status') {
@@ -82,16 +87,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         totalRecords: jobs.length
       });
     });
+    return true;
   } else if (request.command === 'page-total') {
     totalOnPage = request.count;
-    chrome.runtime.sendMessage({ command: 'page-total-update', count: totalOnPage });
+    sendRuntimeMessage({ command: 'page-total-update', count: totalOnPage });
+    sendResponse({ status: 'ok' });
   } else if (request.command === 'finished') {
     // Content script finished on a page; if isScraping is still true, it means it was the last page
     if (isScraping) { // If scraping was active, it means this was the final page
       isScraping = false; // Stop the scraping process
-      chrome.runtime.sendMessage({ command: 'scraping_finished' });
+      sendRuntimeMessage({ command: 'scraping_finished' });
       sendScrapingStatus('completed', `Scraping completed! Found ${sessionScrapedCount} jobs. Use "View Records", then "Get Descriptions" or "Fetch Details" for enrichment.`, sessionScrapedCount);
     }
+    sendResponse({ status: 'ok' });
   } else if (request.command === 'add-records') {
     if (isScraping) { // Only add records if scraping is active
       chrome.storage.local.get({ scrapedJobs: [] }, (result) => {
@@ -102,11 +110,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           allRecords.push(record);
         }
         sessionScrapedCount = allRecords.length;
-        chrome.runtime.sendMessage({ command: 'session-update', count: sessionScrapedCount });
+        sendRuntimeMessage({ command: 'session-update', count: sessionScrapedCount });
         sendScrapingStatus('in_progress', `Scraped ${sessionScrapedCount} jobs so far...`, sessionScrapedCount);
         chrome.storage.local.set({ scrapedJobs: allRecords, records: allRecords });
       });
     }
+    sendResponse({ status: 'queued' });
   } else if (request.command === 'fetch-job-description') {
     (async () => {
       try {
@@ -129,6 +138,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // Indicates that the response is sent asynchronously
   } else if (request.action === 'scrapeJobDescription') {
     const { tabId, jobIndex } = request;
+    sendResponse({ status: 'queued' });
 
     // Wait for the tab to finish loading, then inject the description-only scraper.
     chrome.tabs.onUpdated.addListener(function listener(updatedTabId, info) {
@@ -192,7 +202,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               chrome.storage.local.set({ scrapedJobs: records, records: records }, () => {
                 console.log(`Details saved for job ${jobIndex + 1}: ${record.title} → ${record.position} (${record.areaOfPractice})`);
                 chrome.tabs.remove(tabId);
-                chrome.runtime.sendMessage({
+                sendRuntimeMessage({
                   action: 'descriptionSaved',
                   jobIndex: jobIndex,
                   success: true
@@ -201,7 +211,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             } else {
               // Nothing extracted — close tab and report failure
               chrome.tabs.remove(tabId).catch(() => {});
-              chrome.runtime.sendMessage({
+              sendRuntimeMessage({
                 action: 'descriptionSaved',
                 jobIndex: jobIndex,
                 success: false
@@ -211,7 +221,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }).catch(err => {
           console.error('Error extracting description:', err);
           chrome.tabs.remove(tabId).catch(() => {});
-          chrome.runtime.sendMessage({
+          sendRuntimeMessage({
             action: 'descriptionSaved',
             jobIndex: jobIndex,
             success: false
@@ -219,8 +229,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         });
       }
     });
-
-    return true;
   } else if (request.command === 'send-to-webhook') {
     (async () => {
       try {
@@ -238,7 +246,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             job_id:           record.jobId || '',
             department_id:    record.jobId || '',
             hospital:         record.hospital || record.hospitalName || '',
-            aggregator:       'MedVet (Parent Client)',
+            aggregator:       MEDVET_AGGREGATOR,
             street_address:   record.streetAddress || '',
             parent_client:    'MedVet',
             city:             city,
@@ -288,8 +296,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
     })();
     return true; // Indicates that the response is sent asynchronously
+  } else {
+    sendResponse({ status: 'ignored' });
   }
-  return true; // Indicates that the response is sent asynchronously
+  return false;
 });
 
 // Listener for tab updates to reinject content.js if scraping is active

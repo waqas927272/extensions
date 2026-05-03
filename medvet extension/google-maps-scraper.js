@@ -47,7 +47,7 @@
         // Find the best matching result by comparing aria-label to hospital name
         // The hospital name is embedded in the search URL query
         // ============================================================
-        const hospitalName = getHospitalNameFromUrl();
+        const searchContext = getSearchContextFromUrl();
         const resultLinks = document.querySelectorAll('a.hfpxzc');
 
         if (resultLinks.length === 0) {
@@ -56,14 +56,18 @@
         }
 
         // Find best matching result
-        const bestMatch = findBestMatch(resultLinks, hospitalName);
+        const bestMatch = findBestMatch(resultLinks, searchContext);
+        if (!bestMatch) {
+            console.log('No MedVet/WestVet result matched the search query');
+            return emptyResult();
+        }
         if (!bestMatch) {
             // No match found — try extracting from the first result anyway
             // as Google Maps usually puts the most relevant result first
             console.log('No exact match found, trying first result');
         }
 
-        const targetLink = bestMatch || resultLinks[0];
+        const targetLink = bestMatch;
         console.log(`Clicking result: "${targetLink.getAttribute('aria-label')}"`);
 
         // Click the matching result to open place details
@@ -90,33 +94,46 @@
         return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: e.message };
     }
 
-    // ===== Extract hospital name from the Google Maps URL query =====
-    // URL format: https://www.google.com/maps/search/Hospital+Name+City+State
-    function getHospitalNameFromUrl() {
+    // ===== Extract search context from the Google Maps URL query =====
+    // URL format: https://www.google.com/maps/search/Hospital+Name,+City,+State
+    function getSearchContextFromUrl() {
         const url = window.location.href;
         const searchMatch = url.match(/\/maps\/search\/([^?#]+)/);
         if (searchMatch) {
             const decoded = decodeURIComponent(searchMatch[1]).replace(/\+/g, ' ').trim();
-            return decoded.split(',')[0].trim();
+            const parts = decoded.split(',').map(part => part.trim()).filter(Boolean);
+            const hospitalName = parts[0] || decoded;
+            return {
+                query: decoded,
+                hospitalName,
+                city: parts[1] || '',
+                state: parts[2] || '',
+                brand: /\bwestvet\b/i.test(hospitalName) ? 'WestVet' : 'MedVet'
+            };
         }
-        return '';
+        return { query: '', hospitalName: '', city: '', state: '', brand: '' };
     }
 
     // ===== Find the search result that best matches the hospital name =====
     // Compares aria-label text against the hospital name using word overlap
-    function findBestMatch(links, searchQuery) {
+    function findBestMatch(links, searchContext) {
+        const searchQuery = searchContext?.hospitalName || searchContext?.query || '';
         if (!searchQuery || links.length === 0) return null;
 
         const stopWords = new Set(['the', 'and', 'for', 'with', 'veterinary', 'animal', 'pet', 'hospital', 'clinic', 'center', 'centre']);
 
         // Normalize for comparison: lowercase, remove special chars
-        const normalize = (str) => str.toLowerCase()
+        const normalize = (str) => (str || '').toLowerCase()
             .replace(/&/g, 'and')
             .replace(/[^a-z0-9\s]/g, '')
             .replace(/\s+/g, ' ')
             .trim();
 
         const queryNorm = normalize(searchQuery);
+        const brand = searchContext?.brand || (/\bwestvet\b/i.test(searchQuery) ? 'WestVet' : 'MedVet');
+        const brandNorm = normalize(brand);
+        const brandCompact = brandNorm.replace(/\s+/g, '');
+        const cityNorm = normalize(searchContext?.city || '');
         const queryWords = queryNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w));
 
         let bestLink = null;
@@ -126,6 +143,9 @@
             const label = (link.getAttribute('aria-label') || '').replace(/·.*$/, '').trim();
             const normalizedLabel = label.split(',')[0].trim();
             const labelNorm = normalize(normalizedLabel);
+            const labelCompact = labelNorm.replace(/\s+/g, '');
+            if (brandCompact && !labelCompact.includes(brandCompact)) continue;
+
             const labelWords = new Set(labelNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w)));
 
             // Count how many query words appear in the label
@@ -138,8 +158,10 @@
 
             // Score = percentage of query words that matched, with small boosts for close name matches
             let score = queryWords.length > 0 ? matchCount / queryWords.length : 0;
+            if (brandCompact && labelCompact.includes(brandCompact)) score += 0.35;
             if (labelNorm === queryNorm) score += 0.5;
             if (labelNorm.startsWith(queryNorm) || queryNorm.startsWith(labelNorm)) score += 0.2;
+            if (cityNorm && labelNorm.includes(cityNorm)) score += 0.35;
 
             if (score > bestScore) {
                 bestScore = score;
@@ -148,6 +170,21 @@
         }
 
         return bestScore >= 0.34 ? bestLink : null;
+    }
+
+    function tryExtractPlaceName() {
+        const selectors = [
+            'h1.DUwDvf',
+            '[role="main"] h1',
+            'h1',
+            '[data-attrid="title"]'
+        ];
+        for (const selector of selectors) {
+            const element = document.querySelector(selector);
+            const text = (element?.innerText || element?.textContent || '').trim();
+            if (text) return text;
+        }
+        return '';
     }
 
     // ===== Extract website URL from place detail panel =====
@@ -226,6 +263,7 @@
                 const result = { fullAddress };
                 Object.assign(result, parseAddress(fullAddress));
                 // Also extract website and phone while we're on the detail panel
+                result.placeName = tryExtractPlaceName();
                 result.website = tryExtractWebsite();
                 result.phone = tryExtractPhone();
                 if (result.streetAddress) return result;
@@ -246,6 +284,7 @@
                 if (/\b[A-Z]{2}\s+\d{5}/.test(text) && /\d+\s+\w/.test(text)) {
                     const result = { fullAddress: text };
                     Object.assign(result, parseAddress(text));
+                    result.placeName = tryExtractPlaceName();
                     result.website = tryExtractWebsite();
                     result.phone = tryExtractPhone();
                     if (result.streetAddress) return result;
@@ -261,6 +300,7 @@
                 const clean = label.replace(/^Address:\s*/i, '').trim();
                 const result = { fullAddress: clean };
                 Object.assign(result, parseAddress(clean));
+                result.placeName = tryExtractPlaceName();
                 result.website = tryExtractWebsite();
                 result.phone = tryExtractPhone();
                 if (result.streetAddress) return result;
@@ -278,6 +318,7 @@
         if (match) {
             const result = { fullAddress: match[1].trim() };
             Object.assign(result, parseAddress(result.fullAddress));
+            result.placeName = tryExtractPlaceName();
             result.website = tryExtractWebsite();
             result.phone = tryExtractPhone();
             if (result.streetAddress) return result;
@@ -287,7 +328,7 @@
 
     // ===== Empty result helper =====
     function emptyResult() {
-        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
+        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', placeName: '' };
     }
 
     // ===== Parse a full US address string into components =====

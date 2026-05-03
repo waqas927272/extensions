@@ -40,7 +40,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
           // If both found, we can potentially stop early for JSON-LD
           if (description !== 'Description not found.' && hospitalName !== 'N/A') {
             sendResponse({ description: description, hospitalName: hospitalName });
-            return true;
+            return false;
           }
         }
       } catch (e) {
@@ -112,6 +112,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }
     }
     sendResponse({ description: description, hospitalName: hospitalName });
+    return false;
   }
-  return true; // Indicates that the response is sent asynchronously
+  return false;
 });
