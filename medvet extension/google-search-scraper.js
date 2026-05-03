@@ -237,6 +237,19 @@
             .trim();
     }
 
+    function looksLikeStreetAddress(streetAddress) {
+        const street = normalizeAddress(streetAddress || '');
+        if (!street) return false;
+        if (!/^\d{1,6}\s+[A-Za-z0-9]/.test(street)) return false;
+        if (/^\d{4}\s+\b(?:top|best|shop|read|blog|overview|reviews?|about|directions|save|nearby|send|share)\b/i.test(street)) return false;
+        if (/\b(?:shop|blog|reviews?|overview|directions|nearby|send to phone|share|products?|selection|supplies|best cost)\b/i.test(street)) return false;
+        return /\b(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|NE|NW|SE|SW)\b/i.test(street);
+    }
+
+    function safeAddressResult(result) {
+        return looksLikeStreetAddress(result.streetAddress) ? result : { streetAddress: '', city: '', state: '', zipCode: '' };
+    }
+
     function parseAddress(fullAddress) {
         if (!fullAddress) return { streetAddress: '', city: '', state: '', zipCode: '' };
 
@@ -244,12 +257,12 @@
         const zipPattern = /^([\s\S]+?),\s*([^,]+?),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/;
         const zipMatch = addr.match(zipPattern);
         if (zipMatch) {
-            return {
+            return safeAddressResult({
                 streetAddress: zipMatch[1].trim(),
                 city: zipMatch[2].trim(),
                 state: zipMatch[3].trim(),
                 zipCode: zipMatch[4].trim()
-            };
+            });
         }
 
         const stateZipPattern = /\b([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/;
@@ -265,15 +278,15 @@
         const parts = beforeStateZip.split(',').map(part => part.trim()).filter(Boolean);
 
         if (parts.length >= 2) {
-            return {
+            return safeAddressResult({
                 streetAddress: parts.slice(0, -1).join(', '),
                 city: parts[parts.length - 1],
                 state,
                 zipCode
-            };
+            });
         }
 
-        return { streetAddress: beforeStateZip, city: '', state, zipCode };
+        return safeAddressResult({ streetAddress: beforeStateZip, city: '', state, zipCode });
     }
 
     function cleanText(text) {

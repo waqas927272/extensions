@@ -9,8 +9,10 @@
         const bodyText = cleanText(document.body.innerText || '');
         const address = extractAddress(panelText) || extractAddress(bodyText);
         const parsed = parseAddress(address);
+        const businessName = extractBusinessNameFromPanel() || '';
 
         return {
+            businessName,
             fullAddress: address || '',
             streetAddress: parsed.streetAddress || '',
             city: parsed.city || '',
@@ -21,7 +23,7 @@
             panelText: panelText || ''
         };
     } catch (error) {
-        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: error.message };
+        return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: error.message };
     }
 
     function wait(ms) {
@@ -75,6 +77,31 @@
         }
 
         return chunks.join('\n');
+    }
+
+    function extractBusinessNameFromPanel() {
+        const selectors = [
+            '#rhs [data-attrid="title"]',
+            '#rhs h2',
+            '#rhs h3',
+            '[role="complementary"] [data-attrid="title"]',
+            '[role="complementary"] h2',
+            '[role="complementary"] h3',
+            '.qrShPb',
+            '.SPZz6b h2'
+        ];
+
+        for (const selector of selectors) {
+            for (const element of document.querySelectorAll(selector)) {
+                if (!isVisible(element)) continue;
+                const text = cleanText(element.innerText || element.textContent || '');
+                if (text && text.length <= 120 && !/^(?:Website|Directions|Call|Address|Hours)$/i.test(text)) {
+                    return text;
+                }
+            }
+        }
+
+        return '';
     }
 
     function isVisible(element) {

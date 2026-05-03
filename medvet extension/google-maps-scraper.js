@@ -23,6 +23,7 @@
         // Either a single place detail OR a search results list
         // ============================================================
         let addressData = null;
+        let clickedPlaceName = '';
 
         while (Date.now() - startTime < MAX_WAIT) {
             // Check if we're on a single place page (address button exists)
@@ -68,7 +69,8 @@
         }
 
         const targetLink = bestMatch;
-        console.log(`Clicking result: "${targetLink.getAttribute('aria-label')}"`);
+        clickedPlaceName = (targetLink.getAttribute('aria-label') || '').replace(/Â·.*$/, '').replace(/·.*$/, '').trim();
+        console.log(`Clicking result: "${clickedPlaceName}"`);
 
         // Click the matching result to open place details
         targetLink.click();
@@ -184,7 +186,7 @@
             const text = (element?.innerText || element?.textContent || '').trim();
             if (text) return text;
         }
-        return '';
+        return clickedPlaceName;
     }
 
     // ===== Extract website URL from place detail panel =====
@@ -348,15 +350,28 @@
 
         // ---- Strategy 1: Match "...Street, City, ST 12345[-6789]" ----
         // The ZIP code is always at the end, preceded by a 2-letter state abbreviation
+        function looksLikeStreetAddress(streetAddress) {
+            const street = (streetAddress || '').replace(/\s+/g, ' ').trim();
+            if (!street) return false;
+            if (!/^\d{1,6}\s+[A-Za-z0-9]/.test(street)) return false;
+            if (/^\d{4}\s+\b(?:top|best|shop|read|blog|overview|reviews?|about|directions|save|nearby|send|share)\b/i.test(street)) return false;
+            if (/\b(?:shop|blog|reviews?|overview|directions|nearby|send to phone|share|products?|selection|supplies|best cost)\b/i.test(street)) return false;
+            return /\b(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|NE|NW|SE|SW)\b/i.test(street);
+        }
+
+        function safeAddressResult(result) {
+            return looksLikeStreetAddress(result.streetAddress) ? result : { streetAddress: '', city: '', state: '', zipCode: '' };
+        }
+
         const zipPattern = /^([\s\S]+?),\s*([^,]+?),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/;
         const zipMatch = addr.match(zipPattern);
         if (zipMatch) {
-            return {
+            return safeAddressResult({
                 streetAddress: zipMatch[1].trim(),
                 city: zipMatch[2].trim(),
                 state: zipMatch[3].trim(),
                 zipCode: zipMatch[4].trim()
-            };
+            });
         }
 
         // ---- Strategy 2: Find ZIP and state anywhere near the end ----
@@ -374,11 +389,11 @@
             if (parts.length >= 2) {
                 const city = parts[parts.length - 1];
                 const streetAddress = parts.slice(0, parts.length - 1).join(', ');
-                return { streetAddress, city, state, zipCode };
+                return safeAddressResult({ streetAddress, city, state, zipCode });
             } else if (parts.length === 1) {
-                return { streetAddress: parts[0], city: '', state, zipCode };
+                return safeAddressResult({ streetAddress: parts[0], city: '', state, zipCode });
             }
-            return { streetAddress: beforeStateZip, city: '', state, zipCode };
+            return safeAddressResult({ streetAddress: beforeStateZip, city: '', state, zipCode });
         }
 
         // ---- Strategy 3: No ZIP found — try to extract state only ----
@@ -391,13 +406,13 @@
             if (parts.length >= 2) {
                 const city = parts[parts.length - 1];
                 const streetAddress = parts.slice(0, parts.length - 1).join(', ');
-                return { streetAddress, city, state, zipCode: '' };
+                return safeAddressResult({ streetAddress, city, state, zipCode: '' });
             }
-            return { streetAddress: beforeState, city: '', state, zipCode: '' };
+            return safeAddressResult({ streetAddress: beforeState, city: '', state, zipCode: '' });
         }
 
         // ---- Fallback: return the raw address as street ----
-        return { streetAddress: addr, city: '', state: '', zipCode: '' };
+        return safeAddressResult({ streetAddress: addr, city: '', state: '', zipCode: '' });
     }
 
 })();

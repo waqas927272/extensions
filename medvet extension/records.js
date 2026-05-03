@@ -2849,10 +2849,10 @@
                     jobs[index].zipCode = '';
                 }
 
-                // City and state come from the row's Location column. Fetched address data
-                // is accepted only when it matches this location.
-                jobs[index].city = searchCity || addressData.city || jobs[index].city || '';
-                jobs[index].state = getFullStateName(searchState || addressData.state || jobs[index].state || '');
+                // Use Google's accepted address city/state. If the city differs from the row
+                // location, the row is marked red through addressLocationMismatch above.
+                jobs[index].city = addressData.city || searchCity || jobs[index].city || '';
+                jobs[index].state = getFullStateName(addressData.state || searchState || jobs[index].state || '');
 
                 // Try to extract zip from fullAddress if parsing missed it
                 if (!jobs[index].zipCode && addressData.fullAddress) {

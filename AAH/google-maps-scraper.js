@@ -58,12 +58,11 @@
         // Find best matching result
         const bestMatch = findBestMatch(resultLinks, hospitalName);
         if (!bestMatch) {
-            // No match found — try extracting from the first result anyway
-            // as Google Maps usually puts the most relevant result first
-            console.log('No exact match found, trying first result');
+            console.warn('No fuzzy business-name match found in Google Maps results');
+            return emptyResult();
         }
 
-        const targetLink = bestMatch || resultLinks[0];
+        const targetLink = bestMatch;
         console.log(`Clicking result: "${targetLink.getAttribute('aria-label')}"`);
 
         // Click the matching result to open place details
@@ -147,7 +146,23 @@
             }
         }
 
-        return bestScore >= 0.34 ? bestLink : null;
+        return bestScore >= 0.5 ? bestLink : null;
+    }
+
+    function getBusinessNameFromPlaceDetail() {
+        const selectors = ['h1.DUwDvf', 'h1[aria-level="1"]', '[role="main"] h1', '.DUwDvf', 'h1'];
+        for (const selector of selectors) {
+            const el = document.querySelector(selector);
+            const text = (el?.innerText || el?.textContent || '').trim();
+            if (text) return text.replace(/\s+/g, ' ');
+        }
+        return '';
+    }
+
+    function businessNameMatchesSearch(businessName) {
+        const searchName = getHospitalNameFromUrl();
+        if (!searchName || !businessName) return true;
+        return !!findBestMatch([{ getAttribute: () => businessName }], searchName);
     }
 
     // ===== Extract website URL from place detail panel =====
@@ -216,6 +231,9 @@
     // ===== Try to extract address from place detail panel =====
     // This works when Google Maps shows a single place view with the address button
     function tryExtractFromPlaceDetail() {
+        const businessName = getBusinessNameFromPlaceDetail();
+        if (businessName && !businessNameMatchesSearch(businessName)) return null;
+
         // Method 1: Address button (most reliable)
         const addressButton = document.querySelector('button[data-item-id="address"]');
         if (addressButton) {
@@ -225,6 +243,7 @@
             if (fullAddress && /\d/.test(fullAddress)) {
                 const result = { fullAddress };
                 Object.assign(result, parseAddress(fullAddress));
+                result.businessName = businessName;
                 // Also extract website and phone while we're on the detail panel
                 result.website = tryExtractWebsite();
                 result.phone = tryExtractPhone();
@@ -246,6 +265,7 @@
                 if (/\b[A-Z]{2}\s+\d{5}/.test(text) && /\d+\s+\w/.test(text)) {
                     const result = { fullAddress: text };
                     Object.assign(result, parseAddress(text));
+                    result.businessName = businessName;
                     result.website = tryExtractWebsite();
                     result.phone = tryExtractPhone();
                     if (result.streetAddress) return result;
@@ -261,6 +281,7 @@
                 const clean = label.replace(/^Address:\s*/i, '').trim();
                 const result = { fullAddress: clean };
                 Object.assign(result, parseAddress(clean));
+                result.businessName = businessName;
                 result.website = tryExtractWebsite();
                 result.phone = tryExtractPhone();
                 if (result.streetAddress) return result;
@@ -272,12 +293,16 @@
 
     // ===== Try to extract address from page body text =====
     function tryExtractFromPageBody() {
+        const businessName = getBusinessNameFromPlaceDetail();
+        if (businessName && !businessNameMatchesSearch(businessName)) return null;
+
         const bodyText = document.body.innerText || '';
         const regex = /(\d+\s+[\w\s.'-]+(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|NE|NW|SE|SW)[\w\s.,#-]*,\s*[\w\s.'-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i;
         const match = bodyText.match(regex);
         if (match) {
             const result = { fullAddress: match[1].trim() };
             Object.assign(result, parseAddress(result.fullAddress));
+            result.businessName = businessName;
             result.website = tryExtractWebsite();
             result.phone = tryExtractPhone();
             if (result.streetAddress) return result;
@@ -287,7 +312,7 @@
 
     // ===== Empty result helper =====
     function emptyResult() {
-        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
+        return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
     }
 
     // ===== Parse a full US address string into components =====

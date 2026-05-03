@@ -965,7 +965,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
 
         function emptyAddressResult() {
-            return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
+            return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
         }
 
         const expectedLocation = parseExpectedLocation(location);
@@ -1007,11 +1007,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
         function filterDataForExpectedLocation(data, sourceLabel) {
             const result = data || emptyAddressResult();
-            const hasLocationSignal = !!(result.streetAddress || result.zipCode || result.fullAddress || result.city || result.state);
-
-            if (hasLocationSignal && !resultMatchesExpectedLocation(result)) {
-                console.warn(`Ignoring address result outside requested location "${location}" from "${sourceLabel}": ${result.fullAddress || [result.city, result.state, result.zipCode].filter(Boolean).join(', ')}`);
+            if (result.businessName && !businessNameFuzzyMatches(hospitalName, result.businessName) && !businessNameFuzzyMatches(originalHospitalName, result.businessName)) {
+                console.warn(`Ignoring result because business name "${result.businessName}" does not fuzzy-match "${hospitalName}" from "${sourceLabel}"`);
                 return emptyAddressResult();
+            }
+
+            const hasLocationSignal = !!(result.streetAddress || result.zipCode || result.fullAddress || result.city || result.state);
+            if (hasLocationSignal && !resultMatchesExpectedLocation(result)) {
+                console.warn(`Accepting city/state mismatch for "${location}" from "${sourceLabel}": ${result.fullAddress || [result.city, result.state, result.zipCode].filter(Boolean).join(', ')}`);
             }
 
             return result;
@@ -1021,6 +1024,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const safeSecondary = filterDataForExpectedLocation(secondary, sourceLabel);
             return {
                 streetAddress: primary.streetAddress || safeSecondary.streetAddress || '',
+                businessName: primary.businessName || safeSecondary.businessName || '',
                 zipCode: primary.zipCode || safeSecondary.zipCode || '',
                 city: primary.city || safeSecondary.city || '',
                 state: primary.state || safeSecondary.state || '',
@@ -1111,6 +1115,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
                                     const data = results?.[0]?.result || {};
                                     resolve({
+                                        businessName: data.businessName || '',
                                         streetAddress: data.streetAddress || '',
                                         zipCode: data.zipCode || '',
                                         city: data.city || '',
@@ -1174,6 +1179,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 }).then((results) => {
                                     const data = results?.[0]?.result || {};
                                     finish({
+                                        businessName: data.businessName || '',
                                         streetAddress: data.streetAddress || '',
                                         zipCode: data.zipCode || '',
                                         city: data.city || '',
@@ -1233,6 +1239,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 }).then((results) => {
                                     const data = results?.[0]?.result || {};
                                     finish({
+                                        businessName: data.businessName || '',
                                         streetAddress: data.streetAddress || '',
                                         zipCode: data.zipCode || '',
                                         city: data.city || '',
@@ -1295,6 +1302,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 }).then((results) => {
                                     const data = results?.[0]?.result || {};
                                     finish({
+                                        businessName: data.businessName || '',
                                         streetAddress: data.streetAddress || '',
                                         zipCode: data.zipCode || '',
                                         city: data.city || '',
@@ -1368,6 +1376,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         return {
+            businessName: data.businessName || '',
             streetAddress: data.streetAddress || '',
             zipCode: data.zipCode || '',
             city: data.city || '',
@@ -1481,6 +1490,14 @@ document.addEventListener('DOMContentLoaded', () => {
             // Mark new jobs with green background
             if (job.isNewLocation) {
                 row.style.backgroundColor = '#eaf3fb';
+            }
+
+            if (job.hospitalNameUpdated) {
+                row.classList.add('row-name-updated');
+            }
+
+            if (job.cityMismatchFlag) {
+                row.classList.add('row-city-mismatch');
             }
 
             if (selectedJobKeys.has(selectionKey)) {
@@ -2439,6 +2456,42 @@ document.addEventListener('DOMContentLoaded', () => {
         return (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     }
 
+    function normalizeBusinessNameForCompare(value) {
+        return (value || '')
+            .toLowerCase()
+            .replace(/&/g, ' and ')
+            .replace(/\([^)]*\)/g, ' ')
+            .replace(/[-–—]/g, ' ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function getBusinessNameTokens(value) {
+        const stopWords = new Set(['the', 'and', 'for', 'with', 'of', 'at', 'veterinary', 'animal', 'pet', 'hospital', 'clinic', 'center', 'centre', 'care', 'urgent']);
+        const normalized = normalizeBusinessNameForCompare(value);
+        const tokens = normalized.split(' ').filter(token => token.length > 2 && !stopWords.has(token));
+        return tokens.length ? tokens : normalized.split(' ').filter(token => token.length > 2);
+    }
+
+    function businessNameFuzzyMatches(expectedName, scrapedName) {
+        const expected = normalizeBusinessNameForCompare(expectedName);
+        const scraped = normalizeBusinessNameForCompare(scrapedName);
+        if (!expected || !scraped) return true;
+        if (expected.includes(scraped) || scraped.includes(expected)) return true;
+
+        const expectedTokens = getBusinessNameTokens(expectedName);
+        const scrapedTokens = new Set(getBusinessNameTokens(scrapedName));
+        if (expectedTokens.length === 0 || scrapedTokens.size === 0) return false;
+
+        const matched = expectedTokens.filter(token => scraped.includes(token) || scrapedTokens.has(token)).length;
+        return matched / expectedTokens.length >= 0.5;
+    }
+
+    function businessNamesExactlyEqual(nameA, nameB) {
+        return normalizeBusinessNameForCompare(nameA) === normalizeBusinessNameForCompare(nameB);
+    }
+
     function jobLocationMismatch(job) {
         const expected = parseLocationParts(job.location);
         return !!(
@@ -2705,6 +2758,25 @@ document.addEventListener('DOMContentLoaded', () => {
             const jobs = data.scrapedJobs || [];
 
             if (jobs[index]) {
+                const scrapedBusinessName = (addressData.businessName || '').trim();
+                if (
+                    scrapedBusinessName &&
+                    businessNameFuzzyMatches(jobs[index].hospital || searchHospital, scrapedBusinessName) &&
+                    !businessNamesExactlyEqual(jobs[index].hospital || '', scrapedBusinessName)
+                ) {
+                    jobs[index].hospital = scrapedBusinessName;
+                    jobs[index].hospitalNameUpdated = true;
+                } else if (scrapedBusinessName && businessNamesExactlyEqual(jobs[index].hospital || '', scrapedBusinessName)) {
+                    jobs[index].hospitalNameUpdated = false;
+                }
+
+                const fetchedCityMismatch = !!(
+                    addressData.city &&
+                    searchCity &&
+                    normalizeLocationValue(addressData.city) !== normalizeLocationValue(searchCity)
+                );
+                jobs[index].cityMismatchFlag = fetchedCityMismatch;
+
                 if (allowAddressUpdate && addressData.streetAddress) {
                     jobs[index].streetAddress = addressData.streetAddress;
                 }
@@ -2712,9 +2784,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     jobs[index].zipCode = addressData.zipCode;
                 }
 
-                // City and state come from the row's Location column. Fetched address data
-                // is accepted only when it matches this location.
-                if (allowAddressUpdate) {
+                if (fetchedCityMismatch) {
+                    jobs[index].city = addressData.city;
+                    if (addressData.state) jobs[index].state = getFullStateName(addressData.state);
+                } else if (allowAddressUpdate) {
                     jobs[index].city = searchCity || addressData.city || jobs[index].city || '';
                     jobs[index].state = getFullStateName(searchState || addressData.state || jobs[index].state || '');
                 }
