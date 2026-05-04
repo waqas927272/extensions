@@ -238,21 +238,21 @@
         const addressButton = document.querySelector('button[data-item-id="address"]');
         if (addressButton) {
             const ariaLabel = addressButton.getAttribute('aria-label') || '';
-            const textContent = addressButton.textContent.trim();
-            let fullAddress = ariaLabel.replace(/^Address:\s*/i, '').trim() || textContent;
-            if (fullAddress && /\d/.test(fullAddress)) {
-                const result = { fullAddress };
-                Object.assign(result, parseAddress(fullAddress));
-                result.businessName = businessName;
-                // Also extract website and phone while we're on the detail panel
-                result.website = tryExtractWebsite();
-                result.phone = tryExtractPhone();
-                if (result.streetAddress) return result;
+            const textCandidates = [
+                ariaLabel,
+                ...Array.from(addressButton.querySelectorAll('.Io6YTe, .rogA2c, span, div')).map(el => el.textContent || ''),
+                addressButton.textContent || ''
+            ];
+
+            for (const candidate of textCandidates) {
+                const result = buildAddressResult(candidate, businessName);
+                if (result) return result;
             }
         }
 
         // Method 2: Side panel text elements with address pattern
         const infoSelectors = [
+            '[data-item-id*="address"]',
             '[data-item-id="address"] .Io6YTe',
             '[data-item-id="address"] .rogA2c',
             '.Io6YTe.fontBodyMedium',
@@ -261,15 +261,8 @@
         for (const selector of infoSelectors) {
             const elements = document.querySelectorAll(selector);
             for (const el of elements) {
-                const text = el.textContent.trim();
-                if (/\b[A-Z]{2}\s+\d{5}/.test(text) && /\d+\s+\w/.test(text)) {
-                    const result = { fullAddress: text };
-                    Object.assign(result, parseAddress(text));
-                    result.businessName = businessName;
-                    result.website = tryExtractWebsite();
-                    result.phone = tryExtractPhone();
-                    if (result.streetAddress) return result;
-                }
+                const result = buildAddressResult(el.textContent || el.getAttribute('aria-label') || '', businessName);
+                if (result) return result;
             }
         }
 
@@ -277,15 +270,8 @@
         const allAria = document.querySelectorAll('[aria-label]');
         for (const el of allAria) {
             const label = el.getAttribute('aria-label') || '';
-            if (/\d+\s+[\w\s]+,\s*[\w\s]+,\s*[A-Z]{2}\s+\d{5}/.test(label)) {
-                const clean = label.replace(/^Address:\s*/i, '').trim();
-                const result = { fullAddress: clean };
-                Object.assign(result, parseAddress(clean));
-                result.businessName = businessName;
-                result.website = tryExtractWebsite();
-                result.phone = tryExtractPhone();
-                if (result.streetAddress) return result;
-            }
+            const result = buildAddressResult(label, businessName);
+            if (result) return result;
         }
 
         return null;
@@ -300,14 +286,65 @@
         const regex = /(\d+\s+[\w\s.'-]+(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|NE|NW|SE|SW)[\w\s.,#-]*,\s*[\w\s.'-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i;
         const match = bodyText.match(regex);
         if (match) {
-            const result = { fullAddress: match[1].trim() };
-            Object.assign(result, parseAddress(result.fullAddress));
-            result.businessName = businessName;
-            result.website = tryExtractWebsite();
-            result.phone = tryExtractPhone();
-            if (result.streetAddress) return result;
+            const result = buildAddressResult(match[1].trim(), businessName);
+            if (result) return result;
+        }
+
+        const lines = bodyText
+            .split(/\n+/)
+            .map(line => line.trim())
+            .filter(Boolean);
+        for (const line of lines) {
+            const result = buildAddressResult(line, businessName);
+            if (result) return result;
         }
         return null;
+    }
+
+    function buildAddressResult(rawAddress, businessName) {
+        const fullAddress = cleanAddressCandidate(rawAddress);
+        if (!looksLikeAddressCandidate(fullAddress)) return null;
+
+        const parsed = parseAddress(fullAddress);
+        if (!parsed.streetAddress) return null;
+
+        return {
+            businessName,
+            fullAddress,
+            ...parsed,
+            website: tryExtractWebsite(),
+            phone: tryExtractPhone()
+        };
+    }
+
+    function cleanAddressCandidate(value) {
+        return (value || '')
+            .replace(/^Address\s*[:\n]\s*/i, '')
+            .replace(/\b(?:Website|Phone|Call|Directions|Save|Share|Suggest an edit|Located in)\b[\s\S]*$/i, '')
+            .replace(/\s+/g, ' ')
+            .replace(/\s*,\s*/g, ', ')
+            .replace(/,?\s*(?:United States|USA)\s*$/i, '')
+            .trim();
+    }
+
+    function looksLikeAddressCandidate(value) {
+        const address = cleanAddressCandidate(value);
+        if (!address || !/\d/.test(address) || !address.includes(',')) return false;
+        return new RegExp(`\\b(?:[A-Z]{2}|${getStateNamePattern()})\\s+\\d{5}(?:-\\d{4})?\\b`, 'i').test(address);
+    }
+
+    function getStateNamePattern() {
+        return [
+            'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut',
+            'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa',
+            'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan',
+            'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada',
+            'New Hampshire', 'New Jersey', 'New Mexico', 'New York', 'North Carolina',
+            'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island',
+            'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont',
+            'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming',
+            'District of Columbia'
+        ].map(state => state.replace(/\s+/g, '\\s+')).join('|');
     }
 
     // ===== Empty result helper =====
@@ -332,7 +369,8 @@
 
         // ---- Strategy 1: Match "...Street, City, ST 12345[-6789]" ----
         // The ZIP code is always at the end, preceded by a 2-letter state abbreviation
-        const zipPattern = /^([\s\S]+?),\s*([^,]+?),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/;
+        const stateToken = `(?:[A-Z]{2}|${getStateNamePattern()})`;
+        const zipPattern = new RegExp(`^([\\s\\S]+?),\\s*([^,]+?),\\s*(${stateToken})\\s+(\\d{5}(?:-\\d{4})?)$`, 'i');
         const zipMatch = addr.match(zipPattern);
         if (zipMatch) {
             return {
@@ -344,7 +382,7 @@
         }
 
         // ---- Strategy 2: Find ZIP and state anywhere near the end ----
-        const stateZipPattern = /\b([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/;
+        const stateZipPattern = new RegExp(`\\b(${stateToken})\\s+(\\d{5}(?:-\\d{4})?)\\s*$`, 'i');
         const stateZipMatch = addr.match(stateZipPattern);
         if (stateZipMatch) {
             const state = stateZipMatch[1];
@@ -366,7 +404,7 @@
         }
 
         // ---- Strategy 3: No ZIP found — try to extract state only ----
-        const stateOnlyPattern = /,\s*([A-Z]{2})\s*$/;
+        const stateOnlyPattern = new RegExp(`,\\s*(${stateToken})\\s*$`, 'i');
         const stateOnlyMatch = addr.match(stateOnlyPattern);
         if (stateOnlyMatch) {
             const state = stateOnlyMatch[1];

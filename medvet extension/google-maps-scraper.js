@@ -356,7 +356,8 @@
             if (!/^\d{1,6}\s+[A-Za-z0-9]/.test(street)) return false;
             if (/^\d{4}\s+\b(?:top|best|shop|read|blog|overview|reviews?|about|directions|save|nearby|send|share)\b/i.test(street)) return false;
             if (/\b(?:shop|blog|reviews?|overview|directions|nearby|send to phone|share|products?|selection|supplies|best cost)\b/i.test(street)) return false;
-            return /\b(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|NE|NW|SE|SW)\b/i.test(street);
+            return /\b(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|Expy|Expressway|Fwy|Freeway|NE|NW|SE|SW)\b/i.test(street)
+                || /\b(?:US|Route|Rte|State Route|SR)-?\s*\d+\b/i.test(street);
         }
 
         function safeAddressResult(result) {

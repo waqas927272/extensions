@@ -1183,6 +1183,10 @@
             return 'MedVet';
         }
 
+        function isGenericHospitalSearchName() {
+            return /^(?:Med\s*Vet|WestVet)$/i.test((hospitalName || '').trim());
+        }
+
         function brandPattern(brand) {
             return brand === 'WestVet' ? /\bwestvet\b/i : /\bmed\s*vet\b/i;
         }
@@ -1221,6 +1225,10 @@
             }
 
             if (hasLocationSignal && !locationStatus.cityMatches) {
+                if (isGenericHospitalSearchName()) {
+                    console.warn(`Ignoring city-mismatched result for generic hospital search "${hospitalName}" and location "${location}" from "${sourceLabel}": ${result.placeName || result.fullAddress || [result.city, result.state, result.zipCode].filter(Boolean).join(', ')}`);
+                    return emptyAddressResult();
+                }
                 console.warn(`Accepting address with city mismatch for "${location}" from "${sourceLabel}" and marking row red: ${result.fullAddress || [result.city, result.state, result.zipCode].filter(Boolean).join(', ')}`);
                 return { ...result, locationMismatch: true };
             }
@@ -2654,6 +2662,10 @@
     }
 
     function hasUsableCachedAddress(data) {
+        return !!(data && data.streetAddress && data.zipCode && data.streetAddress !== 'Not Found (TBD)' && data.zipCode !== '00000');
+    }
+
+    function hasCompleteFetchedAddress(data) {
         return !!(data && data.streetAddress && data.zipCode);
     }
 
@@ -2831,45 +2843,35 @@
 
             if (jobs[index]) {
                 const scrapedHospitalName = normalizeScrapedHospitalPlaceName(addressData.placeName);
-                if (scrapedHospitalName && !hospitalNamesExactlyMatch(jobs[index].hospital, scrapedHospitalName)) {
-                    jobs[index].hospital = scrapedHospitalName;
-                    jobs[index].hospitalNameUpdated = true;
-                }
-
-                jobs[index].addressLocationMismatch = Boolean(addressData.locationMismatch);
-
-                if (addressData.streetAddress) {
-                    jobs[index].streetAddress = addressData.streetAddress;
-                } else if (existingLocationMismatch) {
-                    jobs[index].streetAddress = '';
-                }
-                if (addressData.zipCode) {
-                    jobs[index].zipCode = addressData.zipCode;
-                } else if (existingLocationMismatch) {
-                    jobs[index].zipCode = '';
-                }
-
-                // Use Google's accepted address city/state. If the city differs from the row
-                // location, the row is marked red through addressLocationMismatch above.
-                jobs[index].city = addressData.city || searchCity || jobs[index].city || '';
-                jobs[index].state = getFullStateName(addressData.state || searchState || jobs[index].state || '');
 
                 // Try to extract zip from fullAddress if parsing missed it
-                if (!jobs[index].zipCode && addressData.fullAddress) {
-                    const zipFromFull = addressData.fullAddress.match(/\b(\d{5}(?:-\d{4})?)\b/);
-                    if (zipFromFull) jobs[index].zipCode = zipFromFull[1];
+                if (!addressData.zipCode && addressData.fullAddress) {
+                    const zipFromFull = addressData.fullAddress.match(/\b[A-Z]{2}\s+(\d{5}(?:-\d{4})?)\b/);
+                    if (zipFromFull) addressData.zipCode = zipFromFull[1];
                 }
 
-                // Website and phone from Google Maps
-                if (addressData.website) {
+                if (hasCompleteFetchedAddress(addressData)) {
+                    if (scrapedHospitalName && !hospitalNamesExactlyMatch(jobs[index].hospital, scrapedHospitalName)) {
+                        jobs[index].hospital = scrapedHospitalName;
+                        jobs[index].hospitalNameUpdated = true;
+                    }
+                    jobs[index].addressLocationMismatch = Boolean(addressData.locationMismatch);
+                    jobs[index].streetAddress = addressData.streetAddress;
+                    jobs[index].zipCode = addressData.zipCode;
+                    // Use Google's accepted address city/state. If the city differs from the row
+                    // location, the row is marked red through addressLocationMismatch above.
+                    jobs[index].city = addressData.city || searchCity || jobs[index].city || '';
+                    jobs[index].state = getFullStateName(addressData.state || searchState || jobs[index].state || '');
                     jobs[index].website = addressData.website;
-                } else if (existingLocationMismatch) {
-                    jobs[index].website = '';
-                }
-                if (addressData.phone) {
                     jobs[index].phone = addressData.phone;
-                } else if (existingLocationMismatch) {
+                } else {
+                    jobs[index].streetAddress = 'Not Found (TBD)';
+                    jobs[index].zipCode = '00000';
+                    jobs[index].city = searchCity || jobs[index].city || '';
+                    jobs[index].state = getFullStateName(searchState || jobs[index].state || '');
                     jobs[index].phone = '';
+                    jobs[index].website = '';
+                    jobs[index].addressLocationMismatch = false;
                 }
 
                 await chrome.storage.local.set({ scrapedJobs: jobs, records: jobs });

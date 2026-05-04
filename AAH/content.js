@@ -6,7 +6,6 @@ function scrapeCurrentPage() {
         .split(/(\s+|-)/)
         .map(part => {
           if (!part || /^\s+$/.test(part) || part === '-') return part;
-          if (/^[A-Z]{2,}$/.test(part) && part.length <= 3) return part;
           return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
         })
         .join('');
@@ -18,7 +17,7 @@ function scrapeCurrentPage() {
 
       // Remove trailing location suffix from listings:
       // "CY-FAIR ANIMAL HOSPITAL - ALDINE, TX" -> "CY-FAIR ANIMAL HOSPITAL"
-      name = name.replace(/\s*[-–—]\s*[A-Za-z\s.'-]+,\s*[A-Z]{2}\s*$/, '').trim();
+      name = name.replace(/\s+[-–—]\s*[A-Za-z\s.'-]+,\s*[A-Z]{2}\s*$/, '').trim();
 
       return toTitleCasePreserveSeparators(name);
     }
@@ -37,7 +36,7 @@ function scrapeCurrentPage() {
       // Examples:
       // "CY-FAIR ANIMAL HOSPITAL - ALDINE, TX"
       // "Some Vet Clinic - Los Angeles, California"
-      const m = raw.match(/^(.*)\s*-\s*([^,]+)\s*,\s*([A-Za-z]{2}|[A-Za-z][A-Za-z\s.'-]+)\s*$/);
+      const m = raw.match(/^(.+?)\s+-\s*([^,]+)\s*,\s*([A-Za-z]{2}|[A-Za-z][A-Za-z\s.'-]+)\s*$/);
       if (!m) {
         return { hospital: normalizeHospitalName(raw), city: '', state: '' };
       }
@@ -133,7 +132,7 @@ function scrapeCurrentPage() {
           if (hospitalNameEl && jobTitleEl && locationEl) {
             totalJobs++;
             const hospitalListingValue = (hospitalNameEl.innerText || '').trim();
-            let hospitalName = hospitalListingValue;
+            let hospitalName = parseHospitalListingValue(hospitalListingValue).hospital || normalizeHospitalName(hospitalListingValue);
             const jobTitle = jobTitleEl.innerText.trim();
             const skipReason = getScrapedJobSkipReason(jobTitle);
             if (skipReason) {

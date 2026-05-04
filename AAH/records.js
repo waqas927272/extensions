@@ -961,7 +961,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Retries with simplified search query if first attempt fails.
     async function fetchAddressFromGoogleMaps(hospitalName, location, originalHospitalName = '') {
         // Build search query: "Hospital Name, City, State"
-        const searchQuery = `${hospitalName}, ${location}`;
+        const searchQuery = [hospitalName, location].filter(Boolean).join(', ');
         const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
 
         function emptyAddressResult() {
@@ -1044,7 +1044,7 @@ document.addEventListener('DOMContentLoaded', () => {
             for (const name of names) {
                 const normalizedName = (name || '').replace(/\s+/g, ' ').replace(/\s+,/g, ',').trim();
                 if (!normalizedName) continue;
-                const query = `${normalizedName}, ${location}`.replace(/\s+/g, ' ').trim();
+                const query = [normalizedName, location].filter(Boolean).join(', ').replace(/\s+/g, ' ').trim();
                 const key = query.toLowerCase();
                 if (seen.has(key)) continue;
                 seen.add(key);
@@ -2580,7 +2580,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function hasNoZipAndStreetIsTbd(job) {
         return !!(
             !job.zipCode &&
-            isPlaceholderAddressValue(job.streetAddress) &&
+            (
+                !job.streetAddress ||
+                isPlaceholderAddressValue(job.streetAddress) ||
+                hasSuspiciousAddressValue(job)
+            ) &&
             hasCityStateForSearch(job)
         );
     }
@@ -2627,47 +2631,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await chrome.storage.local.get(['scrapedJobs']);
         const jobs = data.scrapedJobs || [];
 
-        const searchableJobs = jobs.map((job, index) => ({ job, index }))
-            .filter(item => item.job.hospital && hasCityStateForSearch(item.job));
-
-        // Ordered rules:
-        // 1) Complete address rows: search only website and phone.
-        // 2) Missing ZIP with non-TBD street: update ZIP/contact, and street only if incomplete.
-        // 3) Missing ZIP with TBD street: search by city/state and update address/contact if found.
-        const phase1 = searchableJobs
-            .filter(item => hasCompleteAddressForContactSearch(item.job) && needsContactUpdate(item.job))
-            .map(item => ({ ...item, phase: 'contactOnly' }));
-        const phase2 = searchableJobs
-            .filter(item => hasNoZipButStreetIsNotTbd(item.job))
-            .map(item => ({ ...item, phase: 'zipAndContact' }));
-        const phase3 = searchableJobs
-            .filter(item => hasNoZipAndStreetIsTbd(item.job))
-            .map(item => ({ ...item, phase: 'tbdAddress' }));
-
-        const queuedIndexes = new Set();
-        const jobsNeedingAddresses = [];
-        for (const item of [...phase1, ...phase2, ...phase3]) {
-            if (queuedIndexes.has(item.index)) continue;
-            queuedIndexes.add(item.index);
-            jobsNeedingAddresses.push(item);
-        }
-
-        if (jobsNeedingAddresses.length === 0) {
-            if (confirm('All jobs already have addresses, websites, and phone numbers. Do you want to re-fetch addresses for all jobs?')) {
-                addressQueue = searchableJobs.map(item => ({ ...item, phase: 'contactOnly' }));
-            } else {
-                return;
-            }
-        } else {
-            addressQueue = jobsNeedingAddresses;
-        }
+        addressQueue = jobs
+            .map((job, index) => ({ job, index }))
+            .filter(item => item.job.hospital);
 
         if (addressQueue.length === 0) {
-            showToast('No jobs have valid hospital/location data to fetch address/contact data.', 'error');
+            showToast('No jobs have hospital names to fetch address/contact data.', 'error');
             return;
         }
 
-        primeAddressCache(jobs);
+        addressCache = new Map();
         isFetchingAddresses = true;
         currentAddressIndex = 0;
         fetchAddressesBtn.disabled = true;
@@ -2692,7 +2665,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const { job, index, phase = 'contactOnly' } = addressQueue[currentAddressIndex];
+        const { job, index } = addressQueue[currentAddressIndex];
 
         // Update progress
         const progressBar = document.getElementById('progressBar');
@@ -2702,11 +2675,6 @@ document.addEventListener('DOMContentLoaded', () => {
         fetchAddressesBtn.textContent = `Fetching... (${currentAddressIndex + 1}/${addressQueue.length})`;
 
         try {
-            const allowAddressUpdate =
-                phase === 'tbdAddress' ||
-                (phase === 'zipAndContact' && (!isStreetAddressComplete(job) || jobLocationMismatch(job) || hasSuspiciousAddressValue(job)));
-            const allowZipUpdate = phase === 'zipAndContact' || phase === 'tbdAddress';
-
             // Clean hospital name for search:
             // Remove trailing location suffix for child rows: "Hospital-Leesburg" → "Hospital"
             let searchHospital = job.hospital || '';
@@ -2736,10 +2704,6 @@ document.addEventListener('DOMContentLoaded', () => {
             // Build search: "Hospital Name, City, State"
             const searchLocation = [searchCity, searchState].filter(Boolean).join(', ');
             const normalizeLocationValue = (value) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-            const existingLocationMismatch =
-                (searchCity && job.city && normalizeLocationValue(job.city) !== normalizeLocationValue(searchCity)) ||
-                (searchState && job.state && normalizeLocationValue(getFullStateName(job.state)) !== normalizeLocationValue(getFullStateName(searchState)));
-
             const cacheKeys = getAddressCacheKeys(searchHospital, searchLocation, job.hospital || '');
             let addressData = getRememberedAddress(cacheKeys);
             if (addressData && needsContactUpdate(job) && (!addressData.website || !addressData.phone)) {
@@ -2752,58 +2716,42 @@ document.addEventListener('DOMContentLoaded', () => {
                 rememberAddressData(cacheKeys, addressData);
             }
 
-            // Update job with data from Google Maps. Preserve complete existing
-            // addresses; use Maps primarily for Website and Phone in those rows.
+            // Update job with fresh data from Google Maps/Search. Failed
+            // lookups clear address/contact fields so stale values do not remain.
             const data = await chrome.storage.local.get(['scrapedJobs']);
             const jobs = data.scrapedJobs || [];
 
             if (jobs[index]) {
-                const scrapedBusinessName = (addressData.businessName || '').trim();
-                if (
-                    scrapedBusinessName &&
-                    businessNameFuzzyMatches(jobs[index].hospital || searchHospital, scrapedBusinessName) &&
-                    !businessNamesExactlyEqual(jobs[index].hospital || '', scrapedBusinessName)
-                ) {
-                    jobs[index].hospital = scrapedBusinessName;
-                    jobs[index].hospitalNameUpdated = true;
-                } else if (scrapedBusinessName && businessNamesExactlyEqual(jobs[index].hospital || '', scrapedBusinessName)) {
-                    jobs[index].hospitalNameUpdated = false;
-                }
-
+                const foundAddress = !!(addressData && addressData.streetAddress);
                 const fetchedCityMismatch = !!(
+                    foundAddress &&
                     addressData.city &&
                     searchCity &&
                     normalizeLocationValue(addressData.city) !== normalizeLocationValue(searchCity)
                 );
                 jobs[index].cityMismatchFlag = fetchedCityMismatch;
+                jobs[index].hospitalNameUpdated = false;
 
-                if (allowAddressUpdate && addressData.streetAddress) {
-                    jobs[index].streetAddress = addressData.streetAddress;
-                }
-                if ((allowAddressUpdate || allowZipUpdate) && addressData.zipCode) {
-                    jobs[index].zipCode = addressData.zipCode;
-                }
-
-                if (fetchedCityMismatch) {
-                    jobs[index].city = addressData.city;
-                    if (addressData.state) jobs[index].state = getFullStateName(addressData.state);
-                } else if (allowAddressUpdate) {
-                    jobs[index].city = searchCity || addressData.city || jobs[index].city || '';
-                    jobs[index].state = getFullStateName(searchState || addressData.state || jobs[index].state || '');
-                }
-
-                // Try to extract zip from fullAddress if parsing missed it
-                if ((allowAddressUpdate || allowZipUpdate) && !jobs[index].zipCode && addressData.fullAddress) {
+                let zipCode = addressData.zipCode || '';
+                if (!zipCode && addressData.fullAddress) {
                     const zipFromFull = addressData.fullAddress.match(/\b(\d{5}(?:-\d{4})?)\b/);
-                    if (zipFromFull) jobs[index].zipCode = zipFromFull[1];
+                    if (zipFromFull) zipCode = zipFromFull[1];
                 }
 
-                // Website and phone from Google Maps
-                if (addressData.website) {
-                    jobs[index].website = addressData.website;
-                }
-                if (addressData.phone) {
-                    jobs[index].phone = addressData.phone;
+                if (foundAddress) {
+                    jobs[index].streetAddress = addressData.streetAddress || '';
+                    jobs[index].city = addressData.city || '';
+                    jobs[index].state = getFullStateName(addressData.state || '');
+                    jobs[index].zipCode = zipCode;
+                    jobs[index].website = addressData.website || '';
+                    jobs[index].phone = addressData.phone || '';
+                } else {
+                    jobs[index].streetAddress = '';
+                    jobs[index].city = '';
+                    jobs[index].state = '';
+                    jobs[index].zipCode = '';
+                    jobs[index].website = '';
+                    jobs[index].phone = '';
                 }
 
                 await chrome.storage.local.set({ scrapedJobs: jobs });
