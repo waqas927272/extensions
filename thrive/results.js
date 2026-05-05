@@ -206,7 +206,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <td>${escapeHtml(job.salary || 'N/A')}</td>
       <td class="description-cell">${descriptionHtml}</td>
       <td>
-        <a href="${job.link}" target="_blank" class="link-btn">
+        <a href="${escapeHtml(job.link || '#')}" target="_blank" class="link-btn">
           Open &rarr;
         </a>
       </td>
@@ -225,7 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (storedJobs.length === 0) {
         jobRecordsTableBody.innerHTML = `
           <tr>
-            <td colspan="15" class="no-records">
+            <td colspan="17" class="no-records">
               <svg class="no-records-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
                 <polyline points="14 2 14 8 20 8"></polyline>
@@ -283,7 +283,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (filteredUniqueJobs.length === 0) {
         jobRecordsTableBody.innerHTML = `
           <tr>
-            <td colspan="15" class="no-records">
+            <td colspan="17" class="no-records">
               <svg class="no-records-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <circle cx="11" cy="11" r="8"></circle>
                 <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
@@ -309,7 +309,7 @@ document.addEventListener('DOMContentLoaded', () => {
       } else if (duplicateJobs.length > 0) {
         duplicateRecordsTableBody.innerHTML = `
           <tr>
-            <td colspan="15" class="no-records">
+            <td colspan="17" class="no-records">
               <p class="no-records-text">No duplicates match your search.</p>
             </td>
           </tr>
@@ -611,7 +611,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       let foundJob = false;
       for (let i = 0; i < storedJobs.length; i++) {
-        if (!storedJobs[i].description) {
+        if (!storedJobs[i].description && !storedJobs[i].descriptionFetchFailed) {
           currentJobIndex = i;
           foundJob = true;
           break;
@@ -683,6 +683,7 @@ document.addEventListener('DOMContentLoaded', () => {
       chrome.storage.local.get([STORAGE_KEY], (result) => {
         const jobs = result[STORAGE_KEY] || [];
         if (jobs[jobIndex]) {
+          if (details.jobId) jobs[jobIndex].jobId = details.jobId;
           if (details.hospitalName) jobs[jobIndex].hospitalName = details.hospitalName;
           if (details.city) jobs[jobIndex].city = details.city;
           if (details.state) jobs[jobIndex].state = details.state;
@@ -691,6 +692,7 @@ document.addEventListener('DOMContentLoaded', () => {
           if (details.salary) jobs[jobIndex].salary = details.salary;
           if (details.position) jobs[jobIndex].position = details.position;
           if (details.areaOfPractice) jobs[jobIndex].areaOfPractice = details.areaOfPractice;
+          if (details.description) jobs[jobIndex].description = details.description;
           jobs[jobIndex].detailsFetched = true;
 
           chrome.storage.local.set({ [STORAGE_KEY]: jobs }, () => {
@@ -786,20 +788,39 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function scrapeGoogleMapsTab(url, queryLabel) {
       return new Promise((resolve) => {
+        let settled = false;
+        let tabId = null;
+        let listener = null;
+
+        function emptyAddress() {
+          return { streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' };
+        }
+
+        function cleanup() {
+          if (listener) chrome.tabs.onUpdated.removeListener(listener);
+          if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+        }
+
+        function finish(data) {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          cleanup();
+          resolve(data || emptyAddress());
+        }
         const timeout = setTimeout(() => {
           console.warn(`✗ Google Maps timeout for: "${queryLabel}"`);
-          resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
+          finish(emptyAddress());
         }, 30000);
 
         chrome.tabs.create({ url: url, active: false }, (tab) => {
           if (!tab) {
-            clearTimeout(timeout);
-            resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
+            finish(emptyAddress());
             return;
           }
 
-          const tabId = tab.id;
-          const listener = (updatedTabId, info) => {
+          tabId = tab.id;
+          listener = (updatedTabId, info) => {
             if (updatedTabId === tabId && info.status === 'complete') {
               chrome.tabs.onUpdated.removeListener(listener);
               // Wait 2s for Google Maps SPA to render, then inject scraper
@@ -808,10 +829,8 @@ document.addEventListener('DOMContentLoaded', () => {
                   target: { tabId: tabId },
                   files: ['google-maps-scraper.js']
                 }).then((results) => {
-                  clearTimeout(timeout);
-                  chrome.tabs.remove(tabId).catch(() => {});
                   const data = results?.[0]?.result || {};
-                  resolve({
+                  finish({
                     streetAddress: data.streetAddress || '',
                     zipCode: data.zipCode || '',
                     city: data.city || '',
@@ -822,9 +841,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   });
                 }).catch((err) => {
                   console.error(`Google Maps script error for "${queryLabel}":`, err);
-                  clearTimeout(timeout);
-                  chrome.tabs.remove(tabId).catch(() => {});
-                  resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
+                  finish(emptyAddress());
                 });
               }, 2000);
             }
@@ -1055,17 +1072,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     webhooksList.innerHTML = webhooks.map(webhook => `
-      <div class="webhook-item ${webhook.enabled ? '' : 'disabled'}" data-id="${webhook.id}">
+      <div class="webhook-item ${webhook.enabled ? '' : 'disabled'}" data-id="${escapeHtml(webhook.id)}">
         <div class="webhook-status ${webhook.enabled ? '' : 'inactive'}"></div>
-        <span class="webhook-name" title="${webhook.url}">${webhook.name}</span>
+        <span class="webhook-name" title="${escapeHtml(webhook.url)}">${escapeHtml(webhook.name)}</span>
         <div class="webhook-actions">
-          <button class="webhook-btn edit" data-id="${webhook.id}" title="Edit">
+          <button class="webhook-btn edit" data-id="${escapeHtml(webhook.id)}" title="Edit">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
             </svg>
           </button>
-          <button class="webhook-btn delete" data-id="${webhook.id}" title="Delete">
+          <button class="webhook-btn delete" data-id="${escapeHtml(webhook.id)}" title="Delete">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"></polyline>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>

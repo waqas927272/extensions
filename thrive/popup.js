@@ -1,95 +1,97 @@
 document.addEventListener('DOMContentLoaded', () => {
-  const startScrapingBtn = document.getElementById('startScraping');
-  const stopScrapingBtn = document.getElementById('stopScraping');
-  const viewRecordsBtn = document.getElementById('viewRecords');
-  const loadingIndicator = document.getElementById('loadingIndicator');
+    const startScrapingButton = document.getElementById('startScraping');
+    const stopScrapingButton = document.getElementById('stopScraping');
+    const viewRecordsButton = document.getElementById('viewRecords');
+    const loadingIndicator = document.getElementById('loadingIndicator');
+    const scrapingSummary = document.getElementById('scrapingSummary');
+    const summaryTotal = document.getElementById('summaryTotal');
+    const summarySkipped = document.getElementById('summarySkipped');
+    const summaryScraped = document.getElementById('summaryScraped');
+    const summaryKeywords = document.getElementById('summaryKeywords');
 
-  const totalJobsOnPageSpan = document.getElementById('totalJobsOnPage');
-  const scrapedRecordsSpan = document.getElementById('scrapedRecords');
-  const pagesProcessedSpan = document.getElementById('pagesProcessed');
+    function renderScrapingSummary(summary) {
+        if (!summary || !scrapingSummary) return;
 
-  let activeTabId = null;
+        summaryTotal.textContent = summary.totalJobs || 0;
+        summarySkipped.textContent = summary.skippedJobs || 0;
+        summaryScraped.textContent = summary.scrapedJobs || 0;
+        summaryKeywords.innerHTML = '';
 
-  function setButtonStates(isScraping) {
-    if (isScraping) {
-      startScrapingBtn.disabled = true;
-      stopScrapingBtn.disabled = false;
-      viewRecordsBtn.disabled = true;
-      loadingIndicator.classList.remove('hidden');
-    } else {
-      startScrapingBtn.disabled = false;
-      stopScrapingBtn.disabled = true;
-      viewRecordsBtn.disabled = false;
-      loadingIndicator.classList.add('hidden');
-    }
-  }
+        if (Array.isArray(summary.skippedByKeyword) && summary.skippedByKeyword.length > 0) {
+            summary.skippedByKeyword.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'summary-keyword-row';
 
-  function updateStatsDisplay(stats) {
-    totalJobsOnPageSpan.textContent = stats.totalJobsOnPage || 0;
-    scrapedRecordsSpan.textContent = stats.scrapedRecords || 0;
-    pagesProcessedSpan.textContent = `${stats.currentPage || 0}/${stats.totalPages || 0}`;
-  }
+                const count = document.createElement('strong');
+                count.textContent = item.count || 0;
 
-  // Initialize content script and get initial stats when popup is opened
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs.length > 0) {
-      activeTabId = tabs[0].id;
+                const keyword = document.createElement('span');
+                keyword.textContent = item.keyword || 'unknown';
 
-      chrome.scripting.executeScript({
-        target: { tabId: activeTabId },
-        files: ['content.js']
-      }).then(() => {
-        chrome.storage.local.get(['isScraping'], (result) => {
-          setButtonStates(result.isScraping || false);
-        });
-        chrome.tabs.sendMessage(activeTabId, { action: 'getInitialStats' }, (response) => {
-          if (response) {
-            updateStatsDisplay(response);
-          }
-        });
-      }).catch(error => console.error("Error injecting content script:", error));
-    }
-  });
-
-  // Listener for real-time stats updates from content script
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'updateStats') {
-      updateStatsDisplay(request.data);
-    }
-  });
-
-  startScrapingBtn.addEventListener('click', () => {
-    if (!activeTabId) {
-      console.error("No active tab ID available.");
-      return;
-    }
-    setButtonStates(true);
-    chrome.tabs.sendMessage(activeTabId, { action: 'start' }, (response) => {
-      if (response) {
-        if (response.status === 'completed' || response.status === 'stopped') {
-          setButtonStates(false);
-        } else if (response.status === 'already_running') {
-          chrome.storage.local.get(['isScraping'], (result) => {
-            setButtonStates(result.isScraping || false);
-          });
+                row.appendChild(count);
+                row.appendChild(keyword);
+                summaryKeywords.appendChild(row);
+            });
+        } else {
+            summaryKeywords.textContent = 'None';
         }
-      }
-    });
-  });
 
-  stopScrapingBtn.addEventListener('click', () => {
-    if (!activeTabId) {
-      console.error("No active tab ID available.");
-      return;
+        scrapingSummary.classList.remove('hidden');
     }
-    chrome.tabs.sendMessage(activeTabId, { action: 'stop' }, (response) => {
-      if (response && response.status === 'stopped') {
-        setButtonStates(false);
-      }
+
+    chrome.storage.local.get(['scrapingSummary'], (data) => {
+        renderScrapingSummary(data.scrapingSummary);
+    });
+
+    // Listener for messages from background.js to update UI
+    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+        if (request.action === 'scrapingStatus') {
+            const spinnerText = loadingIndicator.querySelector('span');
+            if (request.status === 'starting' || request.status === 'scraping') {
+                loadingIndicator.classList.remove('hidden');
+                if (spinnerText) spinnerText.textContent = request.message || 'Scraping... Please wait.';
+            } else if (request.status === 'in_progress') {
+                loadingIndicator.classList.remove('hidden');
+                if (spinnerText) spinnerText.textContent = `Scraping page ${request.currentPage}... (${request.scrapedCount} jobs found)`;
+            } else if (request.status === 'completed' || request.status === 'stopped') {
+                loadingIndicator.classList.add('hidden');
+                if (spinnerText) spinnerText.textContent = 'Scraping... Please wait.'; // Reset for next time
+                if (request.status === 'completed') {
+                    chrome.storage.local.get(['scrapingSummary'], (data) => {
+                        renderScrapingSummary(data.scrapingSummary);
+                    });
+                    if (request.message && request.message.includes('Fetch Details')) {
+                        alert(request.message);
+                    } else {
+                        alert(`Scraping completed! Scraped ${request.scrapedCount} jobs. Click "View Records" then "Fetch Details" to get additional information.`);
+                    }
+                } else {
+                    alert(`Scraping stopped. Scraped ${request.scrapedCount} jobs so far.`);
+                }
+            } else if (request.status === 'error') {
+                loadingIndicator.classList.add('hidden');
+                if (spinnerText) spinnerText.textContent = 'Scraping... Please wait.'; // Reset
+                alert(`Scraping error: ${request.message}`);
+            }
+        }
+    });
+
+    startScrapingButton.addEventListener('click', () => {
+        chrome.runtime.sendMessage({ action: 'startScraping' });
+        // The loading indicator will be shown by the 'scrapingStatus' message from background.js
+        loadingIndicator.classList.remove('hidden');
+        scrapingSummary.classList.add('hidden');
+        const spinnerText = loadingIndicator.querySelector('span');
+        if (spinnerText) spinnerText.textContent = 'Initializing scraping...';
+    });
+
+    stopScrapingButton.addEventListener('click', () => {
+        chrome.runtime.sendMessage({ action: 'stopScraping' });
+        const spinnerText = loadingIndicator.querySelector('span');
+        if (spinnerText) spinnerText.textContent = 'Stopping scraping...';
+    });
+
+    viewRecordsButton.addEventListener('click', () => {
+      chrome.tabs.create({ url: 'records.html' });
     });
   });
-
-  viewRecordsBtn.addEventListener('click', () => {
-    chrome.tabs.create({ url: 'results.html' });
-  });
-});

@@ -58,12 +58,11 @@
         // Find best matching result
         const bestMatch = findBestMatch(resultLinks, hospitalName);
         if (!bestMatch) {
-            // No match found — try extracting from the first result anyway
-            // as Google Maps usually puts the most relevant result first
-            console.log('No exact match found, trying first result');
+            console.warn('No fuzzy business-name match found in Google Maps results');
+            return emptyResult();
         }
 
-        const targetLink = bestMatch || resultLinks[0];
+        const targetLink = bestMatch;
         console.log(`Clicking result: "${targetLink.getAttribute('aria-label')}"`);
 
         // Click the matching result to open place details
@@ -96,7 +95,8 @@
         const url = window.location.href;
         const searchMatch = url.match(/\/maps\/search\/([^?#]+)/);
         if (searchMatch) {
-            return decodeURIComponent(searchMatch[1]).replace(/\+/g, ' ').trim();
+            const decoded = decodeURIComponent(searchMatch[1]).replace(/\+/g, ' ').trim();
+            return decoded.split(',')[0].trim();
         }
         return '';
     }
@@ -106,6 +106,8 @@
     function findBestMatch(links, searchQuery) {
         if (!searchQuery || links.length === 0) return null;
 
+        const stopWords = new Set(['the', 'and', 'for', 'with', 'veterinary', 'animal', 'pet', 'hospital', 'clinic', 'center', 'centre']);
+
         // Normalize for comparison: lowercase, remove special chars
         const normalize = (str) => str.toLowerCase()
             .replace(/&/g, 'and')
@@ -114,25 +116,29 @@
             .trim();
 
         const queryNorm = normalize(searchQuery);
-        const queryWords = queryNorm.split(' ').filter(w => w.length > 2); // Skip short words
+        const queryWords = queryNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w));
 
         let bestLink = null;
         let bestScore = 0;
 
         for (const link of links) {
             const label = (link.getAttribute('aria-label') || '').replace(/·.*$/, '').trim();
-            const labelNorm = normalize(label);
+            const normalizedLabel = label.split(',')[0].trim();
+            const labelNorm = normalize(normalizedLabel);
+            const labelWords = new Set(labelNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w)));
 
             // Count how many query words appear in the label
             let matchCount = 0;
             for (const word of queryWords) {
-                if (labelNorm.includes(word)) {
+                if (labelNorm.includes(word) || labelWords.has(word)) {
                     matchCount++;
                 }
             }
 
-            // Score = percentage of query words that matched
-            const score = queryWords.length > 0 ? matchCount / queryWords.length : 0;
+            // Score = percentage of query words that matched, with small boosts for close name matches
+            let score = queryWords.length > 0 ? matchCount / queryWords.length : 0;
+            if (labelNorm === queryNorm) score += 0.5;
+            if (labelNorm.startsWith(queryNorm) || queryNorm.startsWith(labelNorm)) score += 0.2;
 
             if (score > bestScore) {
                 bestScore = score;
@@ -140,8 +146,23 @@
             }
         }
 
-        // Require at least 50% word overlap to consider it a match
         return bestScore >= 0.5 ? bestLink : null;
+    }
+
+    function getBusinessNameFromPlaceDetail() {
+        const selectors = ['h1.DUwDvf', 'h1[aria-level="1"]', '[role="main"] h1', '.DUwDvf', 'h1'];
+        for (const selector of selectors) {
+            const el = document.querySelector(selector);
+            const text = (el?.innerText || el?.textContent || '').trim();
+            if (text) return text.replace(/\s+/g, ' ');
+        }
+        return '';
+    }
+
+    function businessNameMatchesSearch(businessName) {
+        const searchName = getHospitalNameFromUrl();
+        if (!searchName || !businessName) return true;
+        return !!findBestMatch([{ getAttribute: () => businessName }], searchName);
     }
 
     // ===== Extract website URL from place detail panel =====
@@ -159,6 +180,15 @@
         const websiteBtn = document.querySelector('button[data-tooltip="Open website"]');
         if (websiteBtn) {
             const ariaLabel = websiteBtn.getAttribute('aria-label') || '';
+            const cleaned = ariaLabel.replace(/^Website:\s*/i, '').trim();
+            if (cleaned) return cleaned;
+        }
+        // Method 3: any website-labelled link/button in the place panel
+        const websiteFallback = document.querySelector('a[aria-label^="Website:"], button[aria-label^="Website:"], a[data-tooltip="Open website"]');
+        if (websiteFallback) {
+            const href = websiteFallback.getAttribute('href') || '';
+            if (href && !href.startsWith('javascript:')) return href;
+            const ariaLabel = websiteFallback.getAttribute('aria-label') || '';
             const cleaned = ariaLabel.replace(/^Website:\s*/i, '').trim();
             if (cleaned) return cleaned;
         }
@@ -185,30 +215,50 @@
             const phone = link.getAttribute('href').replace('tel:', '').trim();
             if (phone) return phone;
         }
+        // Method 3: generic phone-labelled buttons/spans
+        const phoneFallback = document.querySelector('button[aria-label^="Phone:"], button[aria-label^="Call"], button[data-item-id*="phone"], [aria-label^="Phone:"], [aria-label^="Call"]');
+        if (phoneFallback) {
+            const dataId = phoneFallback.getAttribute('data-item-id') || '';
+            const phoneFromId = dataId.replace(/^phone:tel:/, '').replace(/^phone:/, '').trim();
+            if (phoneFromId) return phoneFromId;
+            const ariaLabel = phoneFallback.getAttribute('aria-label') || '';
+            const cleaned = ariaLabel.replace(/^(?:Phone|Call)\s*:?\s*/i, '').trim();
+            if (cleaned) return cleaned;
+        }
+
+        const panelText = document.querySelector('[role="main"]')?.innerText || document.body.innerText || '';
+        const phoneMatch = panelText.match(/(?:Phone|Call)\s*[:\n]?\s*(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/i)
+            || panelText.match(/\b(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/);
+        if (phoneMatch) return (phoneMatch[1] || phoneMatch[0]).trim();
+
         return '';
     }
 
     // ===== Try to extract address from place detail panel =====
     // This works when Google Maps shows a single place view with the address button
     function tryExtractFromPlaceDetail() {
+        const businessName = getBusinessNameFromPlaceDetail();
+        if (businessName && !businessNameMatchesSearch(businessName)) return null;
+
         // Method 1: Address button (most reliable)
         const addressButton = document.querySelector('button[data-item-id="address"]');
         if (addressButton) {
             const ariaLabel = addressButton.getAttribute('aria-label') || '';
-            const textContent = addressButton.textContent.trim();
-            let fullAddress = ariaLabel.replace(/^Address:\s*/i, '').trim() || textContent;
-            if (fullAddress && /\d/.test(fullAddress)) {
-                const result = { fullAddress };
-                Object.assign(result, parseAddress(fullAddress));
-                // Also extract website and phone while we're on the detail panel
-                result.website = tryExtractWebsite();
-                result.phone = tryExtractPhone();
-                if (result.streetAddress) return result;
+            const textCandidates = [
+                ariaLabel,
+                ...Array.from(addressButton.querySelectorAll('.Io6YTe, .rogA2c, span, div')).map(el => el.textContent || ''),
+                addressButton.textContent || ''
+            ];
+
+            for (const candidate of textCandidates) {
+                const result = buildAddressResult(candidate, businessName);
+                if (result) return result;
             }
         }
 
         // Method 2: Side panel text elements with address pattern
         const infoSelectors = [
+            '[data-item-id*="address"]',
             '[data-item-id="address"] .Io6YTe',
             '[data-item-id="address"] .rogA2c',
             '.Io6YTe.fontBodyMedium',
@@ -217,14 +267,8 @@
         for (const selector of infoSelectors) {
             const elements = document.querySelectorAll(selector);
             for (const el of elements) {
-                const text = el.textContent.trim();
-                if (/\b[A-Z]{2}\s+\d{5}/.test(text) && /\d+\s+\w/.test(text)) {
-                    const result = { fullAddress: text };
-                    Object.assign(result, parseAddress(text));
-                    result.website = tryExtractWebsite();
-                    result.phone = tryExtractPhone();
-                    if (result.streetAddress) return result;
-                }
+                const result = buildAddressResult(el.textContent || el.getAttribute('aria-label') || '', businessName);
+                if (result) return result;
             }
         }
 
@@ -232,14 +276,8 @@
         const allAria = document.querySelectorAll('[aria-label]');
         for (const el of allAria) {
             const label = el.getAttribute('aria-label') || '';
-            if (/\d+\s+[\w\s]+,\s*[\w\s]+,\s*[A-Z]{2}\s+\d{5}/.test(label)) {
-                const clean = label.replace(/^Address:\s*/i, '').trim();
-                const result = { fullAddress: clean };
-                Object.assign(result, parseAddress(clean));
-                result.website = tryExtractWebsite();
-                result.phone = tryExtractPhone();
-                if (result.streetAddress) return result;
-            }
+            const result = buildAddressResult(label, businessName);
+            if (result) return result;
         }
 
         return null;
@@ -247,22 +285,77 @@
 
     // ===== Try to extract address from page body text =====
     function tryExtractFromPageBody() {
+        const businessName = getBusinessNameFromPlaceDetail();
+        if (businessName && !businessNameMatchesSearch(businessName)) return null;
+
         const bodyText = document.body.innerText || '';
         const regex = /(\d+\s+[\w\s.'-]+(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|NE|NW|SE|SW)[\w\s.,#-]*,\s*[\w\s.'-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i;
         const match = bodyText.match(regex);
         if (match) {
-            const result = { fullAddress: match[1].trim() };
-            Object.assign(result, parseAddress(result.fullAddress));
-            result.website = tryExtractWebsite();
-            result.phone = tryExtractPhone();
-            if (result.streetAddress) return result;
+            const result = buildAddressResult(match[1].trim(), businessName);
+            if (result) return result;
+        }
+
+        const lines = bodyText
+            .split(/\n+/)
+            .map(line => line.trim())
+            .filter(Boolean);
+        for (const line of lines) {
+            const result = buildAddressResult(line, businessName);
+            if (result) return result;
         }
         return null;
     }
 
+    function buildAddressResult(rawAddress, businessName) {
+        const fullAddress = cleanAddressCandidate(rawAddress);
+        if (!looksLikeAddressCandidate(fullAddress)) return null;
+
+        const parsed = parseAddress(fullAddress);
+        if (!parsed.streetAddress) return null;
+
+        return {
+            businessName,
+            fullAddress,
+            ...parsed,
+            website: tryExtractWebsite(),
+            phone: tryExtractPhone()
+        };
+    }
+
+    function cleanAddressCandidate(value) {
+        return (value || '')
+            .replace(/^Address\s*[:\n]\s*/i, '')
+            .replace(/\b(?:Website|Phone|Call|Directions|Save|Share|Suggest an edit|Located in)\b[\s\S]*$/i, '')
+            .replace(/\s+/g, ' ')
+            .replace(/\s*,\s*/g, ', ')
+            .replace(/,?\s*(?:United States|USA)\s*$/i, '')
+            .trim();
+    }
+
+    function looksLikeAddressCandidate(value) {
+        const address = cleanAddressCandidate(value);
+        if (!address || !/\d/.test(address) || !address.includes(',')) return false;
+        return new RegExp(`\\b(?:[A-Z]{2}|${getStateNamePattern()})\\s+\\d{5}(?:-\\d{4})?\\b`, 'i').test(address);
+    }
+
+    function getStateNamePattern() {
+        return [
+            'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut',
+            'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa',
+            'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan',
+            'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada',
+            'New Hampshire', 'New Jersey', 'New Mexico', 'New York', 'North Carolina',
+            'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island',
+            'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont',
+            'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming',
+            'District of Columbia'
+        ].map(state => state.replace(/\s+/g, '\\s+')).join('|');
+    }
+
     // ===== Empty result helper =====
     function emptyResult() {
-        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
+        return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
     }
 
     // ===== Parse a full US address string into components =====
@@ -282,7 +375,8 @@
 
         // ---- Strategy 1: Match "...Street, City, ST 12345[-6789]" ----
         // The ZIP code is always at the end, preceded by a 2-letter state abbreviation
-        const zipPattern = /^([\s\S]+?),\s*([^,]+?),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/;
+        const stateToken = `(?:[A-Z]{2}|${getStateNamePattern()})`;
+        const zipPattern = new RegExp(`^([\\s\\S]+?),\\s*([^,]+?),\\s*(${stateToken})\\s+(\\d{5}(?:-\\d{4})?)$`, 'i');
         const zipMatch = addr.match(zipPattern);
         if (zipMatch) {
             return {
@@ -294,7 +388,7 @@
         }
 
         // ---- Strategy 2: Find ZIP and state anywhere near the end ----
-        const stateZipPattern = /\b([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/;
+        const stateZipPattern = new RegExp(`\\b(${stateToken})\\s+(\\d{5}(?:-\\d{4})?)\\s*$`, 'i');
         const stateZipMatch = addr.match(stateZipPattern);
         if (stateZipMatch) {
             const state = stateZipMatch[1];
@@ -316,7 +410,7 @@
         }
 
         // ---- Strategy 3: No ZIP found — try to extract state only ----
-        const stateOnlyPattern = /,\s*([A-Z]{2})\s*$/;
+        const stateOnlyPattern = new RegExp(`,\\s*(${stateToken})\\s*$`, 'i');
         const stateOnlyMatch = addr.match(stateOnlyPattern);
         if (stateOnlyMatch) {
             const state = stateOnlyMatch[1];

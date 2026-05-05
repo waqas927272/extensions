@@ -1,7 +1,9 @@
-// content.js - Thrive Pet Healthcare Job Scraper
-// Jobs are rendered in DOM with pagination (25 per page, AJAX-loaded)
+// content.js - Jobvite listing scraper for Thrive Pet Healthcare
+// Scrapes titles and URLs from app.jobvite.com/Recruiter/JobListing.aspx.
 if (!window.thriveJobScraperInitialized) {
   window.thriveJobScraperInitialized = true;
+
+  const JOBVITE_LISTING_PATH = '/Recruiter/JobListing.aspx';
 
   window.thriveJobScraperState = {
     scraping: false,
@@ -16,213 +18,241 @@ if (!window.thriveJobScraperInitialized) {
     window.thriveJobScraperState.scraping = status;
   }
 
-  // Parse a single job item element
-  function parseJobItem(item) {
-    const titleLink = item.querySelector('h4.heading-3 a');
-    if (!titleLink) return null;
-
-    const title = titleLink.textContent.trim();
-    const link = titleLink.href;
-    const jobIdMatch = link.match(/\/jobs\/(\d+)/);
-    const jobId = jobIdMatch ? 'THR-' + jobIdMatch[1] : '';
-
-    // Get the info column
-    const colDiv = item.querySelector('.columns.medium-9') || item.querySelector('.columns.large-10');
-    if (!colDiv) return { jobId, title, hospitalName: '', city: '', state: '', postalCode: '', jobType: '', link };
-
-    // Get full text content, normalize whitespace
-    const fullText = colDiv.textContent.replace(/\s+/g, ' ').trim();
-
-    // Split by | separator
-    const pipeSegments = fullText.split(/\s*\|\s*/);
-
-    // First segment: title + possible "NEW" + hospital name
-    let hospitalName = '';
-    if (pipeSegments[0]) {
-      let firstPart = pipeSegments[0];
-      // Remove the title text
-      const titleIndex = firstPart.indexOf(title);
-      if (titleIndex >= 0) {
-        firstPart = firstPart.substring(titleIndex + title.length).trim();
-      }
-      // Remove "NEW" tag if present
-      firstPart = firstPart.replace(/^NEW\s*/i, '').trim();
-      hospitalName = firstPart;
-    }
-
-    // Second segment: location (city, state, zip) or "Remote"
-    let city = '', state = '', postalCode = '';
-    if (pipeSegments[1]) {
-      const locationText = pipeSegments[1].trim();
-      if (locationText.toLowerCase() === 'remote') {
-        city = 'Remote';
-      } else {
-        // Parse location: "Long Beach, CA, 90804" or "City, State Zip"
-        const parts = locationText.split(',').map(s => s.trim()).filter(s => s);
-        if (parts.length >= 1) city = parts[0];
-        if (parts.length >= 2) {
-          // Second part could be "CA" or "CA 90804"
-          const stateZipStr = parts.slice(1).join(' ').trim();
-          const stateZipMatch = stateZipStr.match(/([A-Z]{2})\s*(\d{5})?/);
-          if (stateZipMatch) {
-            state = stateZipMatch[1];
-            postalCode = stateZipMatch[2] || '';
-          } else {
-            // Try to find zip at the end
-            const zipMatch = stateZipStr.match(/(\d{5})\s*$/);
-            if (zipMatch) {
-              postalCode = zipMatch[1];
-              state = stateZipStr.replace(zipMatch[0], '').trim();
-            } else {
-              state = stateZipStr;
-            }
-          }
-        }
-      }
-    }
-
-    // Third segment: job type (Full-Time, Part-Time, etc.)
-    let jobType = '';
-    if (pipeSegments[2]) {
-      jobType = pipeSegments[2].trim();
-      // Clean up any remaining "Apply Now" text that might sneak in
-      jobType = jobType.replace(/Apply Now.*/i, '').trim();
-    }
-
-    return { jobId, title, hospitalName, city, state, postalCode, jobType, link };
+  function isJobviteListingPage() {
+    return location.hostname === 'app.jobvite.com' && location.pathname.endsWith(JOBVITE_LISTING_PATH);
   }
 
-  // Scrape all jobs from a document/DOM
+  function cleanText(value) {
+    return String(value || '').replace(/\s+/g, ' ').trim();
+  }
+
+  function absoluteUrl(href) {
+    try {
+      return new URL(href, location.href).toString();
+    } catch (e) {
+      return href || '';
+    }
+  }
+
+  function getListingTable() {
+    return document.querySelector('table.jv-listTable');
+  }
+
   function scrapeJobsFromDoc(doc) {
     const jobs = [];
-    const jobItems = doc.querySelectorAll('.jobs-section__item');
-    jobItems.forEach(item => {
-      const job = parseJobItem(item);
-      if (job) jobs.push(job);
+    const table = doc.querySelector('table.jv-listTable');
+    if (!table) return jobs;
+
+    const links = table.querySelectorAll('td:first-child a[href*="JobDescription.aspx"]');
+    links.forEach(linkEl => {
+      const title = cleanText(linkEl.textContent);
+      const link = absoluteUrl(linkEl.getAttribute('href') || linkEl.href);
+      if (!title || !link) return;
+
+      jobs.push({
+        jobId: '',
+        title,
+        hospital: '',
+        hospitalName: '',
+        company: '',
+        postedDate: '',
+        city: '',
+        state: '',
+        zipCode: '',
+        postalCode: '',
+        jobType: '',
+        location: '',
+        country: 'USA',
+        link
+      });
     });
+
     return jobs;
   }
 
-  // Get total results count from page
-  function getTotalResultsCount(doc) {
-    const labels = doc.querySelectorAll('.facet-jobs-loaded label, .facet-jobs-loaded');
-    for (const label of labels) {
-      const text = label.textContent || '';
-      const match = text.match(/of\s+([\d,]+)\s+results/i);
-      if (match) return parseInt(match[1].replace(/,/g, ''));
-    }
-    // Fallback: count jobs on current page
-    return doc.querySelectorAll('.jobs-section__item').length;
+  function getFooterText() {
+    const table = getListingTable();
+    const footer = table?.querySelector('.jv-thFooter');
+    return cleanText(footer?.textContent || '');
   }
 
-  // Count jobs visible on current page DOM
-  function getJobCountFromDOM() {
-    const totalText = document.querySelector('.facet-jobs-loaded label')?.textContent || '';
-    const match = totalText.match(/of\s+([\d,]+)\s+results/i);
-    if (match) return parseInt(match[1].replace(/,/g, ''));
-    return document.querySelectorAll('.jobs-section__item').length;
+  function getTotalResultsCount() {
+    const footerText = getFooterText();
+    const match = footerText.match(/of\s+([\d,]+)\s+Jobs/i);
+    if (match) return parseInt(match[1].replace(/,/g, ''), 10);
+    return scrapeJobsFromDoc(document).length;
+  }
+
+  function getCurrentRangeStart() {
+    const footerText = getFooterText();
+    const match = footerText.match(/(\d+)\s*-\s*\d+\s+of\s+[\d,]+\s+Jobs/i);
+    return match ? parseInt(match[1], 10) : 0;
+  }
+
+  function getPageSignature() {
+    const jobs = scrapeJobsFromDoc(document);
+    const firstJob = jobs[0];
+    return [
+      getCurrentRangeStart(),
+      getFooterText(),
+      firstJob?.title || '',
+      firstJob?.link || ''
+    ].join('|');
+  }
+
+  function getNextButton() {
+    const table = getListingTable();
+    if (!table) return null;
+
+    return Array.from(table.querySelectorAll('.jv-thFooter a'))
+      .find(link =>
+        cleanText(link.textContent).toLowerCase() === 'next' &&
+        !link.classList.contains('disabled') &&
+        !link.classList.contains('jv-pagination-disabled')
+      );
+  }
+
+  function hasNextPage() {
+    return !!getNextButton();
+  }
+
+  function clickNextPage() {
+    const nextButton = getNextButton();
+    if (!nextButton) {
+      return { clicked: false, error: 'Next button not found or disabled.' };
+    }
+    nextButton.click();
+    return { clicked: true };
   }
 
   function sendStatsUpdate() {
     const state = window.thriveJobScraperState;
-    const stats = {
-      totalJobsOnPage: state.totalJobsOnPage || getJobCountFromDOM(),
-      scrapedRecords: state.allJobs.length,
-      currentPage: state.currentPage,
-      totalPages: state.totalPages
-    };
-    chrome.runtime.sendMessage({ action: 'updateStats', data: stats });
+    chrome.runtime.sendMessage({
+      action: 'updateStats',
+      data: {
+        totalJobsOnPage: state.totalJobsOnPage || getTotalResultsCount(),
+        scrapedRecords: state.allJobs.length,
+        currentPage: state.currentPage,
+        totalPages: state.totalPages
+      }
+    }).catch(() => {});
+  }
+
+  function wait(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  async function waitForPageChange(previousStart, timeoutMs = 15000) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+      await wait(300);
+      const nextStart = getCurrentRangeStart();
+      if (nextStart && nextStart !== previousStart) return true;
+      if (!document.querySelector('table.jv-listTable')) continue;
+    }
+    return false;
   }
 
   async function startScraping() {
     const state = window.thriveJobScraperState;
-    state.allJobs = [];
-    state.scraping = true;
-    updateScrapingStatus(true);
-
-    // Get total results count
-    const totalResults = getTotalResultsCount(document);
-    state.totalJobsOnPage = totalResults;
-    const totalPages = Math.ceil(totalResults / 25);
-    state.totalPages = totalPages;
-
-    // Scrape the current page first
-    state.currentPage = 1;
-    let currentPageJobs = scrapeJobsFromDoc(document);
-    state.allJobs = state.allJobs.concat(currentPageJobs);
-    sendStatsUpdate();
-
-    console.log(`Page 1: scraped ${currentPageJobs.length} jobs. Total so far: ${state.allJobs.length}`);
-
-    // Fetch remaining pages
-    for (let page = 2; page <= totalPages; page++) {
-      if (!state.scraping) break;
-
-      state.currentPage = page;
-
-      try {
-        const url = `/search/jobs/in?location=&page=${page}&q=`;
-        const response = await fetch(url);
-        const html = await response.text();
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-
-        const pageJobs = scrapeJobsFromDoc(doc);
-        state.allJobs = state.allJobs.concat(pageJobs);
-
-        console.log(`Page ${page}: scraped ${pageJobs.length} jobs. Total so far: ${state.allJobs.length}`);
-        sendStatsUpdate();
-
-        // Small delay to avoid hammering the server
-        await new Promise(resolve => setTimeout(resolve, 300));
-      } catch (err) {
-        console.error(`Error fetching page ${page}:`, err);
-      }
+    if (!isJobviteListingPage()) {
+      updateScrapingStatus(false);
+      return {
+        status: 'wrong_url',
+        message: 'Open https://app.jobvite.com/Recruiter/JobListing.aspx before starting.'
+      };
     }
 
-    console.log('Scraping complete. Total jobs:', state.allJobs.length);
+    state.allJobs = [];
+    state.scraping = true;
+    state.currentPage = 0;
+    state.totalJobsOnPage = getTotalResultsCount();
+    state.totalPages = Math.max(1, Math.ceil(state.totalJobsOnPage / 20));
+    updateScrapingStatus(true);
+    sendStatsUpdate();
 
-    chrome.runtime.sendMessage({ action: 'storeJobs', data: state.allJobs });
+    const seenLinks = new Set();
+
+    while (state.scraping) {
+      state.currentPage += 1;
+      const currentJobs = scrapeJobsFromDoc(document);
+
+      currentJobs.forEach(job => {
+        if (!seenLinks.has(job.link)) {
+          seenLinks.add(job.link);
+          state.allJobs.push(job);
+        }
+      });
+
+      sendStatsUpdate();
+      console.log(`Page ${state.currentPage}: scraped ${currentJobs.length} jobs. Total so far: ${state.allJobs.length}`);
+
+      const nextButton = getNextButton();
+      if (!nextButton) break;
+
+      const previousStart = getCurrentRangeStart();
+      nextButton.click();
+
+      const changed = await waitForPageChange(previousStart);
+      if (!changed) break;
+      await wait(500);
+    }
+
+    chrome.runtime.sendMessage({ action: 'storeJobs', data: state.allJobs }).catch(() => {});
     updateScrapingStatus(false);
     sendStatsUpdate();
+    return { status: state.scraping ? 'stopped' : 'completed' };
   }
 
-  // Message Listener
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'start') {
       if (!window.thriveJobScraperState.scraping) {
-        console.log('Starting job scraping...');
-        startScraping().then(() => {
-          sendResponse({ status: 'completed' });
-        });
+        startScraping().then(sendResponse);
         return true;
-      } else {
-        sendResponse({ status: 'already_running' });
       }
+      sendResponse({ status: 'already_running' });
     } else if (request.action === 'stop') {
-      console.log('Stopping scraping.');
       window.thriveJobScraperState.scraping = false;
       updateScrapingStatus(false);
       sendStatsUpdate();
       sendResponse({ status: 'stopped' });
+    } else if (request.action === 'scrapeCurrentPage') {
+      sendResponse({
+        jobs: isJobviteListingPage() ? scrapeJobsFromDoc(document) : [],
+        totalJobs: isJobviteListingPage() ? getTotalResultsCount() : 0,
+        hasNext: isJobviteListingPage() && hasNextPage(),
+        rangeStart: isJobviteListingPage() ? getCurrentRangeStart() : 0,
+        footerText: isJobviteListingPage() ? getFooterText() : '',
+        pageSignature: isJobviteListingPage() ? getPageSignature() : ''
+      });
+    } else if (request.action === 'clickNextPage') {
+      sendResponse(isJobviteListingPage() ? clickNextPage() : { clicked: false, error: 'Not on Jobvite listing page.' });
+    } else if (request.action === 'getPageState') {
+      sendResponse({
+        validPage: isJobviteListingPage(),
+        hasNext: isJobviteListingPage() && hasNextPage(),
+        rangeStart: isJobviteListingPage() ? getCurrentRangeStart() : 0,
+        footerText: isJobviteListingPage() ? getFooterText() : '',
+        pageSignature: isJobviteListingPage() ? getPageSignature() : ''
+      });
     } else if (request.action === 'getInitialStats') {
       const state = window.thriveJobScraperState;
       sendResponse({
-        totalJobsOnPage: state.totalJobsOnPage || getJobCountFromDOM(),
+        totalJobsOnPage: isJobviteListingPage() ? (state.totalJobsOnPage || getTotalResultsCount()) : 0,
         scrapedRecords: state.allJobs.length,
         currentPage: state.currentPage,
-        totalPages: state.totalPages
+        totalPages: state.totalPages,
+        validPage: isJobviteListingPage(),
+        hasNext: hasNextPage()
       });
     }
   });
 
-  // Initial stats update on script load
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', sendStatsUpdate);
   } else {
     sendStatsUpdate();
   }
-
 } else {
-  console.log("Thrive content script already initialized.");
+  console.log('Thrive Jobvite content script already initialized.');
 }

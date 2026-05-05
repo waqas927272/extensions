@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Thrive Job Scraper",
   "version": "1.0",
-  "description": "Scrapes job data from Thrive Pet Healthcare careers page.",
+  "description": "Scrapes Thrive Pet Healthcare jobs from Jobvite recruiter listings.",
   "permissions": [
     "activeTab",
     "storage",
@@ -11,6 +11,7 @@
   ],
   "host_permissions": [
     "https://careers.thrivepetcare.com/*",
+    "https://app.jobvite.com/*",
     "<all_urls>"
   ],
   "icons": {
@@ -31,7 +32,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["google-maps-scraper.js"],
+      "resources": ["google-maps-scraper.js", "google-search-scraper.js", "detail-extractor.js"],
       "matches": ["<all_urls>"]
     }
   ]
