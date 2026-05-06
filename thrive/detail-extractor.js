@@ -349,6 +349,7 @@
     // ===== Map category string to Area of Practice =====
     function categoryToAOP(category) {
         if (!category) return '';
+        if (isNonClinicalCategory(category)) return '';
         const cat = category.toLowerCase().trim();
         if (cat.includes('urgent care')) return 'Urgent Care';
         if (cat.includes('specialist') || cat.includes('specialty') || cat.includes('diplomate') || cat.includes('surgeon')) return 'Specialty Care';
@@ -361,14 +362,17 @@
     function determineAreaOfPractice(title, category, descriptionText) {
         if (/\bpriority\s*pet\b/i.test(`${title}\n${descriptionText}`)) return 'Urgent Care';
         const titleLower = title.toLowerCase();
-        if (titleLower.includes('avian') || titleLower.includes('exotic')) return 'Exotic Pet Medicine';
+        const qualSection = extractQualificationsSection(descriptionText) || '';
+        if (shouldLeaveClinicalFieldsBlank(title, category)) return '';
+        if (isExoticRoleTitle(title)) return 'Exotic Pet Medicine';
+        if (/\b(?:board certified|board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained|diplomate)\b/i.test(qualSection)) return 'Specialty Care';
         // STEP 1: Use category from page (most reliable — directly from jobvite)
         const categoryLower = String(category || '').toLowerCase();
         if (categoryLower.includes('medical director')) {
-            const combined = `${title}\n${descriptionText}`;
+            const combined = `${title}\n${qualSection}`;
             if (/\bspecialty medical director\b|\bspecialty hospital\b|\bspecialty services?\b/i.test(combined)) return 'Specialty Care';
             if (/\bemergency veterinary medical director\b|\bemergency (?:&|and)? referral\b/i.test(combined)) return 'Emergency Care';
-            if (/\bexotic\b|\bavian\b/i.test(combined)) return 'Exotic Pet Medicine';
+            if (hasExoticRequirementSignal(qualSection)) return 'Exotic Pet Medicine';
             return 'General Practice Care';
         }
 
@@ -406,14 +410,12 @@
         if (titleLower.includes('urgent care')) return 'Urgent Care';
 
         // STEP 5: Equine/Bovine/Exotics from title
-        if (titleLower.includes('avian') || titleLower.includes('exotic')) return 'Exotic Pet Medicine';
+        if (isExoticRoleTitle(title)) return 'Exotic Pet Medicine';
         if (titleLower.includes('equine') || titleLower.includes('bovine') || titleLower.includes('large animal')) return 'General Practice Care';
 
         // STEP 6: Check qualifications/description for specialty requirements only after
         // explicit category/title signals. ER listings often mention specialty teams.
-        if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
-
-        const qualSection = extractQualificationsSection(descriptionText);
+        if (qualSection && hasSpecialtyTrainingSignal(qualSection)) return 'Specialty Care';
         if (qualSection) {
             const qualLower = qualSection.toLowerCase();
             for (const cert of specialtyCerts) {
@@ -421,7 +423,7 @@
             }
         }
 
-        return 'General Practice Care';
+        return hasClinicalTitleSignal(title) ? 'General Practice Care' : '';
     }
 
     // ===== Extract qualifications/requirements section =====
@@ -515,6 +517,7 @@
     //     Neurologist & Neurosurgeon, Ophthalmologist, Radiation Oncologist, Radiologist, Surgeon
     //   Urgent Care: Associate Veterinarian, Partner Veterinarian
     function determinePosition(title, areaOfPractice, descriptionText) {
+        if (!areaOfPractice) return '';
         // 1. Try to match from title
         let position = matchPositionFromTitle(title);
 
@@ -740,6 +743,37 @@
         return '';
     }
 
+    function isNonClinicalCategory(category) {
+        const cat = (category || '').toLowerCase();
+        return !!(
+            cat &&
+            !/\bveterinarian\b|\bveterinary\b|\bvet\b|\bdvm\b/i.test(cat) &&
+            /\b(?:business development|support center|corporate|operations|marketing|finance|accounting|human resources|recruiting|talent|administrative|management|technology|it|sales)\b/i.test(cat)
+        );
+    }
+
+    function hasClinicalTitleSignal(title) {
+        return /\b(?:veterinarian|veterinary|vet|dvm|medical director|surgeon|oncologist|cardiologist|radiologist|internist|dermatologist|neurologist|ophthalmologist|anesthesiologist|criticalist|dentist|oral surgeon)\b/i.test(title || '');
+    }
+
+    function shouldLeaveClinicalFieldsBlank(title, category) {
+        return isNonClinicalCategory(category) && !hasClinicalTitleSignal(title);
+    }
+
+    function isExoticRoleTitle(title) {
+        const t = (title || '').toLowerCase();
+        return /\b(?:exotic|avian)\s+(?:veterinarian|vet|dvm)\b/i.test(t) ||
+            /\b(?:veterinarian|vet|dvm)\b[^,\n()]{0,40}\b(?:exotic|avian)\b/i.test(t);
+    }
+
+    function hasExoticRequirementSignal(text) {
+        const source = String(text || '');
+        if (/\b(?:would\s+not\s+be|required\s+is\s+not|not)\s+required\b/i.test(source) || /\bnot\s+a\s+requirement\b/i.test(source)) return false;
+        const exoticNearRequirement = /\b(?:exotic|avian|reptiles?|small mammals?|pocket pets?)\b[\s\S]{0,100}\b(?:required|must|need|looking for|experience|skilled|proficient)\b/i;
+        const requirementNearExotic = /\b(?:required|must|need|looking for|experience|skilled|proficient)\b[\s\S]{0,100}\b(?:exotic|avian|reptiles?|small mammals?|pocket pets?)\b/i;
+        return exoticNearRequirement.test(source) || requirementNearExotic.test(source);
+    }
+
     function extractJobType(text) {
         if (!text) return 'Full-Time';
 
@@ -910,7 +944,12 @@
         return String(name || '')
             .replace(/\s+logo$/i, '')
             .replace(/[.,;:]+$/g, '')
-            .trim();
+            .replace(/\s+/g, ' ')
+            .trim()
+            .replace(/[A-Za-z][A-Za-z']*/g, (word) => {
+                if (word.length <= 1) return word.toUpperCase();
+                return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+            });
     }
 
     function isGenericHospitalName(name) {

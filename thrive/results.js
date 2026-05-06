@@ -65,6 +65,18 @@ document.addEventListener('DOMContentLoaded', () => {
   let detailsQueue = [];
   let currentDetailsIndex = 0;
 
+  function cleanSavedHospitalName(name) {
+    return String(name || '')
+      .replace(/\s+logo$/i, '')
+      .replace(/[.,;:]+$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/[A-Za-z][A-Za-z']*/g, (word) => {
+        if (word.length <= 1) return word.toUpperCase();
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      });
+  }
+
   const STORAGE_KEY = 'thriveJobs';
   const PARENT_CLIENT_NAME = 'Thrive Pet Healthcare';
   const SOURCE_NAME = 'Thrive Job Scraper';
@@ -426,7 +438,7 @@ document.addEventListener('DOMContentLoaded', () => {
       job_id: job.jobId || '',
       job_title: job.title || '',
       job_type: job.jobType || '',
-      hospital: job.hospitalName || '',
+      hospital: cleanSavedHospitalName(job.hospitalName || job.hospital || ''),
       address: job.streetAddress || '',
       city: job.city || '',
       state: job.state || '',
@@ -1218,7 +1230,7 @@ document.addEventListener('DOMContentLoaded', () => {
       job_id: job.jobId || '',
       job_title: job.title || '',
       job_type: job.jobType || '',
-      hospital: job.hospitalName || '',
+      hospital: cleanSavedHospitalName(job.hospitalName || job.hospital || ''),
       address: job.streetAddress || '',
       city: job.city || '',
       state: job.state || '',

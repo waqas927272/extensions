@@ -312,6 +312,7 @@
         if (!looksLikeAddressCandidate(fullAddress)) return null;
 
         const parsed = parseAddress(fullAddress);
+        parsed.streetAddress = cleanStreetAddressValue(parsed.streetAddress);
         if (!parsed.streetAddress) return null;
 
         return {
@@ -331,6 +332,33 @@
             .replace(/\s*,\s*/g, ', ')
             .replace(/,?\s*(?:United States|USA)\s*$/i, '')
             .trim();
+    }
+
+    function cleanStreetAddressValue(value) {
+        const source = String(value || '').replace(/\s+/g, ' ').trim();
+        if (!source) return '';
+
+        const streetSuffix = '(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|Fwy|Freeway)';
+        const streetSegmentPattern = new RegExp(`^\\d{1,6}[A-Za-z]?\\s+(?:(?:N|S|E|W|NE|NW|SE|SW)\\s+)?(?:[A-Za-z0-9.'#&/-]+\\s+){0,9}${streetSuffix}\\b(?:\\s*(?:#|Ste\\.?|Suite|Unit|Bldg\\.?|Building|Apt\\.?|Floor|Fl\\.?|[A-Z])\\s*[A-Za-z0-9-]*)?$`, 'i');
+        const routeSegmentPattern = /^\d{1,6}\s+(?:[A-Z]{2}|US|U\.S\.|State|Route|Rte)\s*-?\s*\d+[A-Za-z]?\b(?:\s*(?:#|Ste\.?|Suite|Unit|Bldg\.?|Building|Apt\.?)\s*[A-Za-z0-9-]*)?$/i;
+        const cleanSegments = source
+            .split(/\s+-\s+|[,;•|]+/)
+            .map(part => part.replace(/^[^\d]+/, '').replace(/[,\s.-]+$/, '').replace(/\s+/g, ' ').trim())
+            .filter(part => streetSegmentPattern.test(part) || routeSegmentPattern.test(part));
+        if (cleanSegments.length > 0) return cleanSegments[cleanSegments.length - 1];
+
+        const streetPattern = new RegExp(`\\b\\d{1,6}[A-Za-z]?\\s+(?:(?:N|S|E|W|NE|NW|SE|SW)\\s+)?(?:[A-Za-z0-9.'#&/-]+\\s+){0,9}${streetSuffix}\\b(?:\\s*(?:#|Ste\\.?|Suite|Unit|Bldg\\.?|Building|Apt\\.?|Floor|Fl\\.?|[A-Z])\\s*[A-Za-z0-9-]*)?`, 'gi');
+        const routePattern = /\b\d{1,6}\s+(?:[A-Z]{2}|US|U\.S\.|State|Route|Rte)\s*-?\s*\d+[A-Za-z]?\b(?:\s*(?:#|Ste\.?|Suite|Unit|Bldg\.?|Building|Apt\.?)\s*[A-Za-z0-9-]*)?/gi;
+        const matches = [
+            ...(source.match(streetPattern) || []),
+            ...(source.match(routePattern) || [])
+        ].map(item => item.replace(/^[^\d]+/, '').replace(/[,\s.-]+$/, '').replace(/\s+/g, ' ').trim()).filter(Boolean);
+
+        if (matches.length > 0) return matches[matches.length - 1];
+        if (/^\d{1,6}\b/.test(source) && !/\b(?:satisfied customers|reviews?|mile south|mile north|mile east|mile west)\b/i.test(source)) {
+            return source.replace(/[,\s.-]+$/, '').trim();
+        }
+        return '';
     }
 
     function looksLikeAddressCandidate(value) {

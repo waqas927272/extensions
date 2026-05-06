@@ -374,21 +374,31 @@ function extractJobviteDetailsFromPage() {
     const cat = String(category || '').toLowerCase();
     const allText = `${title} ${category} ${description}`;
     const text = allText.toLowerCase();
+    const isNonClinicalCategory = cat &&
+      !/\bveterinarian\b|\bveterinary\b|\bvet\b|\bdvm\b/i.test(cat) &&
+      /\b(?:business development|support center|corporate|operations|marketing|finance|accounting|human resources|recruiting|talent|administrative|management|technology|it|sales)\b/i.test(cat);
+    const hasClinicalTitle = /\b(?:veterinarian|veterinary|vet|dvm|medical director|surgeon|oncologist|cardiologist|radiologist|internist|dermatologist|neurologist|ophthalmologist|anesthesiologist|criticalist|dentist|oral surgeon)\b/i.test(titleText);
+    const isExoticRoleTitle = /\b(?:exotic|avian)\s+(?:veterinarian|vet|dvm)\b/i.test(titleText) ||
+      /\b(?:veterinarian|vet|dvm)\b[^,\n()]{0,40}\b(?:exotic|avian)\b/i.test(titleText);
+
+    if (isNonClinicalCategory && !hasClinicalTitle) return '';
 
     if (/urgent care/.test(text) || cat.includes('urgent care')) return 'Urgent Care';
     if (cat.includes('specialist') || cat.includes('specialty') || /specialty medical director/i.test(allText)) return 'Specialty Care';
     if (/\bgp\b|gen practice/.test(cat)) return 'General Practice Care';
     if (/\b(?:er|emergency)\b/.test(cat) || /\bemergency veterinary medical director\b/i.test(allText)) return 'Emergency Care';
     if (cat.includes('medical director')) {
-      if (/\bspecialty hospital\b|\bspecialty services?\b/i.test(allText)) return 'Specialty Care';
-      if (/\bexotic\b|\bavian\b/i.test(allText)) return 'Exotic Pet Medicine';
+      if (/\bspecialty medical director\b/i.test(title)) return 'Specialty Care';
+      if (/\bemergency veterinary medical director\b/i.test(title)) return 'Emergency Care';
+      if (isExoticRoleTitle) return 'Exotic Pet Medicine';
       return 'General Practice Care';
     }
+    if (isExoticRoleTitle) return 'Exotic Pet Medicine';
     if (/specialty|specialist|cardiolog|neurolog|dermatolog|oncolog|ophthalmolog|radiolog|surgeon|surgery|internal medicine|anesthesia|criticalist/.test(titleText)) {
       return 'Specialty Care';
     }
     if (/\bemergency\b|\ber\b|critical care|\becc\b/.test(titleText)) return 'Emergency Care';
-    return 'General Practice Care';
+    return hasClinicalTitle ? 'General Practice Care' : '';
   }
 
   function extractJobType(text) {
@@ -401,6 +411,13 @@ function extractJobviteDetailsFromPage() {
 
   function lookupPosition(title, category) {
     const text = `${title} ${category}`.toLowerCase();
+    const cat = String(category || '').toLowerCase();
+    const isNonClinicalCategory = cat &&
+      !/\bveterinarian\b|\bveterinary\b|\bvet\b|\bdvm\b/i.test(cat) &&
+      /\b(?:business development|support center|corporate|operations|marketing|finance|accounting|human resources|recruiting|talent|administrative|management|technology|it|sales)\b/i.test(cat);
+    const hasClinicalTitle = /\b(?:veterinarian|veterinary|vet|dvm|medical director|surgeon|oncologist|cardiologist|radiologist|internist|dermatologist|neurologist|ophthalmologist|anesthesiologist|criticalist|dentist|oral surgeon)\b/i.test(title || '');
+    if (isNonClinicalCategory && !hasClinicalTitle) return '';
+
     if (/medical director/.test(text)) return 'Medical Director';
     if (/lead veterinarian|lead vet/.test(text)) return 'Lead Veterinarian';
     if (/criticalist|dacvecc|\becc\b|emergency\s*&?\s*critical/.test(text)) return 'ECC Specialist';
@@ -420,12 +437,24 @@ function extractJobviteDetailsFromPage() {
     return '';
   }
 
+  function cleanHospitalName(name) {
+    return String(name || '')
+      .replace(/\s+logo$/i, '')
+      .replace(/[.,;:]+$/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/[A-Za-z][A-Za-z']*/g, (word) => {
+        if (word.length <= 1) return word.toUpperCase();
+        return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+      });
+  }
+
   const title = cleanText(
     document.querySelector('h1, h2, .jv-header')?.innerText ||
     document.title.replace(/\s*\|\s*Jobvite.*$/i, '')
   );
   const specifics = getSpecifics();
-  const hospitalName = specifics.company;
+  const hospitalName = cleanHospitalName(specifics.company);
   const category = specifics.category;
   const city = specifics.city;
   const state = specifics.state;
