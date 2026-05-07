@@ -7,7 +7,8 @@
 
         const panelText = getKnowledgePanelText();
         const bodyText = cleanText(document.body.innerText || '');
-        const address = extractAddress(panelText) || extractAddress(bodyText);
+        const branchResultText = getBranchResultText();
+        const address = extractAddress(branchResultText) || extractAddress(panelText) || extractAddress(bodyText);
         const parsed = parseAddress(address);
         parsed.streetAddress = cleanStreetAddressValue(parsed.streetAddress);
         const businessName = extractBusinessNameFromPanel() || '';
@@ -21,7 +22,8 @@
             zipCode: parsed.zipCode || '',
             phone: extractPhoneFromPanel() || extractPhone(panelText) || extractPhone(bodyText) || '',
             website: extractWebsiteFromPanel() || extractWebsiteFromResults() || '',
-            panelText: panelText || ''
+            panelText: panelText || '',
+            evidenceText: `${branchResultText || ''}\n${panelText || ''}\n${bodyText || ''}`.slice(0, 12000)
         };
     } catch (error) {
         return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: error.message };
@@ -78,6 +80,37 @@
         }
 
         return chunks.join('\n');
+    }
+
+    function getQueryBranchTokens() {
+        const params = new URLSearchParams(window.location.search);
+        const query = params.get('q') || '';
+        const branchTexts = [];
+        const parenthetical = query.match(/\(([^)]+)\)/);
+        if (parenthetical) branchTexts.push(parenthetical[1]);
+        const bracketed = query.match(/\[([^\]]+)\]/);
+        if (bracketed) branchTexts.push(bracketed[1]);
+        const stopWords = new Set(['the', 'and', 'at', 'of', 'for', 'with', 'hospital', 'hospitals', 'clinic', 'center', 'centre', 'veterinary', 'animal', 'pet']);
+        return branchTexts
+            .join(' ')
+            .toLowerCase()
+            .split(/[^a-z0-9]+/)
+            .filter(token => token.length > 2 && !stopWords.has(token));
+    }
+
+    function getBranchResultText() {
+        const branchTokens = getQueryBranchTokens();
+        if (!branchTokens.length) return '';
+        const resultBlocks = [...document.querySelectorAll('#search .g, #search [data-sokoban-container], #search div')];
+        for (const block of resultBlocks) {
+            if (!isVisible(block)) continue;
+            const text = cleanText(block.innerText || block.textContent || '');
+            if (!text || !/\d{1,6}/.test(text)) continue;
+            const links = [...block.querySelectorAll('a[href]')].map(link => link.href || '').join(' ');
+            const evidence = `${text} ${links}`.toLowerCase();
+            if (branchTokens.every(token => evidence.includes(token)) && extractAddress(text)) return text;
+        }
+        return '';
     }
 
     function extractBusinessNameFromPanel() {

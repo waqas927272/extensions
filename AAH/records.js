@@ -1000,8 +1000,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const expectedCity = normalizeForCompare(expectedLocation.city);
             const expectedState = expectedLocation.state;
 
-            if (expectedCity && resultCity && resultCity !== expectedCity) return false;
-            if (expectedState && resultState && resultState !== expectedState) return false;
+            if (!expectedCity || !expectedState) return false;
+            if (!resultCity || !resultState) return false;
+            if (resultCity !== expectedCity) return false;
+            if (resultState !== expectedState) return false;
             return true;
         }
 
@@ -1014,7 +1016,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const hasLocationSignal = !!(result.streetAddress || result.zipCode || result.fullAddress || result.city || result.state);
             if (hasLocationSignal && !resultMatchesExpectedLocation(result)) {
-                console.warn(`Accepting city/state mismatch for "${location}" from "${sourceLabel}": ${result.fullAddress || [result.city, result.state, result.zipCode].filter(Boolean).join(', ')}`);
+                console.warn(`Ignoring address result outside requested city/state "${location}" from "${sourceLabel}": ${result.fullAddress || [result.city, result.state, result.zipCode].filter(Boolean).join(', ')}`);
+                return emptyAddressResult();
             }
 
             return result;
@@ -2674,6 +2677,45 @@ document.addEventListener('DOMContentLoaded', () => {
         progressBar.style.width = `${((currentAddressIndex + 1) / addressQueue.length) * 100}%`;
         fetchAddressesBtn.textContent = `Fetching... (${currentAddressIndex + 1}/${addressQueue.length})`;
 
+        function isPrioritypetUrgentCareHospitalName(value) {
+            return /\bprioritypet urgent care\b/i.test(String(value || '').replace(/\s+/g, ' ').trim());
+        }
+
+        function hasNoReturnedGoogleData(data) {
+            return !(
+                    data &&
+                    (
+                        data.streetAddress ||
+                        data.fullAddress ||
+                        data.businessName ||
+                        data.zipCode ||
+                        data.phone ||
+                    data.website
+                )
+            );
+        }
+
+        async function markAddressNotFound(addressData = {}) {
+            const data = await chrome.storage.local.get(['scrapedJobs']);
+            const jobs = data.scrapedJobs || [];
+            if (!jobs[index]) return;
+
+            jobs[index].streetAddress = 'Not Available (TBD)';
+            jobs[index].cityMismatchFlag = false;
+            jobs[index].hospitalNameUpdated = false;
+
+            if (
+                isPrioritypetUrgentCareHospitalName(jobs[index].hospital) &&
+                hasNoReturnedGoogleData(addressData)
+            ) {
+                jobs[index].website = 'https://prioritypeturgentcare.com/';
+            }
+
+            await chrome.storage.local.set({ scrapedJobs: jobs });
+            allJobs = jobs;
+            displayRecords(allJobs);
+        }
+
         try {
             // Clean hospital name for search:
             // Remove trailing location suffix for child rows: "Hospital-Leesburg" → "Hospital"
@@ -2703,7 +2745,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Build search: "Hospital Name, City, State"
             const searchLocation = [searchCity, searchState].filter(Boolean).join(', ');
-            const normalizeLocationValue = (value) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+            if (!searchCity || !searchState) {
+                console.warn(`Skipping address update for "${job.hospital || ''}" because city/state is missing.`);
+                await markAddressNotFound();
+                currentAddressIndex++;
+                setTimeout(() => processNextAddress(), 250);
+                return;
+            }
+
             const cacheKeys = getAddressCacheKeys(searchHospital, searchLocation, job.hospital || '');
             let addressData = getRememberedAddress(cacheKeys);
             if (addressData && needsContactUpdate(job) && (!addressData.website || !addressData.phone)) {
@@ -2716,49 +2765,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 rememberAddressData(cacheKeys, addressData);
             }
 
-            // Update job with fresh data from Google Maps/Search. Failed
-            // lookups clear address/contact fields so stale values do not remain.
+            // Update only fields allowed by the strict city/state match.
+            // If no strict match is found, mark the street as unavailable.
             const data = await chrome.storage.local.get(['scrapedJobs']);
             const jobs = data.scrapedJobs || [];
 
             if (jobs[index]) {
                 const foundAddress = !!(addressData && addressData.streetAddress);
-                const fetchedCityMismatch = !!(
-                    foundAddress &&
-                    addressData.city &&
-                    searchCity &&
-                    normalizeLocationValue(addressData.city) !== normalizeLocationValue(searchCity)
-                );
-                jobs[index].cityMismatchFlag = fetchedCityMismatch;
-                jobs[index].hospitalNameUpdated = false;
-
-                let zipCode = addressData.zipCode || '';
-                if (!zipCode && addressData.fullAddress) {
-                    const zipFromFull = addressData.fullAddress.match(/\b(\d{5}(?:-\d{4})?)\b/);
-                    if (zipFromFull) zipCode = zipFromFull[1];
-                }
-
                 if (foundAddress) {
+                    let zipCode = addressData.zipCode || '';
+                    if (!zipCode && addressData.fullAddress) {
+                        const zipFromFull = addressData.fullAddress.match(/\b(\d{5}(?:-\d{4})?)\b/);
+                        if (zipFromFull) zipCode = zipFromFull[1];
+                    }
+
+                    jobs[index].cityMismatchFlag = false;
+                    jobs[index].hospitalNameUpdated = false;
                     jobs[index].streetAddress = addressData.streetAddress || '';
-                    jobs[index].city = addressData.city || '';
-                    jobs[index].state = getFullStateName(addressData.state || '');
-                    jobs[index].zipCode = zipCode;
-                    jobs[index].website = addressData.website || '';
-                    jobs[index].phone = addressData.phone || '';
+                    if (!jobs[index].zipCode && zipCode) {
+                        jobs[index].zipCode = zipCode;
+                    }
+                    if (addressData.website) {
+                        jobs[index].website = addressData.website;
+                    }
+                    if (addressData.phone) {
+                        jobs[index].phone = addressData.phone;
+                    }
+
+                    await chrome.storage.local.set({ scrapedJobs: jobs });
+
+                    // Update display
+                    allJobs = jobs;
+                    displayRecords(allJobs);
                 } else {
-                    jobs[index].streetAddress = '';
-                    jobs[index].city = '';
-                    jobs[index].state = '';
-                    jobs[index].zipCode = '';
-                    jobs[index].website = '';
-                    jobs[index].phone = '';
+                    await markAddressNotFound(addressData);
                 }
-
-                await chrome.storage.local.set({ scrapedJobs: jobs });
-
-                // Update display
-                allJobs = jobs;
-                displayRecords(allJobs);
             }
         } catch (error) {
             console.error('Error fetching address:', error);
