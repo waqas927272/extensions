@@ -587,19 +587,31 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const { url, payload } = request;
     (async () => {
       try {
-        const response = await fetch(url, {
+        const body = JSON.stringify(payload);
+        const postPayload = (contentType) => fetch(url, {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
+            'Content-Type': contentType,
             'Accept': 'application/json'
           },
-          body: JSON.stringify(payload)
+          body
         });
 
+        let response = await postPayload('application/json');
+        let errorText = '';
+        if (!response.ok) {
+          errorText = await response.text().catch(() => '');
+        }
+
+        if (response.status === 405) {
+          response = await postPayload('text/plain;charset=UTF-8');
+          errorText = response.ok ? '' : await response.text().catch(() => '');
+        }
+
         if (response.ok) {
-          sendResponse({ success: true });
+          const responseText = await response.text().catch(() => '');
+          sendResponse({ success: true, status: response.status, body: responseText });
         } else {
-          const errorText = await response.text().catch(() => '');
           sendResponse({ success: false, error: `HTTP ${response.status}: ${errorText}` });
         }
       } catch (error) {

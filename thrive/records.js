@@ -2292,6 +2292,18 @@ document.addEventListener('DOMContentLoaded', () => {
         let successCount = 0;
         let failCount = 0;
 
+        function sendWebhookPayload(url, payload) {
+            return new Promise((resolve) => {
+                chrome.runtime.sendMessage({ action: 'sendWebhook', url, payload }, (response) => {
+                    if (chrome.runtime.lastError) {
+                        resolve({ success: false, error: chrome.runtime.lastError.message });
+                        return;
+                    }
+                    resolve(response || { success: false, error: 'No response from background script' });
+                });
+            });
+        }
+
         for (let i = 0; i < totalBatches; i++) {
             const batch = jobsToSend.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
             const batchNumber = i + 1;
@@ -2309,20 +2321,14 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             try {
-                const response = await fetch(webhookUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
+                const response = await sendWebhookPayload(webhookUrl, payload);
 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error(`Batch ${batchNumber} failed with status ${response.status}:`, errorText);
-                    throw new Error(`Status ${response.status}: ${errorText.substring(0, 100)}`);
+                if (!response.success) {
+                    console.error(`Batch ${batchNumber} failed:`, response.error || response);
+                    throw new Error(response.error || 'Webhook request failed');
                 }
 
-                const result = await response.json();
-                console.log(`Batch ${batchNumber} success:`, result);
+                console.log(`Batch ${batchNumber} success:`, response);
                 successCount++;
             } catch (error) {
                 console.error(`Batch ${batchNumber} error:`, error);
