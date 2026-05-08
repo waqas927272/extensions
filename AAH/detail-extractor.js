@@ -264,14 +264,16 @@
     };
 
     function hasEccSpecialtyTrainingSignal(text) {
-        const source = String(text || '');
+        const source = extractRoleSignalText(text);
+        if (!source) return false;
         const trainingBeforeRole = /\b(?:board certified|board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained)\b[\s\S]{0,120}\b(?:ecc|critical care|criticalist|emergency\s*(?:care|medicine)?|er)\b/i;
         const roleBeforeTraining = /\b(?:ecc|critical care|criticalist|emergency\s*(?:care|medicine)?|er)\b[\s\S]{0,120}\b(?:board certified|board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained)\b/i;
         return trainingBeforeRole.test(source) || roleBeforeTraining.test(source) || /\bdacvecc\b/i.test(source);
     }
 
     function hasSpecialtyTrainingSignal(text) {
-        const source = String(text || '');
+        const source = extractRoleSignalText(text);
+        if (!source) return false;
         const specialtyTerms = '(?:ecc|critical care|criticalist|emergency\\s*(?:care|medicine)?|er|oncolog|cardiolog|neurolog|dermatolog|radiolog|ophthalmolog|anesth|internal medicine|surgeon|surgery|dent|dacv\\w+|dabvp|davdc)';
         const trainingBeforeSpecialty = new RegExp(`\\b(?:board certified|board[-\\s]+certified|residency[-\\s]+trained|residential[-\\s]+trained|diplomate)\\b[\\s\\S]{0,120}\\b${specialtyTerms}\\b`, 'i');
         const specialtyBeforeTraining = new RegExp(`\\b${specialtyTerms}\\b[\\s\\S]{0,120}\\b(?:board certified|board[-\\s]+certified|residency[-\\s]+trained|residential[-\\s]+trained|diplomate)\\b`, 'i');
@@ -309,6 +311,14 @@
         }
 
         return '';
+    }
+
+    function isPriorityPetUrgentCareText(text) {
+        return /\bpriority\s*pet\s+urgent\s+care\b/i.test(String(text || ''));
+    }
+
+    function getAOPFromHospitalName(hospitalName) {
+        return isPriorityPetUrgentCareText(hospitalName) ? 'Urgent Care' : '';
     }
 
     function matchApprovedPositionFromText(text) {
@@ -357,12 +367,39 @@
         return '';
     }
 
+    function getAOPFromTitle(title) {
+        const t = (title || '').toLowerCase();
+        if (t.includes('avian') || t.includes('exotic')) return 'Exotic Pet Medicine';
+        if (t.includes('equine') || t.includes('bovine') || t.includes('large animal')) return 'General Practice Care';
+        if (t.includes('urgent care')) return 'Urgent Care';
+
+        const specialtyNames = ['oncologist', 'cardiologist', 'neurologist', 'neurosurgeon',
+            'dermatologist', 'ophthalmologist', 'anesthesiologist', 'theriogenologist',
+            'radiologist', 'internist', 'criticalist',
+            'oncology', 'cardiology', 'neurology', 'dermatology', 'ophthalmology',
+            'anesthesia', 'theriogenology', 'radiology'];
+        if (specialtyNames.some(sp => t.includes(sp))) return 'Specialty Care';
+
+        const specialtyCerts = ['board certified', 'residency trained', 'residential trained',
+            'diplomate', 'dacvecc', 'dacvim', 'dacvr', 'dacvs', 'dacvd', 'dacvo', 'dacvaa',
+            'dact', 'davdc', 'dabvp', 'acvs', 'acvim'];
+        if (specialtyCerts.some(cert => t.includes(cert))) return 'Specialty Care';
+
+        if (t.includes('specialist') && !t.includes('technician specialist')) return 'Specialty Care';
+        if (t.match(/\bsurgeon\b/)) return 'Specialty Care';
+        if (t.includes('emergency') || t.match(/\ber\b/) || t.includes('er vet') || t.includes('er dvm')) return 'Emergency Care';
+        return '';
+    }
+
     // ===== Determine Area of Practice =====
-    function determineAreaOfPractice(title, category, descriptionText) {
-        if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
-        if (/\bpriority\s*pet\b/i.test(`${title}\n${descriptionText}`)) return 'Urgent Care';
+    function determineAreaOfPractice(title, category, descriptionText, hospitalName = '') {
         const titleLower = title.toLowerCase();
+        const titleAOP = getAOPFromTitle(title);
+        if (titleAOP) return titleAOP;
         if (titleLower.includes('avian') || titleLower.includes('exotic')) return 'Exotic Pet Medicine';
+        if (titleLower.includes('equine') || titleLower.includes('bovine') || titleLower.includes('large animal')) return 'General Practice Care';
+        if (titleLower.includes('urgent care')) return 'Urgent Care';
+        if (getAOPFromHospitalName(hospitalName)) return 'Urgent Care';
         // STEP 1: Use category from page (most reliable — directly from jobvite)
         const aopFromCategory = categoryToAOP(category);
         if (aopFromCategory) return aopFromCategory;
@@ -401,6 +438,8 @@
         if (titleLower.includes('avian') || titleLower.includes('exotic')) return 'Exotic Pet Medicine';
         if (titleLower.includes('equine') || titleLower.includes('bovine') || titleLower.includes('large animal')) return 'General Practice Care';
 
+        if (hasSpecialtyTrainingSignal(`${title}\n${descriptionText}`)) return 'Specialty Care';
+
         // STEP 6: Check qualifications section for specialty requirements
         const qualSection = extractQualificationsSection(descriptionText);
         if (qualSection) {
@@ -429,8 +468,8 @@
     function extractRoleSignalText(text) {
         if (!text) return '';
 
-        const rolePattern = /\b(?:medical director|lead veterinarian|lead vet|board certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
-        const blockedPattern = /\b(?:our services|services include|specialties include|benefits|medical(?:,\s*|\s+)dental|dental insurance|our hospital|our team has|state[-\s]?of[-\s]?the[-\s]?art|we offer|years of experience in specialty and emergency services)\b/i;
+        const rolePattern = /\b(?:title:|job title:|medical director|lead veterinarian|lead vet|board certified|board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|oncologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
+        const blockedPattern = /\b(?:company description|additional information|our services|services include|specialties include|benefits|medical(?:,\s*|\s+)dental|dental insurance|our hospital|hospital was founded|was founded|founded by|our team has|state[-\s]?of[-\s]?the[-\s]?art|we offer|years of experience in specialty and emergency services|access to|supportive services|consultation)\b/i;
         const qualificationsSection = extractQualificationsSection(text);
         const collected = [];
         const seen = new Set();
@@ -908,7 +947,7 @@
     }
 
     // Determine AOP and Position
-    const areaOfPractice = determineAreaOfPractice(positionTitle, category, fullDescription);
+    const areaOfPractice = determineAreaOfPractice(positionTitle, category, fullDescription, hospitalName);
     const position = determinePosition(positionTitle, areaOfPractice, fullDescription);
     const salary = extractSalary(jsonLd, fullDescription);
     const experience = extractExperience(fullDescription);

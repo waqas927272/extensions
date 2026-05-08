@@ -127,6 +127,57 @@ document.addEventListener('DOMContentLoaded', () => {
             .filter(Boolean);
     }
 
+    function extractDescriptionField(text, fieldName) {
+        const pattern = new RegExp(`^\\s*${fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:\\s*(.+)$`, 'im');
+        const match = String(text || '').match(pattern);
+        return match ? match[1].trim() : '';
+    }
+
+    function extractQualificationsSection(text) {
+        const patterns = [
+            /(?:requirements?|qualifications?|what you'?ll need|what we'?re looking for|credentials?|must have|what we need)[:\s]*([\s\S]{0,900}?)(?=(?:benefits?|compensation|salary|about|our culture|location|equal|join us|why|facility|what we offer|ready to|additional information)[:\s])/i,
+            /(?:requirements?|qualifications?|what you'?ll need|what we'?re looking for|credentials?|must have|what we need)[:\s]*([\s\S]{0,600})/i
+        ];
+        for (const pattern of patterns) {
+            const match = String(text || '').match(pattern);
+            if (match) return match[1];
+        }
+        return '';
+    }
+
+    function extractRoleSignalText(text) {
+        const source = String(text || '');
+        if (!source) return '';
+
+        const rolePattern = /\b(?:title:|job title:|medical director|lead veterinarian|lead vet|board certified|board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|oncologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
+        const blockedPattern = /\b(?:company description|additional information|our services|services include|specialties include|benefits|medical(?:,\s*|\s+)dental|dental insurance|our hospital|hospital was founded|was founded|founded by|our team has|state[-\s]?of[-\s]?the[-\s]?art|we offer|years of experience in specialty and emergency services|access to|supportive services|consultation)\b/i;
+        const collected = [];
+        const seen = new Set();
+        const qualificationsSection = extractQualificationsSection(source);
+
+        if (qualificationsSection) {
+            seen.add(qualificationsSection);
+            collected.push(qualificationsSection);
+        }
+
+        for (const rawLine of source.split(/\r?\n/)) {
+            const line = rawLine.trim();
+            if (!line || seen.has(line) || !rolePattern.test(line) || blockedPattern.test(line)) continue;
+            seen.add(line);
+            collected.push(line);
+        }
+
+        return collected.join('\n');
+    }
+
+    function isPriorityPetUrgentCareText(text) {
+        return /\bpriority\s*pet\s+urgent\s+care\b/i.test(String(text || ''));
+    }
+
+    function getAOPFromHospitalName(hospitalName) {
+        return isPriorityPetUrgentCareText(hospitalName) ? 'Urgent Care' : '';
+    }
+
     function getJobDescriptionBody(text) {
         const lines = getDescriptionLines(text);
         const start = lines.findIndex(line => /^job description$/i.test(line));
@@ -177,14 +228,16 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     function hasEccSpecialtyTrainingSignal(text) {
-        const source = String(text || '');
+        const source = extractRoleSignalText(text);
+        if (!source) return false;
         const trainingBeforeRole = /\b(?:board certified|board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained)\b[\s\S]{0,120}\b(?:ecc|critical care|criticalist|emergency\s*(?:care|medicine)?|er)\b/i;
         const roleBeforeTraining = /\b(?:ecc|critical care|criticalist|emergency\s*(?:care|medicine)?|er)\b[\s\S]{0,120}\b(?:board certified|board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained)\b/i;
         return trainingBeforeRole.test(source) || roleBeforeTraining.test(source) || /\bdacvecc\b/i.test(source);
     }
 
     function hasSpecialtyTrainingSignal(text) {
-        const source = String(text || '');
+        const source = extractRoleSignalText(text);
+        if (!source) return false;
         const specialtyTerms = '(?:ecc|critical care|criticalist|emergency\\s*(?:care|medicine)?|er|oncolog|cardiolog|neurolog|dermatolog|radiolog|ophthalmolog|anesth|internal medicine|surgeon|surgery|dent|dacv\\w+|dabvp|davdc)';
         const trainingBeforeSpecialty = new RegExp(`\\b(?:board certified|board[-\\s]+certified|residency[-\\s]+trained|residential[-\\s]+trained|diplomate)\\b[\\s\\S]{0,120}\\b${specialtyTerms}\\b`, 'i');
         const specialtyBeforeTraining = new RegExp(`\\b${specialtyTerms}\\b[\\s\\S]{0,120}\\b(?:board certified|board[-\\s]+certified|residency[-\\s]+trained|residential[-\\s]+trained|diplomate)\\b`, 'i');
@@ -318,7 +371,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function getAOPFromTitle(title) {
         const t = title.toLowerCase();
 
-        if (/\bpriority\s*pet\b/i.test(t)) return 'Urgent Care';
+        if (isPriorityPetUrgentCareText(t)) return 'Urgent Care';
 
         // Specialty indicators
         const specialtyNames = ['oncologist', 'cardiologist', 'neurologist', 'neurosurgeon',
@@ -457,8 +510,8 @@ document.addEventListener('DOMContentLoaded', () => {
         function extractRoleSignalText(text) {
             if (!text) return '';
 
-            const rolePattern = /\b(?:medical director|lead veterinarian|lead vet|board certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
-            const blockedPattern = /\b(?:our services|services include|specialties include|benefits|medical(?:,\s*|\s+)dental|dental insurance|our hospital|our team has|state[-\s]?of[-\s]?the[-\s]?art|we offer|years of experience in specialty and emergency services)\b/i;
+            const rolePattern = /\b(?:title:|job title:|medical director|lead veterinarian|lead vet|board certified|board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|oncologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
+            const blockedPattern = /\b(?:company description|additional information|our services|services include|specialties include|benefits|medical(?:,\s*|\s+)dental|dental insurance|our hospital|hospital was founded|was founded|founded by|our team has|state[-\s]?of[-\s]?the[-\s]?art|we offer|years of experience in specialty and emergency services|access to|supportive services|consultation)\b/i;
             const qualificationsSection = extractQualificationsSection(text);
             const collected = [];
             const seen = new Set();
@@ -483,15 +536,18 @@ document.addEventListener('DOMContentLoaded', () => {
         function determineAreaOfPractice(positionText, descriptionText) {
             const title = positionText.toLowerCase();
             const category = getIndustryCategory(descriptionText).toLowerCase();
+            const hospitalName = extractDescriptionField(descriptionText, 'Hospital Name');
+            const titleAOP = getAOPFromTitle(positionText);
 
-            if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
-            if (/\bpriority\s*pet\b/i.test(`${positionText}\n${descriptionText}`)) return 'Urgent Care';
+            if (titleAOP) return titleAOP;
             if (title.includes('avian') || title.includes('exotic')) return 'Exotic Pet Medicine';
+            if (title.includes('equine') || title.includes('bovine') || title.includes('large animal')) return 'General Practice Care';
 
             // STEP 0: Title-specific overrides — these are MORE specific than Jobvite categories.
             // e.g. "Urgent Care Veterinarian" is categorized as "Veterinarian (ER)" on Jobvite,
             // but "urgent care" in the title is a more precise signal than the broad ER bucket.
             if (title.includes('urgent care')) return 'Urgent Care';
+            if (getAOPFromHospitalName(hospitalName)) return 'Urgent Care';
 
             // STEP 1: Use industry/category - most reliable signal for broad categories
             if (category) {
@@ -533,6 +589,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // STEP 4: Check TITLE for exotics/avian or large animal focus.
             if (title.includes('avian') || title.includes('exotic')) return 'Exotic Pet Medicine';
             if (title.includes('equine') || title.includes('bovine') || title.includes('large animal')) return 'General Practice Care';
+
+            if (hasSpecialtyTrainingSignal(`${positionText}\n${descriptionText}`)) return 'Specialty Care';
 
             // STEP 5: For generic titles, check ONLY the qualifications section
             const qualSection = extractQualificationsSection(descriptionText);
@@ -965,7 +1023,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
 
         function emptyAddressResult() {
-            return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
+            return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', cityMatchedHospitalName: false };
         }
 
         const expectedLocation = parseExpectedLocation(location);
@@ -1007,15 +1065,64 @@ document.addEventListener('DOMContentLoaded', () => {
             return true;
         }
 
+        function getHospitalNameCityCandidates(name) {
+            const source = String(name || '').replace(/\s+/g, ' ').trim();
+            if (!source) return [];
+
+            const candidates = [];
+            const ofMatch = source.match(/\bof\s+(.+?)\s*$/i);
+            if (ofMatch) candidates.push(ofMatch[1]);
+
+            const dashMatch = source.match(/\s[-–—]\s*([^,]+?)(?:,\s*[A-Z]{2})?\s*$/i);
+            if (dashMatch) candidates.push(dashMatch[1]);
+
+            return candidates
+                .map(candidate => candidate
+                    .replace(/\s*[-–—]\s*[^,]+,\s*[A-Z]{2}\s*$/i, '')
+                    .replace(/,\s*[A-Z]{2}\s*$/i, '')
+                    .replace(/\b(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\b$/i, '')
+                    .replace(/\bNational\b$/i, '')
+                    .trim())
+                .filter(Boolean);
+        }
+
+        function resultCityMatchesHospitalName(result) {
+            const resultCity = normalizeForCompare(result.city || '');
+            const resultState = normalizeStateForCompare(result.state || '');
+            const expectedState = expectedLocation.state;
+            if (!resultCity || !resultState || !expectedState || resultState !== expectedState) return false;
+
+            const candidates = [
+                ...getHospitalNameCityCandidates(hospitalName),
+                ...getHospitalNameCityCandidates(originalHospitalName)
+            ];
+
+            return candidates.some(candidate => normalizeForCompare(candidate) === resultCity);
+        }
+
         function filterDataForExpectedLocation(data, sourceLabel) {
             const result = data || emptyAddressResult();
-            if (result.businessName && !businessNameFuzzyMatches(hospitalName, result.businessName) && !businessNameFuzzyMatches(originalHospitalName, result.businessName)) {
+            const isPrioritypetExpected =
+                isPrioritypetUrgentCareHospitalName(hospitalName) ||
+                isPrioritypetUrgentCareHospitalName(originalHospitalName);
+
+            if (isPrioritypetExpected && !isPrioritypetUrgentCareHospitalName(result.businessName)) {
+                console.warn(`Ignoring result because Prioritypet business name "${result.businessName || ''}" does not contain "Prioritypet Urgent Care" from "${sourceLabel}"`);
+                return emptyAddressResult();
+            }
+
+            if (!isPrioritypetExpected && result.businessName && !businessNameFuzzyMatches(hospitalName, result.businessName) && !businessNameFuzzyMatches(originalHospitalName, result.businessName)) {
                 console.warn(`Ignoring result because business name "${result.businessName}" does not fuzzy-match "${hospitalName}" from "${sourceLabel}"`);
                 return emptyAddressResult();
             }
 
             const hasLocationSignal = !!(result.streetAddress || result.zipCode || result.fullAddress || result.city || result.state);
             if (hasLocationSignal && !resultMatchesExpectedLocation(result)) {
+                if (resultCityMatchesHospitalName(result)) {
+                    result.cityMatchedHospitalName = true;
+                    console.warn(`Accepting city mismatch because scraped city "${result.city}" matches hospital name for "${hospitalName}" from "${sourceLabel}"`);
+                    return result;
+                }
                 console.warn(`Ignoring address result outside requested city/state "${location}" from "${sourceLabel}": ${result.fullAddress || [result.city, result.state, result.zipCode].filter(Boolean).join(', ')}`);
                 return emptyAddressResult();
             }
@@ -1033,7 +1140,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 state: primary.state || safeSecondary.state || '',
                 fullAddress: primary.fullAddress || safeSecondary.fullAddress || '',
                 website: primary.website || safeSecondary.website || '',
-                phone: primary.phone || safeSecondary.phone || ''
+                phone: primary.phone || safeSecondary.phone || '',
+                cityMatchedHospitalName: !!(primary.cityMatchedHospitalName || safeSecondary.cityMatchedHospitalName)
             };
         }
 
@@ -1125,7 +1233,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                         state: data.state || '',
                                         fullAddress: data.fullAddress || '',
                                         website: data.website || '',
-                                        phone: data.phone || ''
+                                        phone: data.phone || '',
+                                        cityMatchedHospitalName: !!data.cityMatchedHospitalName
                                     });
                                 }).catch((err) => {
                                     console.error(`Google Maps script error for "${queryLabel}":`, err);
@@ -1189,7 +1298,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                         state: data.state || '',
                                         fullAddress: data.fullAddress || '',
                                         website: data.website || '',
-                                        phone: data.phone || ''
+                                        phone: data.phone || '',
+                                        cityMatchedHospitalName: !!data.cityMatchedHospitalName
                                     });
                                 }).catch((err) => {
                                     console.error(`Google Maps script error for "${queryLabel}":`, err);
@@ -1249,7 +1359,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                         state: data.state || '',
                                         fullAddress: data.fullAddress || '',
                                         website: data.website || '',
-                                        phone: data.phone || ''
+                                        phone: data.phone || '',
+                                        cityMatchedHospitalName: !!data.cityMatchedHospitalName
                                     });
                                 }).catch((err) => {
                                     console.error(`Google Search script error for "${queryLabel}":`, err);
@@ -1312,7 +1423,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                         state: data.state || '',
                                         fullAddress: data.fullAddress || '',
                                         website: data.website || '',
-                                        phone: data.phone || ''
+                                        phone: data.phone || '',
+                                        cityMatchedHospitalName: !!data.cityMatchedHospitalName
                                     });
                                 }).catch((err) => {
                                     console.error(`Google Search script error for "${queryLabel}":`, err);
@@ -1386,7 +1498,8 @@ document.addEventListener('DOMContentLoaded', () => {
             state: data.state || '',
             fullAddress: data.fullAddress || '',
             website: data.website || '',
-            phone: data.phone || ''
+            phone: data.phone || '',
+            cityMatchedHospitalName: !!data.cityMatchedHospitalName
         };
     }
 
@@ -2321,9 +2434,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const descText = firstDetail.description || originalJob.description || '';
 
                 // Step 1: Determine AOP — prefer detail extractor's AOP (from page category), fall back to title
-                let finalAOP = hasSpecialtyTrainingSignal(descText)
-                    ? 'Specialty Care'
-                    : (detailAOP || getAOPFromTitle(listingTitle) || 'General Practice Care');
+                const hospitalAOP = getAOPFromHospitalName(originalJob.hospital || extractDescriptionField(descText, 'Hospital Name'));
+                const titleAOP = getAOPFromTitle(listingTitle);
+                let finalAOP = titleAOP ||
+                    hospitalAOP ||
+                    (hasSpecialtyTrainingSignal(`${listingTitle}\n${descText}`) ? 'Specialty Care' : '') ||
+                    detailAOP ||
+                    'General Practice Care';
 
                 // Step 2: Match position from listing title
                 let finalPosition = getPositionFromTitle(listingTitle) || firstDetail.position || '';
@@ -2468,6 +2585,11 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/[^a-z0-9]+/g, ' ')
             .replace(/\s+/g, ' ')
             .trim();
+    }
+
+    function isPrioritypetUrgentCareHospitalName(value) {
+        const normalized = normalizeBusinessNameForCompare(value).replace(/\s+/g, '');
+        return normalized.includes('prioritypeturgentcare');
     }
 
     function getBusinessNameTokens(value) {
@@ -2677,13 +2799,9 @@ document.addEventListener('DOMContentLoaded', () => {
         progressBar.style.width = `${((currentAddressIndex + 1) / addressQueue.length) * 100}%`;
         fetchAddressesBtn.textContent = `Fetching... (${currentAddressIndex + 1}/${addressQueue.length})`;
 
-        function isPrioritypetUrgentCareHospitalName(value) {
-            return /\bprioritypet urgent care\b/i.test(String(value || '').replace(/\s+/g, ' ').trim());
-        }
-
         function hasNoReturnedGoogleData(data) {
             return !(
-                    data &&
+                data &&
                     (
                         data.streetAddress ||
                         data.fullAddress ||
@@ -2701,6 +2819,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!jobs[index]) return;
 
             jobs[index].streetAddress = 'Not Available (TBD)';
+            jobs[index].zipCode = '';
             jobs[index].cityMismatchFlag = false;
             jobs[index].hospitalNameUpdated = false;
 
@@ -2779,9 +2898,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         if (zipFromFull) zipCode = zipFromFull[1];
                     }
 
-                    jobs[index].cityMismatchFlag = false;
+                    jobs[index].cityMismatchFlag = !!addressData.cityMatchedHospitalName;
                     jobs[index].hospitalNameUpdated = false;
                     jobs[index].streetAddress = addressData.streetAddress || '';
+                    if (addressData.cityMatchedHospitalName && addressData.city) {
+                        jobs[index].city = addressData.city;
+                        if (addressData.state) jobs[index].state = getFullStateName(addressData.state);
+                    }
                     if (!jobs[index].zipCode && zipCode) {
                         jobs[index].zipCode = zipCode;
                     }

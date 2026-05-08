@@ -27,7 +27,7 @@
         while (Date.now() - startTime < MAX_WAIT) {
             // Check if we're on a single place page (address button exists)
             addressData = tryExtractFromPlaceDetail();
-            if (addressData) return addressData;
+            if (addressData && shouldAcceptAddressData(addressData)) return addressData;
 
             // Check if search results list has loaded
             const resultLinks = document.querySelectorAll('a.hfpxzc');
@@ -39,8 +39,8 @@
             await wait(POLL);
         }
 
-        // If we already got address data from place detail, return it
-        if (addressData) return addressData;
+        // If Maps auto-opened a single wrong branch, do not return it.
+        if (addressData && !shouldAcceptAddressData(addressData)) return emptyResult();
 
         // ============================================================
         // PHASE 2: Search results list is showing
@@ -55,35 +55,45 @@
             return emptyResult();
         }
 
-        // Find best matching result
-        const bestMatch = findBestMatch(resultLinks, hospitalName);
-        if (!bestMatch) {
+        // Try matching results one by one. Some hospital names have multiple
+        // branches, so the first fuzzy match is not always the right city.
+        const matchedResults = findMatchingResults(resultLinks, hospitalName);
+        if (matchedResults.length === 0) {
             console.warn('No fuzzy business-name match found in Google Maps results');
             return emptyResult();
         }
 
-        const targetLink = bestMatch;
-        console.log(`Clicking result: "${targetLink.getAttribute('aria-label')}"`);
+        for (let i = 0; i < Math.min(matchedResults.length, 8); i++) {
+            const candidate = matchedResults[i];
+            console.log(`Clicking result: "${candidate.label}"`);
 
-        // Click the matching result to open place details
-        targetLink.click();
+            let target = candidate.link;
+            if (i > 0) {
+                window.history.back();
+                await wait(1500);
+                target = findResultLink(candidate) || candidate.link;
+            }
 
-        // ============================================================
-        // PHASE 3: Wait for place detail panel to load after clicking
-        // Look for the address button to appear
-        // ============================================================
-        const remainingTime = MAX_WAIT - (Date.now() - startTime);
-        const phase3End = Date.now() + Math.max(remainingTime, 5000); // At least 5s more
+            if (target) {
+                target.click();
+            }
 
-        while (Date.now() < phase3End) {
-            await wait(POLL);
+            const phase3End = Date.now() + 6500;
+            while (Date.now() < phase3End) {
+                await wait(POLL);
 
-            addressData = tryExtractFromPlaceDetail();
-            if (addressData) return addressData;
+                addressData = tryExtractFromPlaceDetail();
+                if (addressData) {
+                    if (shouldAcceptAddressData(addressData)) return addressData;
+                    console.warn(`Skipping result outside expected location: ${addressData.fullAddress || [addressData.city, addressData.state, addressData.zipCode].filter(Boolean).join(', ')}`);
+                    break;
+                }
+            }
         }
 
         // Last resort: try extracting from whatever is on the page now
-        return tryExtractFromPageBody() || emptyResult();
+        const fallback = tryExtractFromPageBody();
+        return fallback && shouldAcceptAddressData(fallback) ? fallback : emptyResult();
 
     } catch (e) {
         return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: e.message };
@@ -163,6 +173,135 @@
         const searchName = getHospitalNameFromUrl();
         if (!searchName || !businessName) return true;
         return !!findBestMatch([{ getAttribute: () => businessName }], searchName);
+    }
+
+    function scoreBusinessName(label, searchQuery) {
+        if (!searchQuery || !label) return 0;
+        const stopWords = new Set(['the', 'and', 'for', 'with', 'veterinary', 'animal', 'pet', 'hospital', 'clinic', 'center', 'centre']);
+        const normalize = (str) => String(str || '').toLowerCase()
+            .replace(/&/g, 'and')
+            .replace(/[^a-z0-9\s]/g, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+        const queryNorm = normalize(searchQuery);
+        const labelNorm = normalize(String(label || '').replace(/Â·.*$/, '').split(',')[0]);
+        const queryWords = queryNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w));
+        const labelWords = new Set(labelNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w)));
+
+        let matchCount = 0;
+        for (const word of queryWords) {
+            if (labelNorm.includes(word) || labelWords.has(word)) matchCount++;
+        }
+
+        let score = queryWords.length > 0 ? matchCount / queryWords.length : 0;
+        if (labelNorm === queryNorm) score += 0.5;
+        if (labelNorm.startsWith(queryNorm) || queryNorm.startsWith(labelNorm)) score += 0.2;
+        return score;
+    }
+
+    function findMatchingResults(links, searchQuery) {
+        if (!searchQuery || links.length === 0) return [];
+        return Array.from(links)
+            .map(link => {
+                const label = (link.getAttribute('aria-label') || '').replace(/Â·.*$/, '').trim();
+                return {
+                    link,
+                    href: link.href || link.getAttribute('href') || '',
+                    label,
+                    score: scoreBusinessName(label, searchQuery)
+                };
+            })
+            .filter(item => item.score >= 0.5)
+            .sort((a, b) => b.score - a.score);
+    }
+
+    function findBestMatch(links, searchQuery) {
+        const matches = findMatchingResults(links, searchQuery);
+        return matches.length ? matches[0].link : null;
+    }
+
+    function findResultLink(candidate) {
+        const links = Array.from(document.querySelectorAll('a.hfpxzc'));
+        return links.find(link =>
+            (candidate.href && (link.href === candidate.href || link.getAttribute('href') === candidate.href)) ||
+            ((link.getAttribute('aria-label') || '').replace(/Â·.*$/, '').trim() === candidate.label)
+        ) || null;
+    }
+
+    function getExpectedLocationFromUrl() {
+        const url = window.location.href;
+        const searchMatch = url.match(/\/maps\/search\/([^?#]+)/);
+        if (!searchMatch) return { city: '', state: '' };
+        const decoded = decodeURIComponent(searchMatch[1]).replace(/\+/g, ' ').trim();
+        const parts = decoded.split(',').map(part => part.trim()).filter(Boolean);
+        return { city: parts[1] || '', state: parts[2] || '' };
+    }
+
+    function normalizeForCompare(value) {
+        return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    }
+
+    function normalizeStateForCompare(value) {
+        const state = String(value || '').trim();
+        if (!state) return '';
+        const stateMap = {
+            AL: 'alabama', AK: 'alaska', AZ: 'arizona', AR: 'arkansas', CA: 'california',
+            CO: 'colorado', CT: 'connecticut', DE: 'delaware', FL: 'florida', GA: 'georgia',
+            HI: 'hawaii', ID: 'idaho', IL: 'illinois', IN: 'indiana', IA: 'iowa',
+            KS: 'kansas', KY: 'kentucky', LA: 'louisiana', ME: 'maine', MD: 'maryland',
+            MA: 'massachusetts', MI: 'michigan', MN: 'minnesota', MS: 'mississippi', MO: 'missouri',
+            MT: 'montana', NE: 'nebraska', NV: 'nevada', NH: 'new hampshire', NJ: 'new jersey',
+            NM: 'new mexico', NY: 'new york', NC: 'north carolina', ND: 'north dakota', OH: 'ohio',
+            OK: 'oklahoma', OR: 'oregon', PA: 'pennsylvania', RI: 'rhode island', SC: 'south carolina',
+            SD: 'south dakota', TN: 'tennessee', TX: 'texas', UT: 'utah', VT: 'vermont',
+            VA: 'virginia', WA: 'washington', WV: 'west virginia', WI: 'wisconsin', WY: 'wyoming',
+            DC: 'district of columbia'
+        };
+        const upper = state.toUpperCase();
+        if (stateMap[upper]) return upper;
+        const normalized = normalizeForCompare(state);
+        const match = Object.entries(stateMap).find(([, full]) => normalizeForCompare(full) === normalized);
+        return match ? match[0] : upper;
+    }
+
+    function getHospitalNameCityCandidates() {
+        const source = getHospitalNameFromUrl().replace(/\s+/g, ' ').trim();
+        const candidates = [];
+        const ofMatch = source.match(/\bof\s+(.+?)\s*$/i);
+        if (ofMatch) candidates.push(ofMatch[1]);
+        const dashMatch = source.match(/\s[-–—]\s*([^,]+?)(?:,\s*[A-Z]{2})?\s*$/i);
+        if (dashMatch) candidates.push(dashMatch[1]);
+        return candidates
+            .map(candidate => candidate
+                .replace(/\s*[-–—]\s*[^,]+,\s*[A-Z]{2}\s*$/i, '')
+                .replace(/,\s*[A-Z]{2}\s*$/i, '')
+                .replace(/\b(?:AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\b$/i, '')
+                .replace(/\bNational\b$/i, '')
+                .trim())
+            .filter(Boolean);
+    }
+
+    function shouldAcceptAddressData(data) {
+        if (!data || !data.streetAddress) return false;
+
+        const expected = getExpectedLocationFromUrl();
+        const expectedCity = normalizeForCompare(expected.city);
+        const expectedState = normalizeStateForCompare(expected.state);
+        if (!expectedCity || !expectedState || !data.city || !data.state) return true;
+
+        const resultCity = normalizeForCompare(data.city);
+        const resultState = normalizeStateForCompare(data.state);
+        if (resultCity === expectedCity && resultState === expectedState) return true;
+
+        const cityFromHospitalName = getHospitalNameCityCandidates()
+            .some(candidate => normalizeForCompare(candidate) === resultCity);
+        if (cityFromHospitalName && resultState === expectedState) {
+            data.cityMatchedHospitalName = true;
+            return true;
+        }
+
+        return false;
     }
 
     // ===== Extract website URL from place detail panel =====
@@ -349,7 +488,7 @@
 
     // ===== Empty result helper =====
     function emptyResult() {
-        return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
+        return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', cityMatchedHospitalName: false };
     }
 
     // ===== Parse a full US address string into components =====
