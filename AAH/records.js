@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isLocalhost) {
             // Development environment - use localhost without double slash
-            return 'http:/localhost/zoho-api/api/webhook-receiver.php';
+            return 'http://localhost/zoho-api/api/webhook-receiver.php';
         } else {
             // Production environment - try to detect the domain
             // User will need to update this for their production URL
@@ -2028,7 +2028,10 @@ document.addEventListener('DOMContentLoaded', () => {
             description: job.description || ''
         }));
 
-        const BATCH_SIZE = 50;
+        const BATCH_SIZE = 5;
+        const BATCH_DELAY_MS = 2500;
+        const MAX_WEBHOOK_ATTEMPTS = 4;
+        const WEBHOOK_TIMEOUT_MS = 60000;
         const totalBatches = Math.ceil(jobsToSend.length / BATCH_SIZE);
 
         if (!confirm(`This will send ${jobsToSend.length} jobs in ${totalBatches} batch(es) of up to ${BATCH_SIZE}. Continue?`)) {
@@ -2051,11 +2054,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const syncId = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
         let successCount = 0;
         let failCount = 0;
+        const failedBatches = [];
+        const failedJobs = [];
 
-        for (let i = 0; i < totalBatches; i++) {
-            const batch = jobsToSend.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
-            const batchNumber = i + 1;
+        const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+        function createWebhookPayload(batch, batchNumber, splitLabel = '') {
             const payload = {
                 source: 'Alliance Animal Job Scraper',
                 parentClientName: 'Alliance Animal Health (Parent Client)',
@@ -2068,25 +2072,135 @@ document.addEventListener('DOMContentLoaded', () => {
                 data: batch
             };
 
-            try {
-                const response = await fetch(webhookUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
+            if (splitLabel) {
+                payload.splitBatch = splitLabel;
+            }
 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error(`Batch ${batchNumber} failed with status ${response.status}:`, errorText);
-                    throw new Error(`Status ${response.status}: ${errorText.substring(0, 100)}`);
+            return payload;
+        }
+
+        function getWebhookJobLabel(job) {
+            return job.job_id || job.title || job.hospital || 'Unknown job';
+        }
+
+        function shouldSplitWebhookBatch(error, records) {
+            if (records.length <= 1) return false;
+            const message = (error && error.message) || '';
+            return !!(
+                error &&
+                (
+                    error.status === 403 ||
+                    error.status === 413 ||
+                    error.status === 429 ||
+                    error.name === 'TypeError' ||
+                    error.name === 'AbortError' ||
+                    /Failed to fetch|connection|reset|timeout|Status 4|Status 5/i.test(message)
+                )
+            );
+        }
+
+        async function sendWebhookPayload(payload, batchLabel) {
+            let lastError = null;
+
+            for (let attempt = 1; attempt <= MAX_WEBHOOK_ATTEMPTS; attempt++) {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), WEBHOOK_TIMEOUT_MS);
+
+                try {
+                    if (attempt > 1) {
+                        progressLabel.textContent = `Retrying Batch ${batchLabel} (${attempt}/${MAX_WEBHOOK_ATTEMPTS})`;
+                    }
+
+                    const response = await fetch(webhookUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json'
+                        },
+                        body: JSON.stringify(payload),
+                        signal: controller.signal
+                    });
+
+                    const responseText = await response.text();
+
+                    if (!response.ok) {
+                        const error = new Error(`Status ${response.status}: ${responseText.substring(0, 200)}`);
+                        error.status = response.status;
+                        error.responseText = responseText;
+                        throw error;
+                    }
+
+                    try {
+                        return responseText ? JSON.parse(responseText) : {};
+                    } catch (parseError) {
+                        return { raw: responseText };
+                    }
+                } catch (error) {
+                    lastError = error;
+                    const isLastAttempt = attempt === MAX_WEBHOOK_ATTEMPTS;
+                    const retryDelay = BATCH_DELAY_MS * attempt;
+                    console.warn(`Batch ${batchLabel} attempt ${attempt} failed:`, error);
+
+                    if (isLastAttempt) break;
+                    await wait(retryDelay);
+                } finally {
+                    clearTimeout(timeoutId);
+                }
+            }
+
+            throw lastError;
+        }
+
+        async function sendWebhookRecords(records, batchNumber, splitLabel = '') {
+            const batchLabel = splitLabel ? `${batchNumber}${splitLabel}` : `${batchNumber}`;
+            const payload = createWebhookPayload(records, batchNumber, splitLabel);
+
+            try {
+                progressLabel.textContent = `Sending Batch ${batchLabel}`;
+                const result = await sendWebhookPayload(payload, batchLabel);
+                console.log(`Batch ${batchLabel} success:`, result);
+                return { sent: records.length, failedJobs: [] };
+            } catch (error) {
+                if (!shouldSplitWebhookBatch(error, records)) {
+                    console.error(`Batch ${batchLabel} failed and cannot be split further:`, error);
+                    return {
+                        sent: 0,
+                        failedJobs: records.map(getWebhookJobLabel)
+                    };
                 }
 
-                const result = await response.json();
-                console.log(`Batch ${batchNumber} success:`, result);
-                successCount++;
+                const middle = Math.ceil(records.length / 2);
+                console.warn(`Batch ${batchLabel} failed. Splitting ${records.length} records into smaller requests.`);
+
+                const left = await sendWebhookRecords(records.slice(0, middle), batchNumber, `${splitLabel}a`);
+                await wait(BATCH_DELAY_MS);
+                const right = await sendWebhookRecords(records.slice(middle), batchNumber, `${splitLabel}b`);
+
+                return {
+                    sent: left.sent + right.sent,
+                    failedJobs: [...left.failedJobs, ...right.failedJobs]
+                };
+            }
+        }
+
+        for (let i = 0; i < totalBatches; i++) {
+            const batch = jobsToSend.slice(i * BATCH_SIZE, (i + 1) * BATCH_SIZE);
+            const batchNumber = i + 1;
+
+            try {
+                const result = await sendWebhookRecords(batch, batchNumber);
+                if (result.failedJobs.length === 0) {
+                    successCount++;
+                } else {
+                    failCount++;
+                    failedBatches.push(batchNumber);
+                    failedJobs.push(...result.failedJobs);
+                    console.error(`Batch ${batchNumber} partially failed. Failed job(s):`, result.failedJobs);
+                }
             } catch (error) {
                 console.error(`Batch ${batchNumber} error:`, error);
                 failCount++;
+                failedBatches.push(batchNumber);
             }
 
             // Update progress
@@ -2095,7 +2209,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Delay between batches
             if (i < totalBatches - 1) {
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await wait(BATCH_DELAY_MS);
             }
         }
 
@@ -2112,7 +2226,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (failCount === 0) {
             showToast(`All ${totalBatches} batch(es) sent successfully!`, 'success');
         } else {
-            showToast(`${successCount} succeeded, ${failCount} failed.`, 'error');
+            const failedJobMessage = failedJobs.length ? ` Failed job(s): ${failedJobs.join(', ')}` : '';
+            showToast(`${successCount} succeeded, ${failCount} failed. Failed batch(es): ${failedBatches.join(', ')}.${failedJobMessage}`, 'error');
         }
     });
 
