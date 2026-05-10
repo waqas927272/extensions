@@ -3,6 +3,17 @@
     const jobs = [];
     const jobElements = document.querySelectorAll('a.job-openings-item');
 
+    // Mirror Encore's non-clinical keyword filter exactly.
+    function shouldSkipByEncoreTitleKeywords(jobTitle) {
+        if (!jobTitle) return false;
+
+        // Same preprocessing as Encore: evaluate the primary role only.
+        const titleBase = jobTitle.split(' - ')[0].trim();
+        const primaryRole = titleBase.split('/')[0].trim().toLowerCase();
+
+        return /\b(client service|service representative|receptionist|kennel|groomer|grooming|practice manager|hospital manager|office manager|administrator|billing|human resources|patient care coordinator|client care coordinator|customer service|front desk|inventory|housekeeper|janitorial|marketing|it technician|accountant|boarding assistant|assistant|technician|tech|externship|externships|extern|join our talent community)\b/.test(primaryRole);
+    }
+
     jobElements.forEach(el => {
         const jobTitle = el.querySelector('.job-openings-item-title')?.innerText.trim();
         const hospital = el.querySelector('.job-openings-item-hospital')?.innerText.trim();
@@ -11,6 +22,11 @@
 
         if (!jobTitle || !link || !link.includes('greenhouse.io')) {
             // Skip if it's not a valid job link to greenhouse
+            return;
+        }
+
+        // Skip only the exact non-clinical title keywords Encore skips.
+        if (shouldSkipByEncoreTitleKeywords(jobTitle)) {
             return;
         }
 

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "VetPractice Job Scraper",
+  "name": "Encore Job Scraper",
   "version": "1.0",
-  "description": "Scrape job listings from Veterinary Practice Partners careers page",
+  "description": "Scrape job listings and enrich records for Encore",
   "host_permissions": [
     "http://*/*",
     "https://*/*"
@@ -29,8 +29,11 @@
     {
       "resources": [
         "vpp-content.js",
+        "description-scraper.js",
         "greenhouse-description-scraper.js",
-        "detail-extractor.js"
+        "detail-extractor.js",
+        "google-maps-scraper.js",
+        "google-search-scraper.js"
       ],
       "matches": ["<all_urls>"]
     }

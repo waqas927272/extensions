@@ -8,11 +8,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === 'fetchJobDetails') {
-    handleFetchDetails(request);
-    return true;
-  }
-
   return true;
 });
 
@@ -27,7 +22,7 @@ function handleScrapeDescription(request) {
         setTimeout(() => {
             chrome.scripting.executeScript({
                 target: { tabId: tabId },
-                files: ['greenhouse-description-scraper.js']
+                files: ['description-scraper.js']
             }).then((results) => {
                 const description = (results && results[0] && results[0].result) ? results[0].result : '';
 
@@ -58,47 +53,6 @@ function handleScrapeDescription(request) {
             });
         }, 2000);
       }
-    });
-}
-
-function handleFetchDetails(request) {
-    const { url, jobIndex } = request;
-    if (!url) {
-        chrome.runtime.sendMessage({ action: 'detailsFetched', details: {}, jobIndex: jobIndex }).catch(() => {});
-        return;
-    }
-
-    chrome.tabs.create({ url: url, active: false }, (tab) => {
-        if (!tab) return;
-        chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-            if (tabId === tab.id && info.status === 'complete') {
-                chrome.tabs.onUpdated.removeListener(listener);
-                
-                // Small delay for Greenhouse dynamic content
-                setTimeout(() => {
-                    chrome.scripting.executeScript({
-                        target: { tabId: tab.id },
-                        files: ['detail-extractor.js']
-                    }).then((results) => {
-                        const details = (results && results[0] && results[0].result) ? results[0].result : {};
-                        chrome.tabs.remove(tab.id).catch(() => {});
-                        chrome.runtime.sendMessage({
-                            action: 'detailsFetched',
-                            details: details,
-                            jobIndex: jobIndex
-                        }).catch(() => {});
-                    }).catch(err => {
-                        console.error('Error extracting details:', err);
-                        chrome.tabs.remove(tab.id).catch(() => {});
-                        chrome.runtime.sendMessage({
-                            action: 'detailsFetched',
-                            details: {},
-                            jobIndex: jobIndex
-                        }).catch(() => {});
-                    });
-                }, 3000);
-            }
-        });
     });
 }
 
