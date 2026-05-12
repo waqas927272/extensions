@@ -8,7 +8,7 @@ let uniqueJobLinks = new Set();
 
 const IFRAME_ID = "jv_careersite_iframe_id";
 const IFRAME_PARTIAL_SRC = "jobs.jobvite.com/unitedveterinarycare/";
-const EXCLUDED_JOB_TITLE_PATTERN = /\b(?:mentor(?:ship|ing|ed|s)?|locum(?:s)?|relie(?:f|ver|vers)|releif|technician|veterinary\s+assistant|assistant|client\s+services?\s+coordinator|client\s+care\s+coordinator|client\s+services?|kennel\s+technician|hospital\s+manager|veterinary\s+(?:or\s+)?supervisor|veterinary[\w\s-]*specialty[\w\s-]*surgical[\w\s-]*supervisor|specialty[\w\s-]*surgical[\w\s-]*supervisor|area\s+director\s+of\s+operations|veterinary\s+department\s+manager|department\s+manager|veterinary\s+coordinator)\b/i;
+const EXCLUDED_JOB_TITLE_PATTERN = /\b(?:veterinary\s+referral\s+manager|certified\s+canine\s+rehabilitation\s+practitioner|veterinary\s+emergency\s+administrative\s+liaison|mentor(?:ship|ing|ed|s)?|locum(?:s)?|relie(?:f|ver|vers)|releif|technician|veterinary\s+assistant|assistant|client\s+services?\s+coordinator|client\s+care\s+coordinator|client\s+services?|kennel\s+technician|hospital\s+manager|veterinary\s+(?:or\s+)?supervisor|veterinary[\w\s-]*specialty[\w\s-]*surgical[\w\s-]*supervisor|specialty[\w\s-]*surgical[\w\s-]*supervisor|area\s+director\s+of\s+operations|veterinary\s+department\s+manager|department\s+manager|veterinary\s+coordinator)\b/i;
 
 function isExcludedJobListing(job) {
     const title = job?.title || '';

@@ -396,14 +396,13 @@
       border: 1px solid rgba(249, 161, 27, 0.1);
     }
 
-    /* Wrapper handles horizontal scroll — sticky bottom keeps scrollbar visible on screen */
+    /* Keep the records grid inside the viewport while the table body can scroll vertically. */
     .table-scroll-wrapper {
-      overflow-x: auto;
+      overflow-x: hidden;
       max-height: calc(100vh - 146px);
       overflow-y: auto;
     }
 
-    /* Make the horizontal scrollbar stick to the bottom of the viewport */
     .table-scroll-wrapper::-webkit-scrollbar {
       height: 14px;
     }
@@ -422,27 +421,31 @@
 
     table {
       width: 100%;
-      min-width: 2390px;
+      min-width: 0;
       border-collapse: collapse;
       table-layout: fixed;
     }
 
-    th:nth-child(1), td:nth-child(1) { width: 260px; }
-    th:nth-child(2), td:nth-child(2) { width: 245px; }
-    th:nth-child(3), td:nth-child(3) { width: 135px; }
-    th:nth-child(4), td:nth-child(4) { width: 155px; }
-    th:nth-child(5), td:nth-child(5) { width: 145px; }
-    th:nth-child(6), td:nth-child(6) { width: 90px; }
-    th:nth-child(7), td:nth-child(7) { width: 215px; }
-    th:nth-child(8), td:nth-child(8) { width: 185px; }
-    th:nth-child(9), td:nth-child(9) { width: 120px; }
-    th:nth-child(10), td:nth-child(10) { width: 110px; }
-    th:nth-child(11), td:nth-child(11) { width: 190px; }
-    th:nth-child(12), td:nth-child(12) { width: 80px; }
-    th:nth-child(13), td:nth-child(13) { width: 125px; }
-    th:nth-child(14), td:nth-child(14) { width: 80px; }
-    th:nth-child(15), td:nth-child(15) { width: 75px; }
-    th:nth-child(16), td:nth-child(16) { width: 280px; }
+    th:nth-child(1), td:nth-child(1) { width: 1.4%; }
+    th:nth-child(2), td:nth-child(2) { width: 1.8%; }
+    th:nth-child(3), td:nth-child(3) { width: 10.3%; }
+    th:nth-child(4), td:nth-child(4) { width: 5%; }
+    th:nth-child(5), td:nth-child(5) { width: 8.4%; }
+    th:nth-child(6), td:nth-child(6) { width: 6.8%; }
+    th:nth-child(7), td:nth-child(7) { width: 7.8%; }
+    th:nth-child(8), td:nth-child(8) { width: 4%; }
+    th:nth-child(9), td:nth-child(9) { width: 3%; }
+    th:nth-child(10), td:nth-child(10) { width: 3.2%; }
+    th:nth-child(11), td:nth-child(11) { width: 4.8%; }
+    th:nth-child(12), td:nth-child(12) { width: 3.8%; }
+    th:nth-child(13), td:nth-child(13) { width: 5%; }
+    th:nth-child(14), td:nth-child(14) { width: 5.6%; }
+    th:nth-child(15), td:nth-child(15) { width: 5.6%; }
+    th:nth-child(16), td:nth-child(16) { width: 4.8%; }
+    th:nth-child(17), td:nth-child(17) { width: 4%; }
+    th:nth-child(18), td:nth-child(18) { width: 4.5%; }
+    th:nth-child(19), td:nth-child(19) { width: 3.6%; }
+    th:nth-child(20), td:nth-child(20) { width: 7.4%; }
 
     thead {
       background: linear-gradient(135deg, #4277b8 0%, #4277b8 100%);
@@ -452,8 +455,8 @@
       color: white;
       font-weight: 700;
       text-align: left;
-      padding: 6px 7px;
-      font-size: 10px;
+      padding: 6px 5px;
+      font-size: 9px;
       text-transform: uppercase;
       letter-spacing: 0.35px;
       cursor: pointer;
@@ -462,9 +465,11 @@
       position: sticky;
       top: 0;
       z-index: 2;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+      line-height: 1.15;
+      overflow-wrap: anywhere;
     }
 
     th:hover {
@@ -482,24 +487,66 @@
     }
 
     td {
-      padding: 4px 7px;
+      padding: 5px 7px;
       border-bottom: 1px solid #f1f5f9;
-      font-size: 11px;
+      font-size: 10px;
       color: #475569;
       font-weight: 500;
       transition: background-color 0.2s ease;
-      line-height: 1.25;
+      line-height: 1.28;
       white-space: normal;
       overflow: visible;
       text-overflow: clip;
       height: auto;
       min-height: 30px;
-      word-break: break-word;
+      vertical-align: top;
+      word-break: normal;
+      overflow-wrap: anywhere;
     }
 
     td:first-child {
+      text-align: center;
+      font-weight: 600;
+    }
+
+    td:nth-child(3) {
       text-align: left;
       font-weight: 600;
+    }
+
+    th:first-child,
+    th:nth-child(2) {
+      text-align: center;
+      cursor: default;
+    }
+
+    .select-cell,
+    .serial-cell {
+      text-align: center !important;
+      font-weight: 700;
+    }
+
+    .job-select-checkbox,
+    #selectAllJobs {
+      width: 15px;
+      height: 15px;
+      accent-color: #4277b8;
+      cursor: pointer;
+    }
+
+    tbody tr.selected-row {
+      background-color: #c8e3f7 !important;
+      box-shadow: inset 3px 0 0 #4277b8;
+    }
+
+    tbody tr.row-city-mismatch {
+      background-color: #fee2e2 !important;
+      box-shadow: inset 4px 0 0 #dc2626;
+    }
+
+    tbody tr.row-city-mismatch td,
+    tbody tr.row-city-mismatch a {
+      color: #7f1d1d !important;
     }
 
     tbody tr {
@@ -534,7 +581,7 @@
       font-weight: 600;
       transition: color 0.2s ease;
       white-space: normal;
-      word-break: break-word;
+      overflow-wrap: anywhere;
     }
 
     td a:hover {
@@ -634,30 +681,85 @@
       width: 0%;
     }
 
-    /* Description Column */
-    .description-cell {
-      max-height: 32px;
-      overflow-y: auto;
+    .view-description-btn {
+      padding: 6px 8px;
+      border: 0;
+      border-radius: 7px;
+      background: #4277b8;
+      color: white;
       font-size: 10px;
-      line-height: 1.25;
-      white-space: pre-wrap;
-      word-break: break-word;
-      color: #475569;
-      padding: 3px 5px;
-      background: #fafaf9;
-      border-radius: 4px;
-      border: 1px solid #f1f5f9;
-      min-width: 160px;
-      max-width: 220px;
+      font-weight: 700;
+      cursor: pointer;
+      white-space: normal;
+      max-width: 100%;
+      overflow: visible;
+      text-overflow: clip;
+      line-height: 1.15;
     }
 
-    td:has(.description-cell) {
-      overflow: hidden;
-      vertical-align: top;
+    .view-description-btn:hover {
+      background: #4277b8;
     }
 
     .hidden {
       display: none !important;
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.55);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+      padding: 24px;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-content {
+      width: min(900px, 96vw);
+      max-height: 86vh;
+      overflow: auto;
+      background: white;
+      border-radius: 10px;
+      padding: 22px;
+      box-shadow: 0 24px 80px rgba(15, 23, 42, 0.28);
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      margin-bottom: 14px;
+    }
+
+    .modal-header h2 {
+      font-size: 18px;
+      color: #1e293b;
+    }
+
+    .close-button {
+      border: 0;
+      background: #f1f5f9;
+      color: #334155;
+      width: 34px;
+      height: 34px;
+      border-radius: 7px;
+      cursor: pointer;
+      font-size: 22px;
+      line-height: 1;
+    }
+
+    #modalDescriptionContent {
+      white-space: pre-wrap;
+      line-height: 1.55;
+      color: #334155;
+      font-size: 14px;
     }
 
     .toast {
@@ -769,12 +871,8 @@
         min-width: auto;
       }
 
-      .table-container {
-        overflow-x: auto;
-      }
-
       table {
-        min-width: 1600px;
+        min-width: 0;
       }
     }
   </style>
@@ -849,6 +947,12 @@
           </svg>
           Export CSV
         </button>
+        <button class="btn btn-danger" id="deleteSelectedJobs" disabled>
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z"/>
+          </svg>
+          Delete Jobs (0)
+        </button>
         <button class="btn btn-danger" id="clearDetailsBtn">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
             <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M7,15H17V13H7V15M7,11H17V9H7V11Z"/>
@@ -891,20 +995,26 @@
       <table id="jobRecordsTable">
         <thead>
           <tr>
+            <th>
+              <input type="checkbox" id="selectAllJobs" title="Select all visible jobs">
+            </th>
+            <th>#</th>
             <th data-sort="title">Job Title</th>
             <th data-sort="jobId">Job ID</th>
+            <th data-sort="hospital">Hospital</th>
+            <th>Aggregator</th>
+            <th data-sort="streetAddress">Street Address</th>
+            <th data-sort="city">City</th>
+            <th data-sort="state">State</th>
+            <th data-sort="zipCode">Zip Code</th>
+            <th data-sort="phone">Phone</th>
+            <th data-sort="website">Website</th>
+            <th data-sort="location">Location</th>
             <th data-sort="areaOfPractice">Area of Practice</th>
             <th data-sort="position">Position</th>
             <th data-sort="salary">Salary</th>
             <th data-sort="jobType">Job Type</th>
-            <th>Aggregator</th>
-            <th data-sort="hospital">Hospital Name</th>
-            <th data-sort="city">City</th>
-            <th data-sort="state">State</th>
-            <th data-sort="streetAddress">Street Address</th>
-            <th data-sort="zipCode">ZipCode</th>
-            <th data-sort="phone">Phone</th>
-            <th data-sort="website">Website</th>
+            <th data-sort="experience">Experience</th>
             <th data-sort="link">Link</th>
             <th>Description</th>
           </tr>
@@ -923,6 +1033,16 @@
         <h2>No Jobs Scraped Yet</h2>
         <p>Visit the COVE careers page and use the extension to scrape available job listings.</p>
       </div>
+    </div>
+  </div>
+
+  <div id="descriptionModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Job Description</h2>
+        <button type="button" class="close-button" id="closeDescriptionModal">&times;</button>
+      </div>
+      <div id="modalDescriptionContent"></div>
     </div>
   </div>
 

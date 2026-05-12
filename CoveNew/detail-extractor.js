@@ -252,7 +252,7 @@
 
         const rules = [
             ['Medical Director', [/\bmedical director\b/i]],
-            ['Lead Veterinarian', [/\blead veterinarian\b/i, /\blead vet\b/i]],
+            ['Lead Veterinarian', [/\blead veterinarian\b/i, /\blead vet\b/i, /\bhead veterinarian\b/i, /\bhead vet\b/i]],
             ['Neurologist & Neurosurgeon', [/\bneurologist\b/i, /\bneurosurgeon\b/i, /\bboard certified\b.*\bneurolog/i, /\bresidency[-\s]+trained\b.*\bneurolog/i, /\bdacvim\b.*\bneurolog/i]],
             ['Dermatologist', [/\bdermatologist\b/i, /\bboard certified\b.*\bdermatolog/i, /\bresidency[-\s]+trained\b.*\bdermatolog/i, /\bdacvd\b/i]],
             ['Cardiologist', [/\bcardiologist\b/i, /\bboard certified\b.*\bcardiolog/i, /\bresidency[-\s]+trained\b.*\bcardiolog/i, /\bdacvim\b.*\bcardiolog/i]],
@@ -366,7 +366,7 @@
     function extractRoleSignalText(text) {
         if (!text) return '';
 
-        const rolePattern = /\b(?:medical director|lead veterinarian|lead vet|board certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
+        const rolePattern = /\b(?:medical director|lead veterinarian|lead vet|head veterinarian|head vet|board certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
         const blockedPattern = /\b(?:our services|services include|specialties include|benefits|medical(?:,\s*|\s+)dental|dental insurance|our hospital|our team has|state[-\s]?of[-\s]?the[-\s]?art|we offer|years of experience in specialty and emergency services)\b/i;
         const qualificationsSection = extractQualificationsSection(text);
         const collected = [];
@@ -397,7 +397,7 @@
         // Must be checked FIRST — "Group Medical Director - The Oncology Service" should be
         // Medical Director, NOT Medical Oncologist. The specialty word is the service name, not the role.
         if (t.includes('medical director')) return 'Medical Director';
-        if (t.includes('lead veterinarian') || t.includes('lead vet')) return 'Lead Veterinarian';
+        if (t.includes('lead veterinarian') || t.includes('lead vet') || t.includes('head veterinarian') || t.includes('head vet')) return 'Lead Veterinarian';
 
         // === SPECIALTY POSITION NAMES ===
         if (t.includes('neurologist') || t.includes('neurosurgeon') || t.includes('neurology')) return 'Neurologist & Neurosurgeon';
@@ -614,7 +614,8 @@
         const prioritizedLines = candidateLines
             .map(line => line.trim())
             .filter(Boolean)
-            .filter(line => /\b(?:experience|experienced|minimum|min\.?|at least|required|requirements?|qualifications?|practice setting|years in practice)\b/i.test(line))
+            .filter(line => /\b(?:experience|minimum|min\.?|at least|required|requirements?|qualifications?|practice setting|years in practice)\b/i.test(line))
+            .filter(line => /\b\d+\s*(?:\+|[-\u2013\u2014]\s*\d+|\s+to\s+\d+)?\s*(?:years?|yrs?\.?)\b/i.test(line))
             .filter(line => !/\b(?:our team has|over\s+\d+\s+years of experience|years of experience in specialty and emergency services|serving\s+the\s+community|we offer|benefits|medical(?:,\s*|\s+)dental)\b/i.test(line));
 
         const patterns = [

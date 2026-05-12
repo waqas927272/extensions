@@ -9,8 +9,10 @@
         const bodyText = cleanText(document.body.innerText || '');
         const address = extractAddress(panelText) || extractAddress(bodyText);
         const parsed = parseAddress(address);
+        const businessName = extractBusinessNameFromPanel() || '';
 
         return {
+            businessName,
             fullAddress: address || '',
             streetAddress: parsed.streetAddress || '',
             city: parsed.city || '',
@@ -21,7 +23,7 @@
             panelText: panelText || ''
         };
     } catch (error) {
-        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: error.message };
+        return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: error.message };
     }
 
     function wait(ms) {
@@ -77,6 +79,31 @@
         return chunks.join('\n');
     }
 
+    function extractBusinessNameFromPanel() {
+        const selectors = [
+            '#rhs [data-attrid="title"]',
+            '#rhs h2',
+            '#rhs h3',
+            '[role="complementary"] [data-attrid="title"]',
+            '[role="complementary"] h2',
+            '[role="complementary"] h3',
+            '.qrShPb',
+            '.SPZz6b h2'
+        ];
+
+        for (const selector of selectors) {
+            for (const element of document.querySelectorAll(selector)) {
+                if (!isVisible(element)) continue;
+                const text = cleanText(element.innerText || element.textContent || '');
+                if (text && text.length <= 120 && !/^(?:Website|Directions|Call|Address|Hours)$/i.test(text)) {
+                    return text;
+                }
+            }
+        }
+
+        return '';
+    }
+
     function isVisible(element) {
         const rect = element.getBoundingClientRect();
         return rect.width > 0 && rect.height > 0;
@@ -86,12 +113,13 @@
         const source = cleanText(text || '');
         if (!source) return '';
 
-        const labelled = source.match(/(?:Address|Located in)\s*[:\n]\s*([^\n]+?\b[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i);
+        const stateToken = `(?:[A-Z]{2}|${getStateNamePattern()})`;
+        const labelled = source.match(new RegExp(`(?:Address|Located in)\\s*[:\\n]\\s*([^\\n]+?\\b${stateToken}\\s+\\d{5}(?:-\\d{4})?)`, 'i'));
         if (labelled) return normalizeAddress(labelled[1]);
 
         const patterns = [
-            /(\d{1,6}\s+[\w\s.'#&/-]+?(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|NE|NW|SE|SW)\b[\w\s.,#&/-]*?,\s*[\w\s.'-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i,
-            /(\d{1,6}\s+[\w\s.'#&/-]+?(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|NE|NW|SE|SW)\b[\w\s.,#&/-]*?\s+[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i
+            new RegExp(`(\\d{1,6}\\s+[\\w\\s.'#&/-]+?(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|NE|NW|SE|SW)\\b[\\w\\s.,#&/-]*?,\\s*[\\w\\s.'-]+,\\s*${stateToken}\\s+\\d{5}(?:-\\d{4})?)`, 'i'),
+            new RegExp(`(\\d{1,6}\\s+[\\w\\s.'#&/-]+?(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|NE|NW|SE|SW)\\b[\\w\\s.,#&/-]*?\\s+${stateToken}\\s+\\d{5}(?:-\\d{4})?)`, 'i')
         ];
 
         for (const pattern of patterns) {
@@ -114,7 +142,7 @@
         for (const selector of selectors) {
             for (const element of document.querySelectorAll(selector)) {
                 const text = cleanText(element.innerText || element.textContent || element.getAttribute('aria-label') || '');
-                if (/\d/.test(text) && /\b[A-Z]{2}\s+\d{5}/.test(text)) return text.replace(/^Address\s*[:\n]\s*/i, '');
+                if (/\d/.test(text) && new RegExp(`\\b(?:[A-Z]{2}|${getStateNamePattern()})\\s+\\d{5}`, 'i').test(text)) return text.replace(/^Address\s*[:\n]\s*/i, '');
             }
         }
 
@@ -217,11 +245,26 @@
             .trim();
     }
 
+    function getStateNamePattern() {
+        return [
+            'Alabama', 'Alaska', 'Arizona', 'Arkansas', 'California', 'Colorado', 'Connecticut',
+            'Delaware', 'Florida', 'Georgia', 'Hawaii', 'Idaho', 'Illinois', 'Indiana', 'Iowa',
+            'Kansas', 'Kentucky', 'Louisiana', 'Maine', 'Maryland', 'Massachusetts', 'Michigan',
+            'Minnesota', 'Mississippi', 'Missouri', 'Montana', 'Nebraska', 'Nevada',
+            'New Hampshire', 'New Jersey', 'New Mexico', 'New York', 'North Carolina',
+            'North Dakota', 'Ohio', 'Oklahoma', 'Oregon', 'Pennsylvania', 'Rhode Island',
+            'South Carolina', 'South Dakota', 'Tennessee', 'Texas', 'Utah', 'Vermont',
+            'Virginia', 'Washington', 'West Virginia', 'Wisconsin', 'Wyoming',
+            'District of Columbia'
+        ].map(state => state.replace(/\s+/g, '\\s+')).join('|');
+    }
+
     function parseAddress(fullAddress) {
         if (!fullAddress) return { streetAddress: '', city: '', state: '', zipCode: '' };
 
         const addr = normalizeAddress(fullAddress);
-        const zipPattern = /^([\s\S]+?),\s*([^,]+?),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/;
+        const stateToken = `(?:[A-Z]{2}|${getStateNamePattern()})`;
+        const zipPattern = new RegExp(`^([\\s\\S]+?),\\s*([^,]+?),\\s*(${stateToken})\\s+(\\d{5}(?:-\\d{4})?)$`, 'i');
         const zipMatch = addr.match(zipPattern);
         if (zipMatch) {
             return {
@@ -232,7 +275,7 @@
             };
         }
 
-        const stateZipPattern = /\b([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/;
+        const stateZipPattern = new RegExp(`\\b(${stateToken})\\s+(\\d{5}(?:-\\d{4})?)\\s*$`, 'i');
         const stateZipMatch = addr.match(stateZipPattern);
         if (!stateZipMatch) return { streetAddress: '', city: '', state: '', zipCode: '' };
 

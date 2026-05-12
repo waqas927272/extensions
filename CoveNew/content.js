@@ -2,7 +2,7 @@
 if (!window.__COVENEW_SCRAPER_INITIALIZED__) {
     window.__COVENEW_SCRAPER_INITIALIZED__ = true;
 
-    const EXCLUDED_JOB_TITLE_PATTERN = /\b(?:mentor(?:ship|ing|ed|s)?|locum(?:s)?|relie(?:f|ver|vers)|releif|technician|veterinary\s+assistant|assistant|client\s+services?\s+coordinator|client\s+care\s+coordinator|client\s+services?|kennel\s+technician|hospital\s+manager|veterinary\s+(?:or\s+)?supervisor|veterinary[\w\s-]*specialty[\w\s-]*surgical[\w\s-]*supervisor|specialty[\w\s-]*surgical[\w\s-]*supervisor|area\s+director\s+of\s+operations|veterinary\s+department\s+manager|department\s+manager|veterinary\s+coordinator)\b/i;
+    const EXCLUDED_JOB_TITLE_PATTERN = /\b(?:veterinary\s+referral\s+manager|certified\s+canine\s+rehabilitation\s+practitioner|veterinary\s+emergency\s+administrative\s+liaison|mentor(?:ship|ing|ed|s)?|locum(?:s)?|relie(?:f|ver|vers)|releif|technician|veterinary\s+assistant|assistant|client\s+services?\s+coordinator|client\s+care\s+coordinator|client\s+services?|kennel\s+technician|hospital\s+manager|veterinary\s+(?:or\s+)?supervisor|veterinary[\w\s-]*specialty[\w\s-]*surgical[\w\s-]*supervisor|specialty[\w\s-]*surgical[\w\s-]*supervisor|area\s+director\s+of\s+operations|veterinary\s+department\s+manager|department\s+manager|veterinary\s+coordinator)\b/i;
 
     function isExcludedJobListing(title, jobType = '') {
         return EXCLUDED_JOB_TITLE_PATTERN.test(`${title || ''} ${jobType || ''}`);
@@ -20,6 +20,48 @@ if (!window.__COVENEW_SCRAPER_INITIALIZED__) {
         const parts = text.split(',').map(s => s.trim()).filter(Boolean);
         if (parts.length >= 2) return { city: parts[0], state: parts[1] };
         return { city: text, state: '' };
+    }
+
+    function cleanLocationText(text) {
+        return (text || '')
+            .replace(/\b(?:location|locations)\s*:\s*/ig, '')
+            .replace(/\b(?:full-time|part-time|full time|part time|remote|hybrid)\b/ig, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .replace(/^[\s,|/-]+|[\s,|/-]+$/g, '');
+    }
+
+    function getLocationText(item) {
+        const selectors = [
+            '.cc-location-label',
+            '[class*="location" i]',
+            '[data-automation-id*="location" i]',
+            '[aria-label*="location" i]',
+            '[title*=","]'
+        ];
+
+        for (const selector of selectors) {
+            const nodes = Array.from(item.querySelectorAll(selector));
+            for (const node of nodes) {
+                const value = cleanLocationText(node.textContent || node.getAttribute('aria-label') || node.getAttribute('title') || '');
+                if (/[A-Z]{2}\b/.test(value) || /,\s*[A-Za-z ]+$/.test(value)) return value;
+            }
+        }
+
+        const locationPattern = /([A-Z][A-Za-z.'-]+(?:\s+[A-Z][A-Za-z.'-]+){0,4},\s*[A-Z]{2})(?=\s|$)/;
+        const lines = (item.innerText || item.textContent || '')
+            .split(/\n+/)
+            .map(cleanLocationText)
+            .filter(Boolean);
+
+        for (const line of lines) {
+            const match = line.match(locationPattern);
+            if (match) return match[1].trim();
+        }
+
+        const cardText = cleanLocationText(item.textContent || '');
+        const match = cardText.match(locationPattern);
+        return match ? match[1].trim() : '';
     }
 
     function buildJobIdFromLink(link) {
@@ -46,8 +88,7 @@ if (!window.__COVENEW_SCRAPER_INITIALIZED__) {
             if (!title || !link) return;
             if (isExcludedJobListing(title)) return;
 
-            const locationEl = item.querySelector('.cc-location-label');
-            const locationText = (locationEl?.textContent || '').trim();
+            const locationText = getLocationText(item);
             const { city, state } = parseCityState(locationText);
 
             scrapedJobs.push({
@@ -71,7 +112,7 @@ if (!window.__COVENEW_SCRAPER_INITIALIZED__) {
 
         while (Date.now() - start < maxWaitMs) {
             const jobs = scrapeCurrentPageNow();
-            if (jobs.length > 0) return jobs;
+            if (jobs.length > 0 && jobs.every(job => job.location)) return jobs;
 
             // If ClearCompany container exists but jobs are still loading, keep waiting.
             const hasClearCompanyContainer = !!document.querySelector('.cc-careers-container, .cc-jobs-container');
