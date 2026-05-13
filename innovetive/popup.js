@@ -1,85 +1,67 @@
-// Load and display job count on popup open
-function updateJobCount() {
-  chrome.storage.local.get('jobs', (data) => {
-    const count = data.jobs ? data.jobs.length : 0;
-    document.getElementById('job-count').textContent = count;
-  });
-}
+document.addEventListener('DOMContentLoaded', () => {
+  const startScrapingButton = document.getElementById('startScraping');
+  const stopScrapingButton = document.getElementById('stopScraping');
+  const viewRecordsButton = document.getElementById('viewRecords');
+  const loadingIndicator = document.getElementById('loadingIndicator');
 
-// Initialize
-updateJobCount();
-
-// Set up message listener for progress updates and completion
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  const spinner = document.getElementById('loading-spinner');
-  const spinnerText = spinner.querySelector('span');
-  const messageElement = document.getElementById('message');
-
-  if (request.status === 'scraping_progress') {
-    // Update spinner text with progress
-    spinnerText.textContent = request.message;
+  function setLoading(message, visible = true) {
+    const spinnerText = loadingIndicator.querySelector('span');
+    if (spinnerText) spinnerText.textContent = message;
+    loadingIndicator.classList.toggle('hidden', !visible);
   }
 
-  if (request.status === 'scraping_complete') {
-    spinner.classList.add('hidden');
-    spinnerText.textContent = 'Scraping jobs...';
+  chrome.runtime.onMessage.addListener((request) => {
+    if (request.action !== 'scrapingStatus') return;
 
-    const totalJobs = request.totalJobs || 0;
-    const totalPages = request.totalPages || 1;
-
-    messageElement.textContent = `Done! Scraped ${totalJobs} jobs from ${totalPages} page(s)`;
-    messageElement.className = 'success';
-    updateJobCount();
-  }
-
-  if (request.status === 'scraping_error') {
-    spinner.classList.add('hidden');
-    spinnerText.textContent = 'Scraping jobs...';
-    messageElement.textContent = `Error: ${request.error}`;
-    messageElement.className = 'error';
-  }
-});
-
-document.getElementById('scrape-jobs').addEventListener('click', () => {
-  const spinner = document.getElementById('loading-spinner');
-  const spinnerText = spinner.querySelector('span');
-
-  spinnerText.textContent = 'Starting scrape...';
-  spinner.classList.remove('hidden');
-  document.getElementById('message').classList.add('hidden');
-
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (!tabs[0]) {
-      spinner.classList.add('hidden');
-      const messageElement = document.getElementById('message');
-      messageElement.textContent = 'No active tab found.';
-      messageElement.className = 'error';
+    if (request.status === 'scraping' || request.status === 'starting') {
+      setLoading(request.message || 'Scraping... Please wait.');
       return;
     }
 
-    chrome.scripting.executeScript({
-      target: { tabId: tabs[0].id },
-      files: ['content.js']
-    }).catch((error) => {
-      spinner.classList.add('hidden');
-      const messageElement = document.getElementById('message');
-      messageElement.textContent = 'Navigate to Innovetive Careers page first.';
-      messageElement.className = 'error';
+    if (request.status === 'in_progress') {
+      setLoading(request.message || `Scraping... (${request.scrapedCount || 0} jobs found)`);
+      return;
+    }
+
+    if (request.status === 'completed') {
+      setLoading('Scraping... Please wait.', false);
+      alert(request.message || `Scraping completed! Scraped ${request.scrapedCount || 0} jobs.`);
+      return;
+    }
+
+    if (request.status === 'stopped') {
+      setLoading('Scraping... Please wait.', false);
+      alert(request.message || 'Scraping stopped.');
+      return;
+    }
+
+    if (request.status === 'error') {
+      setLoading('Scraping... Please wait.', false);
+      alert(`Scraping error: ${request.message || 'Unknown error'}`);
+    }
+  });
+
+  startScrapingButton.addEventListener('click', () => {
+    setLoading('Initializing scraping...');
+    chrome.runtime.sendMessage({ action: 'startScraping' }, (response) => {
+      if (chrome.runtime.lastError) {
+        setLoading('Scraping... Please wait.', false);
+        alert(`Scraping error: ${chrome.runtime.lastError.message}`);
+        return;
+      }
+
+      if (response?.status === 'error') {
+        setLoading('Scraping... Please wait.', false);
+      }
     });
   });
-});
 
-document.getElementById('view-saved-jobs').addEventListener('click', () => {
-  chrome.tabs.create({ url: 'saved_jobs.html' });
-});
+  stopScrapingButton.addEventListener('click', () => {
+    setLoading('Stopping scraping...');
+    chrome.runtime.sendMessage({ action: 'stopScraping' });
+  });
 
-document.getElementById('clear-jobs').addEventListener('click', () => {
-  if (confirm('Are you sure you want to clear all saved jobs?')) {
-    chrome.storage.local.remove('jobs', () => {
-      updateJobCount();
-      const messageElement = document.getElementById('message');
-      messageElement.textContent = 'All jobs cleared!';
-      messageElement.className = 'success';
-    });
-  }
+  viewRecordsButton.addEventListener('click', () => {
+    chrome.tabs.create({ url: 'records.html' });
+  });
 });

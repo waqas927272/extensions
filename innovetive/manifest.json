@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Innovetive Petcare Job Scraper",
-  "version": "1.0",
-  "description": "Scrapes job listings from the Innovetive Petcare careers page.",
+  "version": "1.7",
+  "description": "Scrapes job data from the Innovetive Petcare careers page and saves it.",
   "permissions": [
     "activeTab",
     "storage",
     "scripting",
-    "tabs"
+    "tabs",
+    "webNavigation"
   ],
   "host_permissions": [
     "https://innovetivepetcare.pinpointhq.com/*",
@@ -18,17 +19,11 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["detail-extractor.js"],
+      "resources": ["description-scraper.js", "detail-extractor.js"],
       "matches": ["<all_urls>"]
     }
   ],
   "background": {
     "service_worker": "background.js"
-  },
-  "content_scripts": [
-    {
-      "matches": ["https://innovetivepetcare.pinpointhq.com/all-opportunities*"],
-      "js": ["content.js"]
-    }
-  ]
+  }
 }
