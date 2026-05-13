@@ -6,64 +6,57 @@ console.log("Encore Vet Job Scraper content script loaded");
 // Scrape jobs from current page
 function scrapeJobs() {
   const jobs = [];
-  const cards = document.querySelectorAll('.search-result-item');
+  const cardsContainer = document.querySelector('.job-results-container');
+  const cards = getListingCards();
+  const debug = {
+    cardsContainerFound: !!cardsContainer,
+    cardsFound: cards.length,
+    jobsScraped: 0,
+    promotedCardsSkipped: document.querySelectorAll('.promoted-jobs-container .search-result-item, .search-result-item.promoted').length
+  };
 
   cards.forEach(card => {
     try {
       // Job title from itemprop="title" span
-      const titleEl = card.querySelector('[itemprop="title"]');
-      const title = titleEl ? titleEl.innerText.trim() : '';
+      const titleEl = card.querySelector('[itemprop="title"]') || card.querySelector('.job-title-link span');
+      const title = cleanText(titleEl ? titleEl.textContent : '');
 
       // Job URL from job-title-link anchor
-      const linkEl = card.querySelector('.job-title-link');
+      const linkEl = card.querySelector('.job-title-link') || card.querySelector('[itemprop="url"]') || card.querySelector('.read-more-button');
       const link = linkEl ? linkEl.href : '';
 
-      // Extract job ID from URL (handles /jobs/1234 and /job/1234 patterns)
+      // Extract job ID from URL as fallback. The visible Req ID is the source of truth.
       const jobIdMatch = link.match(/\/jobs?\/(\d+)/);
       const rawJobId = jobIdMatch ? jobIdMatch[1] : (link ? link.split('/').filter(s => /^\d+$/.test(s))[0] || '' : '');
-      const jobId = rawJobId ? 'E-' + rawJobId : '';
 
       // Req ID from .req-id span
       const reqIdEl = card.querySelector('.req-id span');
-      const reqId = reqIdEl ? reqIdEl.innerText.trim() : '';
+      const reqId = cleanText(reqIdEl ? reqIdEl.textContent : rawJobId);
+      const jobId = reqId;
 
       // Location: multi-line with hospital, street, city/state
       const locationEl = card.querySelector('.label-value.location');
-      let hospitalName = '', streetAddress = '', city = '', state = '';
-      if (locationEl) {
-        const lines = locationEl.innerText.trim().split('\n').filter(l => l.trim());
-        hospitalName = lines[0] || '';
-        streetAddress = lines[1] || '';
-        const cityState = lines[2] || '';
-        // Parse "City, State" format
-        const cityStateMatch = cityState.match(/^(.+),\s*(.+)$/);
-        if (cityStateMatch) {
-          city = cityStateMatch[1].trim();
-          state = cityStateMatch[2].trim();
-        } else {
-          city = cityState.trim();
-        }
-      }
+      const location = parseLocationBlock(locationEl ? locationEl.textContent : '');
 
       // Category
       const categoryEl = card.querySelector('.categories.label-value');
-      const category = categoryEl ? categoryEl.innerText.trim() : '';
+      const category = cleanText(categoryEl ? categoryEl.textContent : '');
 
-      if (title && link) {
+      if (title || reqId || link || location.hospitalName) {
         jobs.push({
           title,
           jobId,
           reqId,
-          hospitalName,
-          streetAddress,
-          city,
-          state,
+          hospitalName: location.hospitalName,
+          streetAddress: location.streetAddress,
+          city: location.city,
+          state: location.state,
           country: 'USA',
           category,
           link,
           description: '',
           jobType: '',
-          postalCode: ''
+          postalCode: location.postalCode
         });
       }
     } catch (e) {
@@ -71,7 +64,227 @@ function scrapeJobs() {
     }
   });
 
-  return jobs;
+  debug.jobsScraped = jobs.length;
+  console.log('Encore scrape result:', debug);
+  return { jobs, debug };
+}
+
+function getListingCards() {
+  const listingContainer = document.querySelector('.job-results-container');
+  const selector = 'mat-expansion-panel.search-result-item, .search-result-item';
+
+  if (listingContainer) {
+    return Array.from(listingContainer.querySelectorAll(selector))
+      .filter(card => !isPromotedCard(card));
+  }
+
+  return Array.from(document.querySelectorAll(selector))
+    .filter(card => !isPromotedCard(card));
+}
+
+function isPromotedCard(card) {
+  return card.classList.contains('promoted') ||
+    !!card.closest('.promoted-jobs-container') ||
+    !!card.querySelector('.promoted-label');
+}
+
+function cleanText(value) {
+  return (value || '').replace(/\s+/g, ' ').trim();
+}
+
+function parseLocationBlock(value) {
+  const lines = (value || '')
+    .split(/\r?\n/)
+    .map(cleanText)
+    .filter(Boolean);
+
+  const location = {
+    hospitalName: '',
+    streetAddress: '',
+    city: '',
+    state: '',
+    postalCode: ''
+  };
+
+  if (lines.length === 0) return location;
+
+  location.hospitalName = lines[0];
+
+  if (lines.length === 1) {
+    return location;
+  }
+
+  const lastLine = lines[lines.length - 1];
+  const cityStateZip = parseCityStateZip(lastLine);
+
+  location.streetAddress = lines.slice(1, -1).join(', ');
+  location.city = cityStateZip.city;
+  location.state = cityStateZip.state;
+  location.postalCode = cityStateZip.postalCode;
+
+  return location;
+}
+
+function parseCityStateZip(value) {
+  const text = cleanText(value);
+  const match = text.match(/^(.+?),\s*([A-Za-z .]+?)(?:\s+(\d{5}(?:-\d{4})?))?$/);
+
+  if (!match) {
+    return {
+      city: text,
+      state: '',
+      postalCode: ''
+    };
+  }
+
+  return {
+    city: match[1].trim(),
+    state: match[2].trim(),
+    postalCode: match[3] || ''
+  };
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function waitForCondition(checkFn, timeout = 5000, interval = 200) {
+  return new Promise(resolve => {
+    const startTime = Date.now();
+
+    const check = () => {
+      const result = checkFn();
+      if (result) {
+        resolve(result);
+        return;
+      }
+
+      if (Date.now() - startTime > timeout) {
+        resolve(null);
+        return;
+      }
+
+      setTimeout(check, interval);
+    };
+
+    check();
+  });
+}
+
+function findCategoriesSelect() {
+  const labels = Array.from(document.querySelectorAll('mat-label, .mat-form-field-label'));
+
+  for (const label of labels) {
+    if (!/Categories/i.test(label.textContent || '')) continue;
+
+    const formField = label.closest('.mat-form-field') || label.closest('.mat-form-field-wrapper') || label.parentElement;
+    const select = formField?.querySelector('mat-select');
+    if (select) return select;
+  }
+
+  return Array.from(document.querySelectorAll('mat-select')).find(select =>
+    /Categories/i.test(select.closest('.mat-form-field')?.textContent || select.getAttribute('aria-labelledby') || '')
+  ) || null;
+}
+
+function getOpenSelectPanel(select) {
+  if (select?.id) {
+    const exact = document.getElementById(`${select.id}-panel`);
+    if (exact) return exact;
+  }
+
+  const panels = Array.from(document.querySelectorAll('[role="listbox"].mat-select-panel, .mat-select-panel[role="listbox"]'));
+  return panels.find(panel => panel.offsetParent !== null) || panels[0] || null;
+}
+
+async function openCategoriesPanel(select) {
+  const trigger = select.querySelector('.mat-select-trigger') || select;
+  if (select.getAttribute('aria-expanded') !== 'true') {
+    clickElementCenter(trigger);
+  }
+
+  return waitForCondition(() => getOpenSelectPanel(select), 5000, 100);
+}
+
+function findCategoryOption(panel, category) {
+  const options = Array.from(panel.querySelectorAll('mat-option[role="option"], mat-option'));
+
+  return options.find(option => {
+    const text = cleanText(option.querySelector('.mat-option-text')?.textContent || option.textContent || '');
+    const label = text.replace(/\s*\(\d+\)\s*$/, '');
+    return label === category;
+  }) || null;
+}
+
+function clickElementCenter(element) {
+  const rect = element.getBoundingClientRect();
+  const options = {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    view: window,
+    clientX: rect.left + rect.width / 2,
+    clientY: rect.top + rect.height / 2
+  };
+
+  element.dispatchEvent(new MouseEvent('mousedown', options));
+  element.dispatchEvent(new MouseEvent('mouseup', options));
+  element.dispatchEvent(new MouseEvent('click', options));
+}
+
+async function selectCategoryOption(select, category) {
+  const panel = await openCategoriesPanel(select);
+  if (!panel) return { selected: false, error: 'Categories dropdown did not open.' };
+
+  const option = findCategoryOption(panel, category);
+  if (!option) return { selected: false, error: `${category} option was not found.` };
+
+  if (option.getAttribute('aria-selected') === 'true') {
+    return { selected: true };
+  }
+
+  const checkbox = option.querySelector('mat-pseudo-checkbox') || option;
+  checkbox.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  await wait(100);
+  clickElementCenter(checkbox);
+
+  const verified = await waitForCondition(() => {
+    const currentPanel = getOpenSelectPanel(select) || panel;
+    const currentOption = currentPanel ? findCategoryOption(currentPanel, category) : option;
+    return currentOption?.getAttribute('aria-selected') === 'true' ? currentOption : null;
+  }, 2500, 100);
+
+  return { selected: !!verified };
+}
+
+async function applyRequiredCategoryFilters() {
+  const requiredCategories = ['Medical Directors', 'Veterinarian'];
+  const select = findCategoriesSelect();
+
+  if (!select) {
+    return { success: false, error: 'Categories filter dropdown was not found.' };
+  }
+
+  const selected = [];
+  const missing = [];
+
+  for (const category of requiredCategories) {
+    const result = await selectCategoryOption(select, category);
+    if (result.selected) selected.push(category);
+    else missing.push(category);
+  }
+
+  if (select.getAttribute('aria-expanded') === 'true') {
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
+    await wait(250);
+  }
+
+  return {
+    success: missing.length === 0,
+    selected,
+    missing,
+    error: missing.length ? `Could not select category filter(s): ${missing.join(', ')}` : ''
+  };
 }
 
 // Get total number of pages
@@ -80,6 +293,14 @@ function getTotalPages() {
   const paginationEl = document.querySelector('.mat-paginator-range-label');
   if (paginationEl) {
     const text = paginationEl.textContent || paginationEl.getAttribute('aria-label') || '';
+    const numbers = text.match(/\d+/g)?.map(n => parseInt(n, 10)) || [];
+    if (numbers.length >= 3) {
+      const start = numbers[0];
+      const end = numbers[1];
+      const total = numbers[2];
+      const itemsPerPage = Math.max(1, end - start + 1);
+      return Math.ceil(total / itemsPerPage);
+    }
     // Match "of X" pattern (handles various dash types: -, –, —)
     const match = text.match(/of\s+(\d+)/i);
     if (match) {
@@ -116,11 +337,11 @@ function getCurrentPage() {
 function waitForPageLoad(timeout = 8000) {
   return new Promise((resolve) => {
     const startTime = Date.now();
-    let previousCardCount = document.querySelectorAll('.search-result-item').length;
+    let previousCardCount = getListingCards().length;
     let stableCount = 0;
 
     const checkLoaded = () => {
-      const cards = document.querySelectorAll('.search-result-item');
+      const cards = getListingCards();
       const currentCount = cards.length;
 
       // Check if count is stable (same for 2 consecutive checks)
@@ -178,7 +399,7 @@ async function goToPage(pageNum) {
 
 // Get page stats
 function getPageStats() {
-  const cards = document.querySelectorAll('.search-result-item');
+  const cards = getListingCards();
   const totalPages = getTotalPages();
   const currentPage = getCurrentPage();
 
@@ -199,8 +420,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   else if (request.action === "scrapeCurrentPage") {
-    const jobs = scrapeJobs();
-    sendResponse({ jobs: jobs });
+    sendResponse(scrapeJobs());
   }
 
   else if (request.action === "getTotalPages") {
@@ -218,6 +438,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse({ success: success });
     });
     return true; // Keep channel open for async response
+  }
+
+  else if (request.action === "applyCategoryFilters") {
+    applyRequiredCategoryFilters().then(result => {
+      sendResponse(result);
+    });
+    return true;
   }
 
   else if (request.action === "goToPage") {

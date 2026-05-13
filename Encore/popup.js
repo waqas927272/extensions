@@ -83,6 +83,18 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
+      updateProgress('Applying filters...', 'Selecting Medical Directors and Veterinarian', 5);
+      await waitForContentScript(tab.id);
+
+      const filterResponse = await chrome.tabs.sendMessage(tab.id, { action: 'applyCategoryFilters' });
+      if (!filterResponse?.success) {
+        throw new Error(filterResponse?.error || 'Unable to apply category filters.');
+      }
+
+      await waitWithProgress(5000, (remaining, percent) => {
+        updateProgress('Applying filters...', `Waiting ${remaining}s for filtered listings`, percent);
+      });
+
       // Get total pages info
       const statsResponse = await chrome.tabs.sendMessage(tab.id, { action: 'getStats' });
       const totalPagesCount = statsResponse.totalPages || 1;
@@ -102,8 +114,13 @@ document.addEventListener('DOMContentLoaded', () => {
           if (response && response.jobs && response.jobs.length > 0) {
             scrapedJobs.push(...response.jobs);
             console.log(`Page ${pageNum}: Found ${response.jobs.length} jobs. Total: ${scrapedJobs.length}`);
+            if (response.debug) {
+              console.log(`Page ${pageNum}: Cards found ${response.debug.cardsFound}, jobs scraped ${response.debug.jobsScraped}`);
+            }
           } else {
-            console.log(`Page ${pageNum}: No jobs found`);
+            const cardsFound = response?.debug?.cardsFound ?? 0;
+            console.log(`Page ${pageNum}: No jobs found. Cards found: ${cardsFound}`);
+            updateProgress('Scraping...', `Page ${pageNum}: 0 jobs from ${cardsFound} cards`, Math.round((pageNum / totalPagesCount) * 100));
           }
         } catch (e) {
           console.error(`Error scraping page ${pageNum}:`, e);
@@ -156,6 +173,21 @@ document.addEventListener('DOMContentLoaded', () => {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
     return false;
+  }
+
+  async function waitWithProgress(durationMs, onTick) {
+    const start = Date.now();
+    const tickMs = 250;
+
+    while (Date.now() - start < durationMs && !stopRequested) {
+      const elapsed = Date.now() - start;
+      const remaining = Math.ceil((durationMs - elapsed) / 1000);
+      const percent = Math.min(95, 10 + Math.round((elapsed / durationMs) * 80));
+      onTick(remaining, percent);
+      await new Promise(resolve => setTimeout(resolve, tickMs));
+    }
+
+    if (!stopRequested) onTick(0, 95);
   }
 
   // Stop button click

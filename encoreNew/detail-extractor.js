@@ -210,6 +210,27 @@
         'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
     };
 
+    const STATE_NAMES = {
+        AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California',
+        CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', FL: 'Florida', GA: 'Georgia',
+        HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa',
+        KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland',
+        MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi', MO: 'Missouri',
+        MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire', NJ: 'New Jersey',
+        NM: 'New Mexico', NY: 'New York', NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio',
+        OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina',
+        SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont',
+        VA: 'Virginia', WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming',
+        DC: 'District of Columbia', PR: 'Puerto Rico'
+    };
+
+    function getFullStateName(state) {
+        const value = (state || '').trim();
+        if (!value) return '';
+        if (value.length === 2) return STATE_NAMES[value.toUpperCase()] || value;
+        return Object.values(STATE_NAMES).find(name => name.toLowerCase() === value.toLowerCase()) || value;
+    }
+
     function hasSpecialtyTrainingSignal(text) {
         return /\bboard certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b/i.test(text || '');
     }
@@ -294,6 +315,14 @@
     }
 
     // ===== Determine Area of Practice =====
+    function hasEmergencyPracticeSignal(text) {
+        const body = (text || '').toLowerCase();
+        return /\b(?:seeking|hiring|looking\s+for|as)\s+(?:an?\s+)?(?:experienced\s+)?(?:emergency|er)\s+(?:associate\s+)?(?:veterinarian|vet|dvm)\b/i.test(body) ||
+            /\b(?:emergency|er)\s+(?:associate\s+)?(?:veterinarian|vet|dvm)\b/i.test(body) ||
+            /\b\d+\+?\s*(?:years?|yrs?\.?)\s+of\s+experience\s+in\s+emergency\s+veterinary\s+medicine\b/i.test(body) ||
+            /\bhybrid\s+general\s+practice\s+and\s+emergency\s+hospital\b/i.test(body);
+    }
+
     function determineAreaOfPractice(title, category, descriptionText) {
         if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
         // STEP 1: Use category from page (most reliable â€” directly from jobvite)
@@ -346,6 +375,9 @@
                 if (qualLower.includes(cert)) return 'Specialty Care';
             }
         }
+
+        if (descriptionText.match(/Veterinarian \(ER\)/i)) return 'Emergency Care';
+        if (hasEmergencyPracticeSignal(descriptionText)) return 'Emergency Care';
 
         return 'General Practice Care';
     }
@@ -570,6 +602,9 @@
         const text = descriptionText;
 
         const salaryPatterns = [
+            // "base salary range is from (130K - 170K)" or "base salary range is from 130K to 170K"
+            /(?:pay\s*range|salary\s*range|base\s+salary\s+range|compensation\s+range|our\s+base\s+salary\s+range)[\s\S]{0,120}?\(?\s*(?:USD\s*)?\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*(?:USD\s*)?\$?\s*[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*\))?(?:\s*\/\s*(?:yr|year|hr|hour))?/i,
+            /(?:pay\s*range|salary\s*range|base\s+salary\s+range|compensation\s+range|our\s+base\s+salary\s+range)[\s\S]{0,120}?\(?\s*(?:USD\s*)?\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+(?:USD\s*)?\$?\s*[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*\))?(?:\s*\/\s*(?:yr|year|hr|hour))?/i,
             // Encore/iCIMS: "Pay RangeUSD $145,000.00 - USD $155,000.00 /Yr."
             /(?:pay\s*range|salary\s*range|base\s+salary\s+range|compensation\s+range|our\s+base\s+salary\s+range)[\s\S]{0,100}?(?:USD\s*)?\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*(?:USD\s*)?\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*\/\s*(?:yr|year|hr|hour))?/i,
             /(?:pay\s*range|salary\s*range|base\s+salary\s+range|compensation\s+range|our\s+base\s+salary\s+range)[\s\S]{0,100}?(?:USD\s*)?\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+(?:USD\s*)?\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*\/\s*(?:yr|year|hr|hour))?/i,            // "Base salary ranges: $150k - $171k" or "base salary range of $140,000 â€“ 160,000"
@@ -653,23 +688,6 @@
                 const match = source.match(pattern);
                 if (match) return formatExperience(match);
             }
-        }
-
-        const signalText = candidateLines.join('\n');
-        const requirementText = extractQualificationsSection(descriptionText) ||
-            (descriptionText.match(/(?:you\s+are|requirements?|qualifications?|what\s+you'?ll\s+need|what\s+we'?re\s+looking\s+for)[:\s]*([\s\S]{0,900}?)(?=(?:perks|benefits|what.?s\s+in|compensation|pay\s+range|want\s+to|check\s+us\s+out|encore\s+vet\s+group)[:\s])/i) || [])[1] ||
-            '';
-        if (/\b(?:board[-\s]?certified|residency[-\s]?trained|residential[-\s]?trained|internship[-\s]?trained)\b/i.test(requirementText) &&
-            /\b(?:required|requirement|qualified|qualification|must|seeking|looking\s+for|you\s+are|candidate|comfortable|licensed)\b/i.test(requirementText)) {
-            return 'Board Certified or Residency Trained';
-        }
-
-        if (/\b(?:new\s+grads?\s+welcome|new\s+graduates?\s+welcome|new\s+graduates?|recent\s+graduates?|mentorcore|mentorship\s+for\s+new\s+graduates?)\b/i.test(signalText)) {
-            return 'New Graduates Welcome';
-        }
-
-        if (/\b(?:experienced\s+(?:associate\s+)?(?:veterinarian|dvm|doctor)|looking\s+for\s+an?\s+experienced|seeking\s+an?\s+experienced)\b/i.test(signalText)) {
-            return 'Experienced';
         }
 
         return '';
@@ -838,7 +856,7 @@
     return locations.map(loc => ({
         ...baseDetails,
         city: loc.city,
-        state: loc.state,
+        state: getFullStateName(loc.state),
         location: loc.location
     }));
 })();

@@ -10,10 +10,17 @@
     const searchInput = document.getElementById('searchInput');
     const exportCsvButton = document.getElementById('exportCsv');
     const toastContainer = document.getElementById('toastContainer');
+    const descriptionModal = document.getElementById('descriptionModal');
+    const modalDescriptionContent = document.getElementById('modalDescriptionContent');
+    const closeDescriptionModal = document.getElementById('closeDescriptionModal');
+    const selectAllJobsCheckbox = document.getElementById('selectAllJobs');
+    const deleteSelectedJobsButton = document.getElementById('deleteSelectedJobs');
 
     let currentSortColumn = null;
     let currentSortDirection = 'asc';
     let allJobs = [];
+    let currentDisplayedJobs = [];
+    let selectedJobKeys = new Set();
     let isGettingDescriptions = false;
     let isFetchingDetails = false;
     let isFetchingAddresses = false;
@@ -28,7 +35,9 @@
     const fetchAddressesBtn = document.getElementById('fetchAddressesBtn');
 
     function normalizeEncoreJobId(jobId) {
-        return (jobId || '').replace(/^UVC-/i, 'ENC-');
+        const raw = String(jobId || '').trim();
+        const numericId = raw.match(/(?:UVC|ENC|E)-?(\d+(?:-\d+)*)$/i) || raw.match(/^(\d+(?:-\d+)*)$/);
+        return numericId ? `E-${numericId[1]}` : raw.replace(/^UVC-/i, 'E-').replace(/^ENC-/i, 'E-');
     }
 
     function normalizeSalaryText(salary) {
@@ -46,13 +55,45 @@
         return raw;
     }
 
+    function normalizeExperienceText(experience) {
+        const raw = String(experience || '').trim();
+        if (!raw || raw === '-') return '-';
+        const range = raw.match(/\b(\d+)\s*(?:-|–|—|to)\s*(\d+)\s*(?:years?|yrs?\.?)\b/i);
+        if (range) return `${range[1]}-${range[2]} years`;
+        const single = raw.match(/\b(\d+)\+?\s*(?:years?|yrs?\.?)\b/i);
+        if (single) return raw.includes('+') ? `${single[1]}+ years` : `${single[1]} ${single[1] === '1' ? 'year' : 'years'}`;
+        return '-';
+    }
+
     function normalizeStoredJobFields(jobs) {
         let changed = false;
         const normalizedJobs = (jobs || []).map(job => {
             const nextJob = { ...job };
             const normalizedJobId = normalizeEncoreJobId(job.jobId);
-            const normalizedSalary = normalizeSalaryText(job.salary);
-            const normalizedPhone = normalizePhoneNumber(job.phone);
+            let normalizedSalary = normalizeSalaryText(job.salary);
+            let normalizedPhone = normalizePhoneNumber(job.phone);
+            let normalizedState = getFullStateName(job.state);
+            let normalizedExperience = normalizeExperienceText(job.experience);
+
+            if (nextJob.description) {
+                const extracted = extractDetailsFromDescription(nextJob.title || '', nextJob.description);
+                if (extracted.salary) nextJob.salary = normalizeSalaryText(extracted.salary);
+                if (extracted.areaOfPractice) nextJob.areaOfPractice = extracted.areaOfPractice;
+                if (extracted.position) nextJob.position = extracted.position;
+                if (extracted.jobType) nextJob.jobType = extracted.jobType;
+                nextJob.experience = normalizeExperienceText(extracted.experience);
+                if (extracted.locations && extracted.locations[0]) {
+                    nextJob.city = extracted.locations[0].city || nextJob.city || '';
+                    nextJob.state = getFullStateName(extracted.locations[0].state || nextJob.state || '');
+                    nextJob.location = extracted.locations[0].location || nextJob.location || '';
+                }
+                changed = true;
+            }
+
+            normalizedSalary = normalizeSalaryText(nextJob.salary);
+            normalizedPhone = normalizePhoneNumber(nextJob.phone);
+            normalizedState = getFullStateName(nextJob.state);
+            normalizedExperience = normalizeExperienceText(nextJob.experience);
 
             if (normalizedJobId !== (job.jobId || '')) {
                 nextJob.jobId = normalizedJobId;
@@ -64,6 +105,14 @@
             }
             if (normalizedPhone !== (job.phone || '')) {
                 nextJob.phone = normalizedPhone;
+                changed = true;
+            }
+            if (normalizedState !== (job.state || '')) {
+                nextJob.state = normalizedState;
+                changed = true;
+            }
+            if (normalizedExperience !== (job.experience || '')) {
+                nextJob.experience = normalizedExperience;
                 changed = true;
             }
             return nextJob;
@@ -140,11 +189,14 @@
 
     // Convert state abbreviation to full name if needed
     function getFullStateName(state) {
-        if (!state) return '';
-        // If it's already a full name (longer than 2 chars), return as is
-        if (state.length > 2) return state;
+        const value = String(state || '').trim();
+        if (!value) return '';
+        if (value.length > 2) {
+            const canonical = Object.values(stateAbbreviations).find(name => name.toLowerCase() === value.toLowerCase());
+            return canonical || value;
+        }
         // Convert abbreviation to full name
-        return stateAbbreviations[state.toUpperCase()] || state;
+        return stateAbbreviations[value.toUpperCase()] || value;
     }
 
     const APPROVED_POSITIONS = [
@@ -389,6 +441,9 @@
 
             // Fallback to text pattern matching
             const salaryPatterns = [
+                // "base salary range is from (130K - 170K)" or "base salary range is from 130K to 170K"
+                /(?:pay\s*range|salary\s*range|base\s+salary\s+range|compensation\s+range|our\s+base\s+salary\s+range)[\s\S]{0,120}?\(?\s*(?:USD\s*)?\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*(?:USD\s*)?\$?\s*[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*\))?(?:\s*\/\s*(?:yr|year|hr|hour))?/i,
+                /(?:pay\s*range|salary\s*range|base\s+salary\s+range|compensation\s+range|our\s+base\s+salary\s+range)[\s\S]{0,120}?\(?\s*(?:USD\s*)?\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+(?:USD\s*)?\$?\s*[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*\))?(?:\s*\/\s*(?:yr|year|hr|hour))?/i,
                 // Encore/iCIMS: "Pay RangeUSD $145,000.00 - USD $155,000.00 /Yr."
                 /(?:pay\s*range|salary\s*range|base\s+salary\s+range|compensation\s+range|our\s+base\s+salary\s+range)[\s\S]{0,100}?(?:USD\s*)?\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*(?:USD\s*)?\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*\/\s*(?:yr|year|hr|hour))?/i,
                 /(?:pay\s*range|salary\s*range|base\s+salary\s+range|compensation\s+range|our\s+base\s+salary\s+range)[\s\S]{0,100}?(?:USD\s*)?\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+(?:USD\s*)?\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*\/\s*(?:yr|year|hr|hour))?/i,                // "Base salary ranges: $150k - $171k" or "base salary range of $140,000 â€“ 160,000"
@@ -465,6 +520,14 @@
 
         // Determine Area of Practice
         // Priority: 1) Title-specific overrides (urgent care), 2) Industry/Category from JSON-LD, 3) title keywords, 4) description qualifications
+        function hasEmergencyPracticeSignal(text) {
+            const body = (text || '').toLowerCase();
+            return /\b(?:seeking|hiring|looking\s+for|as)\s+(?:an?\s+)?(?:experienced\s+)?(?:emergency|er)\s+(?:associate\s+)?(?:veterinarian|vet|dvm)\b/i.test(body) ||
+                /\b(?:emergency|er)\s+(?:associate\s+)?(?:veterinarian|vet|dvm)\b/i.test(body) ||
+                /\b\d+\+?\s*(?:years?|yrs?\.?)\s+of\s+experience\s+in\s+emergency\s+veterinary\s+medicine\b/i.test(body) ||
+                /\bhybrid\s+general\s+practice\s+and\s+emergency\s+hospital\b/i.test(body);
+        }
+
         function determineAreaOfPractice(positionText, descriptionText) {
             const title = positionText.toLowerCase();
             const category = getIndustryCategory(descriptionText).toLowerCase();
@@ -530,6 +593,7 @@
 
             // STEP 6: Check page text for ER category
             if (descriptionText.match(/Veterinarian \(ER\)/i)) return 'Emergency Care';
+            if (hasEmergencyPracticeSignal(descriptionText)) return 'Emergency Care';
 
             return 'General Practice Care';
         }
@@ -617,7 +681,10 @@
             if (!position) {
                 position = matchPositionFromQualifications(descriptionText);
             }
-            return APPROVED_POSITION_SET.has(position) ? position : '';
+            if (position) {
+                position = validatePositionForAOP(position, areaOfPractice);
+            }
+            return APPROVED_POSITION_SET.has(position) ? position : getDefaultPositionForAOP(areaOfPractice, positionText);
         }
 
         // Extract locations from stored description (which now includes JSON-LD data)
@@ -849,23 +916,6 @@
                     const match = source.match(pattern);
                     if (match) return formatExperience(match);
                 }
-            }
-
-            const signalText = candidateLines.join('\n');
-            const requirementText = extractQualificationsSection(text) ||
-                (text.match(/(?:you\s+are|requirements?|qualifications?|what\s+you'?ll\s+need|what\s+we'?re\s+looking\s+for)[:\s]*([\s\S]{0,900}?)(?=(?:perks|benefits|what.?s\s+in|compensation|pay\s+range|want\s+to|check\s+us\s+out|encore\s+vet\s+group)[:\s])/i) || [])[1] ||
-                '';
-            if (/\b(?:board[-\s]?certified|residency[-\s]?trained|residential[-\s]?trained|internship[-\s]?trained)\b/i.test(requirementText) &&
-                /\b(?:required|requirement|qualified|qualification|must|seeking|looking\s+for|you\s+are|candidate|comfortable|licensed)\b/i.test(requirementText)) {
-                return 'Board Certified or Residency Trained';
-            }
-
-            if (/\b(?:new\s+grads?\s+welcome|new\s+graduates?\s+welcome|new\s+graduates?|recent\s+graduates?|mentorcore|mentorship\s+for\s+new\s+graduates?)\b/i.test(signalText)) {
-                return 'New Graduates Welcome';
-            }
-
-            if (/\b(?:experienced\s+(?:associate\s+)?(?:veterinarian|dvm|doctor)|looking\s+for\s+an?\s+experienced|seeking\s+an?\s+experienced)\b/i.test(signalText)) {
-                return 'Experienced';
             }
 
             return '';
@@ -1346,13 +1396,77 @@
         totalCountElement.textContent = count;
     }
 
+    function showDescriptionModal(description) {
+        if (!descriptionModal || !modalDescriptionContent) return;
+        modalDescriptionContent.textContent = description || '';
+        descriptionModal.classList.add('show');
+    }
+
+    function hideDescriptionModal() {
+        if (!descriptionModal || !modalDescriptionContent) return;
+        descriptionModal.classList.remove('show');
+        modalDescriptionContent.textContent = '';
+    }
+
+    function setCompactCell(row, value) {
+        const cell = row.insertCell();
+        const displayValue = value || '-';
+        cell.textContent = displayValue;
+        cell.title = displayValue;
+        return cell;
+    }
+
+    function getJobSelectionKey(job) {
+        return [
+            normalizeEncoreJobId(job.jobId) || '',
+            job.link || '',
+            job.title || '',
+            job.hospital || '',
+            job.location || ''
+        ].join('|');
+    }
+
+    function updateSelectionControls() {
+        const selectedCount = selectedJobKeys.size;
+
+        if (deleteSelectedJobsButton) {
+            deleteSelectedJobsButton.disabled = selectedCount === 0;
+            deleteSelectedJobsButton.innerHTML = `
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z"/>
+              </svg>
+              Delete Jobs (${selectedCount})
+            `;
+        }
+
+        if (selectAllJobsCheckbox) {
+            const visibleKeys = currentDisplayedJobs.map(getJobSelectionKey);
+            const selectedVisibleCount = visibleKeys.filter(key => selectedJobKeys.has(key)).length;
+            selectAllJobsCheckbox.checked = visibleKeys.length > 0 && selectedVisibleCount === visibleKeys.length;
+            selectAllJobsCheckbox.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleKeys.length;
+        }
+    }
+
+    if (closeDescriptionModal) {
+        closeDescriptionModal.addEventListener('click', hideDescriptionModal);
+    }
+
+    if (descriptionModal) {
+        descriptionModal.addEventListener('click', (event) => {
+            if (event.target === descriptionModal) hideDescriptionModal();
+        });
+    }
+
     function displayRecords(jobs) {
+        currentDisplayedJobs = jobs || [];
+        jobs = currentDisplayedJobs;
         tableBody.innerHTML = '';
         updateJobCount(jobs.length);
 
         if (jobs.length === 0) {
             table.style.display = 'none';
             emptyState.classList.remove('hidden');
+            updateSelectionControls();
             return;
         }
 
@@ -1361,62 +1475,105 @@
 
         jobs.forEach((job, index) => {
             const row = tableBody.insertRow();
+            const selectionKey = getJobSelectionKey(job);
+            const hasDetails = !!job.detailsFetched ||
+                !!(job.areaOfPractice || job.position || job.salary || job.jobType || job.experience ||
+                    job.hospital || job.streetAddress || job.city || job.state || job.zipCode || job.phone || job.website);
 
             // Mark new jobs with green background
             if (job.isNewLocation) {
                 row.style.backgroundColor = '#d1fae5';
             }
 
-            row.insertCell(0).textContent = job.title || '-';
+            if (job.cityMismatchFlag) {
+                row.classList.add('row-city-mismatch');
+                row.title = job.cityMismatchReason || 'City/state was corrected from Google address data';
+            }
 
-            const jobIdCell = row.insertCell(1);
-            jobIdCell.textContent = normalizeEncoreJobId(job.jobId) || 'N/A';
+            if (selectedJobKeys.has(selectionKey)) {
+                row.classList.add('selected-row');
+            }
+
+            const selectCell = row.insertCell();
+            selectCell.className = 'select-cell';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'job-select-checkbox';
+            checkbox.checked = selectedJobKeys.has(selectionKey);
+            checkbox.setAttribute('aria-label', `Select job ${index + 1}`);
+            checkbox.addEventListener('change', () => {
+                if (checkbox.checked) {
+                    selectedJobKeys.add(selectionKey);
+                    row.classList.add('selected-row');
+                } else {
+                    selectedJobKeys.delete(selectionKey);
+                    row.classList.remove('selected-row');
+                }
+                updateSelectionControls();
+            });
+            selectCell.appendChild(checkbox);
+
+            const serialCell = setCompactCell(row, index + 1);
+            serialCell.className = 'serial-cell';
+
+            setCompactCell(row, job.title);
+
+            const jobIdCell = setCompactCell(row, normalizeEncoreJobId(job.jobId) || 'N/A');
             jobIdCell.style.fontFamily = "'Consolas', 'Monaco', monospace";
             jobIdCell.style.fontSize = '12px';
             jobIdCell.style.color = '#64748b';
 
-            row.insertCell(2).textContent = job.areaOfPractice || '-';
-            row.insertCell(3).textContent = job.position || '-';
-            row.insertCell(4).textContent = normalizeSalaryText(job.salary) || '-';
-            row.insertCell(5).textContent = job.jobType || '-';
-            row.insertCell(6).textContent = job.experience || '-';
-            row.insertCell(7).textContent = 'Encore Vet Group (Parent Client)';
-            row.insertCell(8).textContent = job.hospital || '-';
-            row.insertCell(9).textContent = job.city || '-';
-            row.insertCell(10).textContent = job.state || '-';
-            row.insertCell(11).textContent = job.streetAddress || '-';
-            row.insertCell(12).textContent = job.zipCode || '-';
-            row.insertCell(13).textContent = normalizePhoneNumber(job.phone) || '-';
+            setCompactCell(row, hasDetails ? job.hospital : '');
+            setCompactCell(row, 'Encore Vet Group (Parent Client)');
+            setCompactCell(row, hasDetails ? job.streetAddress : '');
+            setCompactCell(row, hasDetails ? job.city : '');
+            setCompactCell(row, hasDetails ? getFullStateName(job.state) : '');
+            setCompactCell(row, hasDetails ? job.zipCode : '');
+            setCompactCell(row, hasDetails ? normalizePhoneNumber(job.phone) : '');
 
-            const websiteCell = row.insertCell(14);
-            if (job.website) {
+            const websiteCell = row.insertCell();
+            if (hasDetails && job.website) {
                 const websiteLink = document.createElement('a');
                 websiteLink.href = job.website;
                 websiteLink.textContent = 'Visit';
                 websiteLink.target = '_blank';
                 websiteLink.style.color = '#2563eb';
+                websiteLink.title = job.website;
                 websiteCell.appendChild(websiteLink);
             } else {
                 websiteCell.textContent = '-';
             }
 
-            const linkCell = row.insertCell(15);
+            setCompactCell(row, job.location);
+            setCompactCell(row, hasDetails ? job.areaOfPractice : '');
+            setCompactCell(row, hasDetails ? job.position : '');
+            setCompactCell(row, hasDetails ? normalizeSalaryText(job.salary) : '');
+            setCompactCell(row, hasDetails ? job.jobType : '');
+            setCompactCell(row, hasDetails ? normalizeExperienceText(job.experience) : '-');
+
+            const linkCell = row.insertCell();
             const link = document.createElement('a');
             link.href = job.link;
             link.textContent = 'View Job';
             link.target = '_blank';
+            link.title = job.link || 'View Job';
             linkCell.appendChild(link);
 
-            const descCell = row.insertCell(16);
+            const descCell = row.insertCell();
             if (job.description) {
-                const descDiv = document.createElement('div');
-                descDiv.className = 'description-cell';
-                descDiv.textContent = job.description;
-                descCell.appendChild(descDiv);
+                const descButton = document.createElement('button');
+                descButton.type = 'button';
+                descButton.className = 'view-description-btn';
+                descButton.textContent = 'View Description';
+                descButton.title = 'View Description';
+                descButton.addEventListener('click', () => showDescriptionModal(job.description));
+                descCell.appendChild(descButton);
             } else {
                 descCell.innerHTML = '<span style="color: #94a3b8; font-style: italic; font-size: 12px;">Not scraped</span>';
             }
         });
+
+        updateSelectionControls();
     }
 
     function filterJobs(searchTerm) {
@@ -1460,31 +1617,81 @@
         });
     }
 
+    function refreshRecordsView() {
+        const searchTerm = searchInput ? searchInput.value.trim() : '';
+        const baseRecords = currentSortColumn
+            ? sortRecords(currentSortColumn, currentSortDirection, allJobs)
+            : allJobs;
+
+        if (!searchTerm) {
+            displayRecords(baseRecords);
+            return;
+        }
+
+        const term = searchTerm.toLowerCase();
+        const filtered = baseRecords.filter(job =>
+            (job.title || '').toLowerCase().includes(term) ||
+            (job.hospital || '').toLowerCase().includes(term) ||
+            (job.city || '').toLowerCase().includes(term) ||
+            (job.state || '').toLowerCase().includes(term) ||
+            (job.location || '').toLowerCase().includes(term) ||
+            (job.streetAddress || '').toLowerCase().includes(term) ||
+            (job.zipCode || '').toLowerCase().includes(term) ||
+            (job.phone || '').toLowerCase().includes(term) ||
+            (job.website || '').toLowerCase().includes(term) ||
+            (job.areaOfPractice || '').toLowerCase().includes(term) ||
+            (job.position || '').toLowerCase().includes(term) ||
+            (job.jobType || '').toLowerCase().includes(term) ||
+            (job.experience || '').toLowerCase().includes(term)
+        );
+
+        displayRecords(filtered);
+    }
+
+    function deleteSelectedJobs() {
+        const selectedCount = selectedJobKeys.size;
+        if (selectedCount === 0) return;
+
+        if (!confirm(`Delete ${selectedCount} selected job${selectedCount === 1 ? '' : 's'}?`)) {
+            return;
+        }
+
+        const nextJobs = allJobs.filter(job => !selectedJobKeys.has(getJobSelectionKey(job)));
+        chrome.storage.local.set({ scrapedJobs: nextJobs }, () => {
+            allJobs = nextJobs;
+            selectedJobKeys.clear();
+            refreshRecordsView();
+            showToast(`Deleted ${selectedCount} selected job${selectedCount === 1 ? '' : 's'}!`, 'success');
+        });
+    }
+
     function exportToCSV() {
         if (!allJobs || allJobs.length === 0) {
             showToast('No jobs to export!', 'error');
             return;
         }
 
-        const headers = ['Job Title', 'Job ID', 'Area of Practice', 'Position', 'Salary', 'Job Type', 'Experience', 'Aggregator', 'Hospital Name', 'City', 'State', 'Street Address', 'ZipCode', 'Phone', 'Website', 'Link', 'Description'];
+        const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Aggregator', 'Street Address', 'City', 'State', 'Zip Code', 'Phone', 'Website', 'Location', 'Area of Practice', 'Position', 'Salary', 'Job Type', 'Experience', 'Link', 'Description'];
         const csvContent = [
             headers.join(','),
-            ...allJobs.map((job) => [
+            ...allJobs.map((job, index) => [
+                index + 1,
                 `"${(job.title || '').replace(/"/g, '""')}"`,
                 `"${normalizeEncoreJobId(job.jobId).replace(/"/g, '""')}"`,
+                `"${(job.hospital || '').replace(/"/g, '""')}"`,
+                `"Encore Vet Group (Parent Client)"`,
+                `"${(job.streetAddress || '').replace(/"/g, '""')}"`,
+                `"${(job.city || '').replace(/"/g, '""')}"`,
+                `"${getFullStateName(job.state).replace(/"/g, '""')}"`,
+                `"${(job.zipCode || '').replace(/"/g, '""')}"`,
+                `"${normalizePhoneNumber(job.phone).replace(/"/g, '""')}"`,
+                `"${(job.website || '').replace(/"/g, '""')}"`,
+                `"${(job.location || '').replace(/"/g, '""')}"`,
                 `"${(job.areaOfPractice || '').replace(/"/g, '""')}"`,
                 `"${(job.position || '').replace(/"/g, '""')}"`,
                 `"${normalizeSalaryText(job.salary).replace(/"/g, '""')}"`,
                 `"${(job.jobType || '').replace(/"/g, '""')}"`,
-                `"${(job.experience || '').replace(/"/g, '""')}"`,
-                `"Encore Vet Group (Parent Client)"`,
-                `"${(job.hospital || '').replace(/"/g, '""')}"`,
-                `"${(job.city || '').replace(/"/g, '""')}"`,
-                `"${(job.state || '').replace(/"/g, '""')}"`,
-                `"${(job.streetAddress || '').replace(/"/g, '""')}"`,
-                `"${(job.zipCode || '').replace(/"/g, '""')}"`,
-                `"${normalizePhoneNumber(job.phone).replace(/"/g, '""')}"`,
-                `"${(job.website || '').replace(/"/g, '""')}"`,
+                `"${normalizeExperienceText(job.experience).replace(/"/g, '""')}"`,
                 `"${(job.link || '').replace(/"/g, '""')}"`,
                 `"${(job.description || '').replace(/"/g, '""')}"`
             ].join(','))
@@ -1543,6 +1750,23 @@
         searchInput.addEventListener('input', (e) => {
             filterJobs(e.target.value);
         });
+    }
+
+    if (selectAllJobsCheckbox) {
+        selectAllJobsCheckbox.addEventListener('click', (event) => event.stopPropagation());
+        selectAllJobsCheckbox.addEventListener('change', () => {
+            const visibleKeys = currentDisplayedJobs.map(getJobSelectionKey);
+            if (selectAllJobsCheckbox.checked) {
+                visibleKeys.forEach(key => selectedJobKeys.add(key));
+            } else {
+                visibleKeys.forEach(key => selectedJobKeys.delete(key));
+            }
+            displayRecords(currentDisplayedJobs);
+        });
+    }
+
+    if (deleteSelectedJobsButton) {
+        deleteSelectedJobsButton.addEventListener('click', deleteSelectedJobs);
     }
 
     // Export CSV
@@ -1634,11 +1858,12 @@
     // Clear all records
     clearRecordsButton.addEventListener('click', () => {
         if (confirm('Are you sure you want to clear all scraped job records?')) {
-            chrome.storage.local.set({ scrapedJobs: [] }, () => {
-                allJobs = [];
-                displayRecords([]);
-                showToast('All records cleared!', 'success');
-            });
+                chrome.storage.local.set({ scrapedJobs: [] }, () => {
+                    allJobs = [];
+                    selectedJobKeys.clear();
+                    displayRecords([]);
+                    showToast('All records cleared!', 'success');
+                });
         }
     });
 
@@ -1678,7 +1903,7 @@
             street_address: job.streetAddress || '',
             parent_client: "Encore Vet Group (Parent Client)",
             city: job.city,
-            state: job.state,
+            state: getFullStateName(job.state),
             zip_code: job.zipCode || '',
             phone: normalizePhoneNumber(job.phone),
             website: job.website || '',
@@ -1687,7 +1912,7 @@
             position: job.position || '',
             salary: normalizeSalaryText(job.salary),
             job_type: job.jobType || '',
-            experience: job.experience || '',
+            experience: normalizeExperienceText(job.experience),
             url: job.link,
             link: job.link,
             description: job.description || ''
@@ -2129,9 +2354,10 @@
                 originalJob.salary = normalizeSalaryText(firstDetail.salary || originalJob.salary || '');
                 originalJob.hospital = firstDetail.hospitalName || originalJob.hospital || '';
                 originalJob.jobType = firstDetail.jobType || originalJob.jobType || 'Full-Time';
-                originalJob.experience = firstDetail.experience || originalJob.experience || '';
+                originalJob.experience = normalizeExperienceText(firstDetail.experience || originalJob.experience);
+                originalJob.detailsFetched = true;
                 if (firstDetail.city) originalJob.city = firstDetail.city;
-                if (firstDetail.state) originalJob.state = firstDetail.state;
+                if (firstDetail.state) originalJob.state = getFullStateName(firstDetail.state);
                 if (firstDetail.location) originalJob.location = firstDetail.location;
                 // Update description if we got a better one
                 if (firstDetail.description && firstDetail.description.length > (originalJob.description || '').length) {
@@ -2160,7 +2386,7 @@
                     const newJobs = [];
                     for (let i = 1; i < detailsList.length; i++) {
                         const loc = detailsList[i];
-                        const baseJobId = originalJob.jobId.split('-')[0];
+                        const baseJobId = normalizeEncoreJobId(originalJob.jobId);
                         // Only build city-specific hospital name if the original had a city suffix
                         let childHospital = currentHospital;
                         if (hasCitySuffix) {
@@ -2179,6 +2405,7 @@
                             streetAddress: '',
                             zipCode: '',
                             isNewLocation: true,
+                            detailsFetched: true,
                             sourceLink: originalJob.link || ''
                         };
                         newJobs.push(newJob);
@@ -2285,8 +2512,8 @@
                 streetAddress: job.streetAddress || '',
                 zipCode: job.zipCode || '',
                 city: job.city || '',
-                state: job.state || '',
-                fullAddress: [job.streetAddress, job.city, [job.state, job.zipCode].filter(Boolean).join(' ')].filter(Boolean).join(', '),
+                state: getFullStateName(job.state) || '',
+                fullAddress: [job.streetAddress, job.city, [getFullStateName(job.state), job.zipCode].filter(Boolean).join(' ')].filter(Boolean).join(', '),
                 website: job.website || '',
                 phone: normalizePhoneNumber(job.phone)
             };

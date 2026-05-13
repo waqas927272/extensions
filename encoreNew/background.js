@@ -190,9 +190,31 @@ async function handleStartScraping(sendResponse) {
         return;
     }
 
-    // Top-frame mode (Encore listing): no Jobvite filter form, scrape immediately.
+    // Top-frame mode (Encore listing): apply category filters before scraping.
     if (iframeFrameId === 0) {
-        scrapeAndGoToNext();
+        try {
+            sendStatusToPopup('scraping', 'Applying category filters...', 0);
+            const filterResult = await chrome.tabs.sendMessage(currentTabId, { action: 'applyFiltersAndSearch' });
+
+            if (!filterResult?.success) {
+                isScraping = false;
+                sendStatusToPopup('error', filterResult?.message || 'Failed to apply category filters.');
+                sendResponse({ status: 'error', message: filterResult?.message || 'Failed to apply category filters.' });
+                return;
+            }
+
+            sendStatusToPopup('scraping', 'Filters applied, waiting for results to load...', 0);
+            setTimeout(() => {
+                sendStatusToPopup('scraping', 'Starting to scrape jobs...', 0);
+                scrapeAndGoToNext();
+            }, 5000);
+        } catch (e) {
+            isScraping = false;
+            sendStatusToPopup('error', 'Error applying filters: ' + e.message);
+            sendResponse({ status: 'error', message: e.message });
+            return;
+        }
+
         sendResponse({ status: 'scrapingStarted' });
         return;
     }
