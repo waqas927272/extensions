@@ -24,6 +24,7 @@
   const VALID_POSITIONS_BY_AOP = {
     'Emergency Care': ['Associate Veterinarian'],
     'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
+    'Exotic Pet Medicine': ['Associate Veterinarian'],
     'Specialty Care': [
       'Anesthesiologist',
       'Cardiologist',
@@ -241,10 +242,11 @@
 
   function determineAreaOfPractice(title, description) {
     const combined = `${title}\n${description}`;
+    if (isExoticPetMedicineRole(title, description)) return 'Exotic Pet Medicine';
     if (hasSpecialtySignal(combined)) return 'Specialty Care';
     if (/\burgent care\b/i.test(combined)) return 'Urgent Care';
     if (/\b(emergency|er veterinarian|er vet|critical care|ecc)\b/i.test(combined)) return 'Emergency Care';
-    if (/\b(equine|bovine|large animal|avian|exotics)\b/i.test(combined)) return 'General Practice Care / Emergency Care / Urgent Care';
+    if (/\b(equine|bovine|large animal)\b/i.test(combined)) return 'General Practice Care / Emergency Care / Urgent Care';
     if (/\b(veterinarian|dvm|vmd|medical director|lead veterinarian|general practice|clinic|hospital)\b/i.test(combined)) return 'General Practice Care';
     return '';
   }
@@ -293,10 +295,21 @@
     if (/partner veterinarian|partner vet/i.test(title || '') && /Urgent Care/i.test(areaOfPractice || '')) {
       return 'Partner Veterinarian';
     }
-    if (/(General Practice Care|Emergency Care|Urgent Care)/i.test(areaOfPractice || '')) {
+    if (/(General Practice Care|Emergency Care|Urgent Care|Exotic Pet Medicine)/i.test(areaOfPractice || '')) {
       return 'Associate Veterinarian';
     }
     return '';
+  }
+
+  function isExoticPetMedicineRole(title, description) {
+    if (/\b(avian|exotics?|exotic pets?|pocket pets?|reptiles?|small mammals?)\b/i.test(title || '')) return true;
+    const opening = (description || '').slice(0, 1200);
+    const qualifications = extractSection(description || '', /(requirements?|qualifications?|what you'?ll need|what we'?re looking for|must have|credentials?)[:\s]/i);
+    const roleText = `${opening}\n${qualifications}`;
+
+    return /\b(avian|exotic)\s+(?:veterinarian|patients?|medicine)\b/i.test(roleText) ||
+      /\bseeing\s+avian\s+and\s+exotic\s+patients\s+exclusively\b/i.test(roleText) ||
+      /\b(avbp|zoological medicine|small mammal|reptile|amphibian)\b/i.test(roleText);
   }
 
   const jsonLd = getJsonLdData();

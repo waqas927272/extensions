@@ -476,7 +476,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const titleLower = titleText.toLowerCase();
     const focusText = normalizeParserText(`${titleText}\n${firstDescriptionChars(description, 1400)}`);
 
-    if (/\b(board[-\s]+certified|residency[-\s]+trained|diplomate|dacv(?:ecc|im|r|s|d|o|aa)?|criticalist|oncologist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|anesthesiologist|internist|internal medicine|surgeon|specialist|dentist|dental|avian|exotics?)\b/i.test(titleText)) {
+    if (isExoticPetMedicineRole(titleText, description)) {
+      return 'Exotic Pet Medicine';
+    }
+
+    if (/\b(board[-\s]+certified|residency[-\s]+trained|diplomate|dacv(?:ecc|im|r|s|d|o|aa)?|criticalist|oncologist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|anesthesiologist|internist|internal medicine|surgeon|specialist|dentist|dental)\b/i.test(titleText)) {
       return 'Specialty Care';
     }
 
@@ -509,6 +513,19 @@ document.addEventListener('DOMContentLoaded', () => {
     return source.slice(start, start + length);
   }
 
+  function isExoticPetMedicineRole(title, description) {
+    const titleText = normalizeParserText(title);
+    if (/\b(avian|exotics?|exotic pets?|pocket pets?|reptiles?|small mammals?)\b/i.test(titleText)) return true;
+
+    const opening = firstDescriptionChars(description, 900);
+    const qualifications = extractQualificationsSection(description);
+    const roleText = normalizeParserText(`${opening}\n${qualifications}`);
+
+    return /\b(avian|exotic)\s+(?:veterinarian|patients?|medicine)\b/i.test(roleText) ||
+      /\bseeing\s+avian\s+and\s+exotic\s+patients\s+exclusively\b/i.test(roleText) ||
+      /\b(avbp|zoological medicine|small mammal|reptile|amphibian)\b/i.test(roleText);
+  }
+
   function matchPositionFromText(title, description) {
     const value = normalizeParserText(title).toLowerCase();
     const rules = [
@@ -517,7 +534,6 @@ document.addEventListener('DOMContentLoaded', () => {
       ['Lead Veterinarian', /\blead veterinarian\b|\blead vet\b/],
       ['Lead Veterinarian', /\bveterinarian team lead\b/],
       ['Veterinary Intern', /\binternship\b|\bveterinary intern\b/],
-      ['Avian / Exotics Veterinarian', /\bavian\b|\bexotics?\b/],
       ['Neurologist & Neurosurgeon', /\bneurologist\b|\bneurosurgeon\b|\bneurology\b/],
       ['Dermatologist', /\bdermatologist\b|\bdermatology\b/],
       ['Cardiologist', /\bcardiologist\b|\bcardiology\b/],
@@ -551,6 +567,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const validPositions = {
       'Emergency Care': ['Associate Veterinarian'],
       'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
+      'Exotic Pet Medicine': ['Associate Veterinarian'],
       'Specialty Care': [
         'Anesthesiologist',
         'Cardiologist',
@@ -566,8 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
         'Ophthalmologist',
         'Radiation Oncologist',
         'Radiologist',
-        'Surgeon',
-        'Avian / Exotics Veterinarian'
+        'Surgeon'
       ],
       'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
     };
@@ -577,7 +593,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (position && parts.some(part => validPositions[part]?.includes(position))) return position;
     if (position && parts.length === 0) return position;
     if (/partner veterinarian|partner vet/i.test(title || '') && parts.includes('Urgent Care')) return 'Partner Veterinarian';
-    if (parts.some(part => ['General Practice Care', 'Emergency Care', 'Urgent Care'].includes(part))) return 'Associate Veterinarian';
+    if (parts.some(part => ['General Practice Care', 'Emergency Care', 'Urgent Care', 'Exotic Pet Medicine'].includes(part))) return 'Associate Veterinarian';
     return '';
   }
 
