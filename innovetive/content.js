@@ -2,6 +2,111 @@
   const allJobs = [];
   let currentPage = 1;
   let hasNextPage = true;
+  const TARGET_DEPARTMENT = 'Veterinarians';
+
+  function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  function waitForElement(selector, timeout = 5000) {
+    return new Promise((resolve) => {
+      const existing = document.querySelector(selector);
+      if (existing) {
+        resolve(existing);
+        return;
+      }
+
+      const startTime = Date.now();
+      const check = () => {
+        const element = document.querySelector(selector);
+        if (element) {
+          resolve(element);
+          return;
+        }
+
+        if (Date.now() - startTime >= timeout) {
+          resolve(null);
+          return;
+        }
+
+        setTimeout(check, 100);
+      };
+
+      check();
+    });
+  }
+
+  function setNativeInputValue(input, value) {
+    const valueSetter = Object.getOwnPropertyDescriptor(input, 'value')?.set;
+    const prototype = Object.getPrototypeOf(input);
+    const prototypeValueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set;
+
+    if (prototypeValueSetter && valueSetter !== prototypeValueSetter) {
+      prototypeValueSetter.call(input, value);
+    } else if (valueSetter) {
+      valueSetter.call(input, value);
+    } else {
+      input.value = value;
+    }
+
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  function getDepartmentFilterButton() {
+    return Array.from(document.querySelectorAll('.filter__button'))
+      .find(button => button.innerText.trim().includes('All Departments') || button.innerText.trim().includes(TARGET_DEPARTMENT));
+  }
+
+  function shouldSkipListingJob(title) {
+    return /\binternship\b|\bintern\b|\bexternship\b|\bextern\b/i.test(title || '');
+  }
+
+  async function applyDepartmentFilter() {
+    const departmentButton = getDepartmentFilterButton();
+    if (!departmentButton) {
+      throw new Error('Department filter button not found.');
+    }
+
+    departmentButton.click();
+
+    const dropdown = await waitForElement('.filter__dropdown', 5000);
+    if (!dropdown) {
+      throw new Error('Department filter dropdown did not open.');
+    }
+
+    const searchInput = dropdown.querySelector('input[type="search"].filter__dropdown-search');
+    if (searchInput) {
+      searchInput.focus();
+      setNativeInputValue(searchInput, TARGET_DEPARTMENT);
+      await sleep(500);
+    }
+
+    const targetItem = Array.from(document.querySelectorAll('.filter__dropdown .filter__dropdown-item'))
+      .find(item => {
+        const label = item.querySelector('.filter__dropdown-item-label');
+        return label && label.innerText.trim() === TARGET_DEPARTMENT;
+      });
+
+    if (!targetItem) {
+      throw new Error(`${TARGET_DEPARTMENT} department option not found.`);
+    }
+
+    if (targetItem.getAttribute('aria-selected') !== 'true') {
+      targetItem.click();
+      await sleep(300);
+    }
+
+    const applyButton = Array.from(document.querySelectorAll('.filter__dropdown button'))
+      .find(button => button.innerText.trim().toLowerCase() === 'apply filters');
+
+    if (!applyButton) {
+      throw new Error('Apply Filters button not found.');
+    }
+
+    applyButton.click();
+    await sleep(5000);
+  }
 
   // Function to scrape jobs from the current page
   function scrapeCurrentPage() {
@@ -11,12 +116,15 @@
     jobRows.forEach(row => {
       const titleEl = row.querySelector('.rt-td:nth-child(1)');
       const locationEl = row.querySelector('.rt-td:nth-child(2)');
-      const departmentEl = row.querySelector('.rt-td:nth-child(3)');
       const clinicEl = row.querySelector('.rt-td:nth-child(4)');
-      const employmentTypeEl = row.querySelector('.rt-td:nth-child(5)');
 
       // Only add if we have valid data (skip empty rows)
       if (titleEl && titleEl.innerText.trim()) {
+        const jobTitle = titleEl.innerText.trim();
+        if (shouldSkipListingJob(jobTitle)) {
+          return;
+        }
+
         // Get the job link if available
         const linkEl = row.querySelector('a[href*="/postings/"]');
         const jobLink = linkEl ? linkEl.href : '';
@@ -27,12 +135,12 @@
         const jobId = rawJobId ? 'INV-' + rawJobId : '';
 
         jobs.push({
-          jobTitle: titleEl.innerText.trim(),
+          jobTitle,
           jobId: jobId,
           location: locationEl ? locationEl.innerText.trim() : '',
-          areaOfPractice: departmentEl ? departmentEl.innerText.trim() : '',
+          areaOfPractice: '',
           hospitalName: clinicEl ? clinicEl.innerText.trim() : '',
-          jobType: employmentTypeEl ? employmentTypeEl.innerText.trim() : '',
+          jobType: '',
           link: jobLink
         });
       }
@@ -131,6 +239,9 @@
 
   // Main scraping loop
   try {
+    sendProgress(`Applying ${TARGET_DEPARTMENT} department filter...`);
+    await applyDepartmentFilter();
+
     sendProgress('Starting scrape...');
 
     // Get initial page info
