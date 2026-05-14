@@ -656,27 +656,13 @@
     }
 
     /* Description Column */
-    .description-cell {
-      max-height: 32px;
-      overflow-y: auto;
-      font-size: 10px;
-      line-height: 1.25;
-      white-space: pre-wrap;
-      word-break: break-word;
-      color: #475569;
-      padding: 3px 5px;
-      background: #fafaf9;
-      border-radius: 4px;
-      border: 1px solid #f1f5f9;
-      min-width: 160px;
-      max-width: 220px;
+    .description-action {
+      min-width: 126px;
+      justify-content: center;
+      padding: 7px 10px;
+      font-size: 12px;
+      white-space: nowrap;
     }
-
-    td:has(.description-cell) {
-      overflow: hidden;
-      vertical-align: top;
-    }
-
     .selection-cell {
       text-align: center;
       vertical-align: middle;
@@ -716,6 +702,9 @@
       padding: 20px;
     }
 
+    .description-modal-card {
+      width: min(900px, 100%);
+    }
     .modal-header {
       display: flex;
       justify-content: space-between;
@@ -806,6 +795,19 @@
       margin-top: 18px;
     }
 
+    .description-modal-body {
+      border: 1px solid #dbe4ee;
+      background: #fbfdff;
+      border-radius: 12px;
+      padding: 16px;
+      color: #1e293b;
+      font-size: 13px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 66vh;
+      overflow-y: auto;
+    }
     @media (max-width: 900px) {
       .edit-form-grid {
         grid-template-columns: 1fr;
@@ -1180,7 +1182,24 @@
     </div>
   </div>
 
+  <div class="modal-overlay hidden" id="descriptionModal">
+    <div class="modal-card description-modal-card">
+      <div class="modal-header">
+        <div>
+          <h2 id="descriptionModalTitle">Job Description</h2>
+          <p id="descriptionModalMeta">Full scraped description for the selected job.</p>
+        </div>
+        <button class="modal-close" id="closeDescriptionModal" type="button">X</button>
+      </div>
+      <div class="description-modal-body" id="descriptionModalBody"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" id="closeDescriptionModalFooter" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toastContainer"></div>
   <script src="records.js"></script>
 </body>
 </html>
+

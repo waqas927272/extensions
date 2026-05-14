@@ -18,6 +18,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const cancelEditJobBtn = document.getElementById('cancelEditJob');
     const editJobForm = document.getElementById('editJobForm');
     const editJobMeta = document.getElementById('editJobMeta');
+    const descriptionModal = document.getElementById('descriptionModal');
+    const closeDescriptionModalBtn = document.getElementById('closeDescriptionModal');
+    const closeDescriptionModalFooterBtn = document.getElementById('closeDescriptionModalFooter');
+    const descriptionModalTitle = document.getElementById('descriptionModalTitle');
+    const descriptionModalMeta = document.getElementById('descriptionModalMeta');
+    const descriptionModalBody = document.getElementById('descriptionModalBody');
 
     let currentSortColumn = null;
     let currentSortDirection = 'asc';
@@ -172,6 +178,45 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/,?\s*USA$/gi, '')
             .trim();
         return isPlaceholderLocationText(text) ? '' : text;
+    }
+
+    function hasUsableDescription(description) {
+        const text = (description || '').trim();
+        if (!text || /^description not found$/i.test(text) || /^error fetching description$/i.test(text)) return false;
+        if (/(?:\.\.\.|…)\s*$/i.test(text)) return false;
+
+        const contentOnly = text
+            .replace(/=== JOB INFO ===/gi, '')
+            .replace(/=== JOB DESCRIPTION ===/gi, '')
+            .split(/\r?\n/)
+            .filter(line => !/^(?:Title|Location|Category|Industry\/Category|Job ID|Job Type|Employment Type|Post Date|Job Seq No):\s*$/i.test(line.trim()))
+            .join('\n')
+            .trim();
+
+        if (/(?:\.\.\.|…)\s*$/i.test(contentOnly)) return false;
+        return !!contentOnly;
+    }
+
+    function plainDescriptionText(description) {
+        let text = description || '';
+        for (let i = 0; i < 3; i++) {
+            const textarea = document.createElement('textarea');
+            textarea.innerHTML = text;
+            const next = textarea.value;
+            if (next === text) break;
+            text = next;
+        }
+
+        return text
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/(?:p|div|li|h[1-6]|section|ul|ol)>/gi, '\n')
+            .replace(/<li[^>]*>/gi, '- ')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\u00a0/g, ' ')
+            .replace(/[ \t]+\n/g, '\n')
+            .replace(/[ \t]{2,}/g, ' ')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
     }
 
     function normalizeJobRecord(job) {
@@ -1302,10 +1347,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!text) return 'Full-Time';
             const lower = text.toLowerCase();
 
-            // First check the structured Employment Type field from JSON-LD
-            const empTypeMatch = lower.match(/employment type:\s*([^\n]+)/i);
-            if (empTypeMatch) {
-                const empType = empTypeMatch[1].trim().toLowerCase();
+            // First check the structured Employment Type / Job Type fields.
+            const empType = getMetadataField(text, ['Employment Type', 'Job Type']).toLowerCase();
+            if (empType) {
                 // "Part Time or Full Time" → Full-Time (both mentioned = full time)
                 if (empType.includes('part') && empType.includes('full')) return 'Full-Time';
                 // "Part-Time" or "Part Time" only → Part-Time
@@ -2021,6 +2065,26 @@ document.addEventListener('DOMContentLoaded', () => {
         editJobForm.reset();
     }
 
+    function openDescriptionModal(job) {
+        if (!job || !job.description) return;
+
+        descriptionModalTitle.textContent = job.title || 'Job Description';
+        descriptionModalMeta.textContent = [
+            job.jobId || '',
+            job.hospital || '',
+            job.location || ''
+        ].filter(Boolean).join(' | ') || 'Full scraped description for the selected job.';
+        descriptionModalBody.textContent = plainDescriptionText(job.description);
+        descriptionModal.classList.remove('hidden');
+    }
+
+    function closeDescriptionModal() {
+        descriptionModal.classList.add('hidden');
+        descriptionModalTitle.textContent = 'Job Description';
+        descriptionModalMeta.textContent = 'Full scraped description for the selected job.';
+        descriptionModalBody.textContent = '';
+    }
+
     function openEditJobModal() {
         const selectedJobs = getSelectedJobs();
         if (selectedJobs.length !== 1) {
@@ -2145,7 +2209,7 @@ document.addEventListener('DOMContentLoaded', () => {
             jobIdCell.style.fontSize = '12px';
             jobIdCell.style.color = '#64748b';
             row.insertCell(4).textContent = job.hospital;
-            row.insertCell(5).textContent = 'VCA (Parent Client)';
+            row.insertCell(5).textContent = 'VCA Animal Hospitals (Parent Client)';
             row.insertCell(6).textContent = job.streetAddress || '-';
             row.insertCell(7).textContent = job.city;
             row.insertCell(8).textContent = job.state;
@@ -2185,10 +2249,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const descCell = row.insertCell(19);
             if (job.description) {
-                const descDiv = document.createElement('div');
-                descDiv.className = 'description-cell';
-                descDiv.textContent = job.description;
-                descCell.appendChild(descDiv);
+                const viewDescriptionBtn = document.createElement('button');
+                viewDescriptionBtn.type = 'button';
+                viewDescriptionBtn.className = 'btn btn-secondary description-action';
+                viewDescriptionBtn.textContent = 'View Description';
+                viewDescriptionBtn.addEventListener('click', () => openDescriptionModal(job));
+                descCell.appendChild(viewDescriptionBtn);
             } else {
                 descCell.innerHTML = '<span style="color: #94a3b8; font-style: italic; font-size: 12px;">Not scraped</span>';
             }
@@ -2234,7 +2300,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 `"${(job.title || '').replace(/"/g, '""')}"`,
                 `"${(job.jobId || '').replace(/"/g, '""')}"`,
                 `"${(job.hospital || '').replace(/"/g, '""')}"`,
-                `"VCA (Parent Client)"`,
+                `"VCA Animal Hospitals (Parent Client)"`,
                 `"${(job.streetAddress || '').replace(/"/g, '""')}"`,
                 `"${(job.city || '').replace(/"/g, '""')}"`,
                 `"${(job.state || '').replace(/"/g, '""')}"`,
@@ -2329,9 +2395,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    closeDescriptionModalBtn.addEventListener('click', closeDescriptionModal);
+    closeDescriptionModalFooterBtn.addEventListener('click', closeDescriptionModal);
+    descriptionModal.addEventListener('click', (event) => {
+        if (event.target === descriptionModal) {
+            closeDescriptionModal();
+        }
+    });
+
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && !editJobModal.classList.contains('hidden')) {
             closeEditJobModal();
+        }
+        if (event.key === 'Escape' && !descriptionModal.classList.contains('hidden')) {
+            closeDescriptionModal();
         }
     });
 
@@ -2471,9 +2548,9 @@ document.addEventListener('DOMContentLoaded', () => {
             job_id: job.jobId || '',
             department_id: job.jobId || '',
             hospital: job.hospital,
-            aggregator: "VCA (Parent Client)",
+            aggregator: "VCA Animal Hospitals (Parent Client)",
             street_address: job.streetAddress || '',
-            parent_client: "VCA (Parent Client)",
+            parent_client: "VCA Animal Hospitals (Parent Client)",
             city: job.city,
             state: job.state,
             zip_code: job.zipCode || '',
@@ -2520,7 +2597,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const payload = {
                 source: 'VCA Jobs Scraper',
-                parentClientName: 'VCA (Parent Client)',
+                parentClientName: 'VCA Animal Hospitals (Parent Client)',
                 syncId: syncId,
                 timestamp: new Date().toISOString(),
                 batchNumber: batchNumber,
@@ -2589,7 +2666,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await chrome.storage.local.get(['jobs']);
         const jobs = normalizeJobRecords(data.jobs || []);
 
-        const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
+        const jobsWithoutDesc = jobs.filter(job => !hasUsableDescription(job.description) && job.link);
         if (jobsWithoutDesc.length === 0) {
             showToast('All jobs already have descriptions!', 'success');
             return;
@@ -2618,7 +2695,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await chrome.storage.local.get(['jobs']);
         const jobs = normalizeJobRecords(data.jobs || []);
 
-        const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
+        const jobsWithoutDesc = jobs.filter(job => !hasUsableDescription(job.description) && job.link);
         const totalOriginal = jobs.filter(job => job.link).length;
         const totalWithoutDesc = jobsWithoutDesc.length;
         const processed = totalOriginal - totalWithoutDesc;
@@ -2626,7 +2703,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Update progress
         const progressBar = document.getElementById('progressBar');
         const progressText = document.getElementById('progressText');
-        const totalToProcess = allJobs.filter(job => !job.description && job.link).length;
+        const totalToProcess = allJobs.filter(job => !hasUsableDescription(job.description) && job.link).length;
         progressText.textContent = `${processed} / ${totalToProcess + processed}`;
         progressBar.style.width = `${(processed / (totalToProcess + processed)) * 100}%`;
 

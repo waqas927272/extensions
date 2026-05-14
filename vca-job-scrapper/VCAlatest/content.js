@@ -605,8 +605,39 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
   } else if (request.action === 'stopScraping') {
     stopScraping();
   } else if (request.action === 'fetchDescription') {
-    const descriptionElement = document.querySelector('.jd-info[data-ph-at-id="jobdescription-text"]');
-    const description = descriptionElement ? descriptionElement.innerText.trim() : 'Description not found';
+    const jobInfo = document.querySelector('.job-info[data-ph-at-id="job-info"], [data-ph-at-id="job-info"]');
+    const descriptionElement = document.querySelector('.jd-info[data-ph-at-id="jobdescription-text"], [data-ph-at-id="jobdescription-text"]');
+    const clean = value => (value || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+    const cleanLocation = value => clean(value).replace(/\s*,?\s*(?:United States of America|USA)\b/gi, '').replace(/^[,\s]+|[,\s]+$/g, '').trim();
+    const get = (attr, selector, formatter = clean) => {
+      const attrValue = jobInfo?.getAttribute(attr) || '';
+      if (attrValue) return formatter(attrValue);
+      const element = selector ? document.querySelector(selector) : null;
+      if (!element) return '';
+      const clone = element.cloneNode(true);
+      clone.querySelectorAll('.sr-only, [aria-hidden="true"]').forEach(node => node.remove());
+      return formatter(clone.innerText || clone.textContent || '');
+    };
+    const body = descriptionElement ? (descriptionElement.innerText || descriptionElement.textContent || '').trim() : '';
+    const title = get('data-ph-at-job-title-text', '.job-info .job-title, h1.job-title');
+    const location = get('data-ph-at-job-location-text', '.job-info .job-location, span.job-location', cleanLocation);
+    const category = get('data-ph-at-job-category-text', '.job-info .job-category, span.job-category');
+    const jobId = get('data-ph-at-job-id-text', '.job-info .jobId, span.jobId');
+    const jobType = get('data-ph-at-job-type-text', '.job-info .type, span.type');
+    const hasAnyContent = [title, location, category, jobId, jobType, body].some(Boolean);
+    const description = hasAnyContent ? [
+      '=== JOB INFO ===',
+      `Title: ${title}`,
+      `Location: ${location}`,
+      `Category: ${category}`,
+      `Industry/Category: ${category}`,
+      `Job ID: ${jobId}`,
+      `Job Type: ${jobType}`,
+      `Employment Type: ${jobType}`,
+      '',
+      '=== JOB DESCRIPTION ===',
+      body
+    ].join('\n').trim() : 'Description not found';
     sendResponse({ description: description });
     return true;
   } else if (request.action === 'fetchDetails') {
@@ -1178,77 +1209,16 @@ function extractJobDetails() {
   }
 }
 
-function cleanListingHospitalName(value) {
-  let name = (value || '')
+function cleanListingLocationText(value) {
+  const text = (value || '')
     .replace(/\s+/g, ' ')
-    .replace(/^\s*(?:Hospital|Facility|Clinic|Practice|Location|Company)\s*:?\s*/i, '')
-    .replace(/[\s,;:.]+$/, '')
+    .replace(/\s*,?\s*(?:United States of America|USA)\b/gi, '')
+    .replace(/^\s*Location\s*:?\s*/i, '')
+    .replace(/^[,\s]+|[,\s]+$/g, '')
     .trim();
 
-  if (!name) return '';
-  if (/^(?:vca|vca animal hospitals?|animal hospitals?|united states of america|usa)$/i.test(name)) return '';
-  if (/^(?:this job is available in|multiple locations)/i.test(name)) return '';
-  if (/^[A-Za-z\s]+,\s*[A-Za-z\s]+(?:,\s*(?:United States of America|USA))?$/i.test(name)) return '';
-
-  if (name.length > 100) {
-    name = name.substring(0, 100).replace(/\s+\S*$/, '').trim();
-  }
-
-  return name;
-}
-
-function extractHospitalNameFromListing(jobItem) {
-  const attrNames = [
-    'data-ph-at-job-company-text',
-    'data-ph-at-job-location-name',
-    'data-ph-at-location-name',
-    'data-ph-at-job-hospital-text',
-    'data-ph-at-hospital-name',
-    'data-ph-at-facility-name'
-  ];
-
-  for (const attrName of attrNames) {
-    const attrValue = jobItem.getAttribute(attrName);
-    const cleaned = cleanListingHospitalName(attrValue);
-    if (cleaned) return cleaned;
-
-    const attrElement = jobItem.querySelector(`[${attrName}]`);
-    const elementAttrValue = attrElement?.getAttribute(attrName);
-    const cleanedElementAttr = cleanListingHospitalName(elementAttrValue);
-    if (cleanedElementAttr) return cleanedElementAttr;
-  }
-
-  const selectors = [
-    '[data-ph-at-id="job-company-text"]',
-    '[data-ph-at-id="job-location-name"]',
-    '[data-ph-at-id="location-name"]',
-    '.job-company',
-    '.company-name',
-    '.location-name',
-    '.facility-name',
-    '.hospital-name',
-    '.practice-name'
-  ];
-
-  for (const selector of selectors) {
-    const element = jobItem.querySelector(selector);
-    const cleaned = cleanListingHospitalName(element?.textContent);
-    if (cleaned) return cleaned;
-  }
-
-  const listingText = jobItem.innerText || '';
-  const hospitalPatterns = [
-    /\b((?:VCA\s+)?(?:[\w'.&-]+\s+){0,8}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)|Specialty\s+(?:Hospital|Center)|Medical\s+Center|Hospital)(?:\s+of\s+(?:the\s+)?[\w'.&-]+(?:\s+[\w'.&-]+)*)?)/i,
-    /\b(VCA\s+(?:[\w'.&-]+\s+){1,8})\b/i
-  ];
-
-  for (const pattern of hospitalPatterns) {
-    const match = listingText.match(pattern);
-    const cleaned = cleanListingHospitalName(match?.[1]);
-    if (cleaned) return cleaned;
-  }
-
-  return '';
+  if (!text || /(?:this job is available in|multiple locations)/i.test(text)) return '';
+  return text;
 }
 
 function extractJobData(jobItem) {
@@ -1287,25 +1257,9 @@ function extractJobData(jobItem) {
       fullLocationText = ''; // Clear it so Fetch Details can populate it properly
     }
 
-    console.log(`Job "${title}" raw location:`, fullLocationText);
-
-    const hospitalName = extractHospitalNameFromListing(jobItem);
-    if (hospitalName) {
-      console.log(`Job "${title}" listing hospital:`, hospitalName);
-    }
-
-    // Extract Category
-    let category = '';
-    const categoryElement = jobItem.querySelector('[data-ph-at-job-category-text]');
-    if (categoryElement) {
-      category = categoryElement.getAttribute('data-ph-at-job-category-text') || '';
-    } else {
-      // Try to extract from multi-category section
-      const multiCategoryItems = jobItem.querySelectorAll('.job-multi-category .category');
-      if (multiCategoryItems.length > 0) {
-        category = Array.from(multiCategoryItems).map(item => item.textContent.trim()).join(', ');
-      }
-    }
+    const rawLocationText = fullLocationText;
+    fullLocationText = cleanListingLocationText(fullLocationText);
+    console.log(`Job "${title}" listing location:`, fullLocationText);
 
     // Extract URL - Use more specific selectors to get the correct job link
     // Priority 1: Link with data attribute (most specific)
@@ -1341,15 +1295,6 @@ function extractJobData(jobItem) {
     // Re-extract URL after validation fix
     const validatedUrl = linkElement?.href || url;
 
-    // Extract Job Type (Part time / Full time)
-    const jobTypeElement = jobItem.querySelector('.type span:last-child') || jobItem.querySelector('[data-ph-at-job-type-text]');
-    let jobType = jobTypeElement?.textContent?.trim() || jobTypeElement?.getAttribute('data-ph-at-job-type-text') || '';
-
-    // Fix for when job type is incorrectly parsed as the title
-    if (jobType.toLowerCase().includes('veterinarian') || jobType.length > 20) {
-      jobType = '';
-    }
-
     // Validate required fields
     if (!departmentId || !title) {
       console.warn('Missing required fields for job item:', { departmentId, title });
@@ -1359,7 +1304,7 @@ function extractJobData(jobItem) {
     // Check for multiple locations
     // VCA shows: "Las Vegas, Nevada, United States of America Reno, Nevada, United States of America"
     const locations = [];
-    const locParts = fullLocationText.split(/United States of America|USA/i).filter(s => s.replace(/[,\s]+/g, '').trim());
+    const locParts = rawLocationText.split(/United States of America|USA/i).filter(s => s.replace(/[,\s]+/g, '').trim());
     if (locParts.length > 1) {
       for (const part of locParts) {
         let cleaned = part.replace(/[,\s]+$/, '').replace(/^[,\s]+/, '').trim();
@@ -1369,7 +1314,7 @@ function extractJobData(jobItem) {
         const segments = cleaned.split(',').map(s => s.trim()).filter(Boolean);
         if (segments.length >= 2) {
           const locationSegments = segments.slice(-2);
-          locations.push(locationSegments.join(', ') + ', United States of America');
+          locations.push(cleanListingLocationText(locationSegments.join(', ')));
         }
       }
     }
@@ -1381,11 +1326,7 @@ function extractJobData(jobItem) {
         departmentId: i === 0 ? departmentId : departmentId + '-loc' + (i + 1),
         title: title,
         location: loc,
-        category: category,
-        hospital: hospitalName,
-        hospitalName: hospitalName,
         url: validatedUrl,
-        jobType: jobType,
         scrapedAt: new Date().toISOString()
       }));
     }
@@ -1394,11 +1335,7 @@ function extractJobData(jobItem) {
       departmentId: departmentId,
       title: title,
       location: fullLocationText,
-      category: category,
-      hospital: hospitalName,
-      hospitalName: hospitalName,
       url: validatedUrl,
-      jobType: jobType,
       scrapedAt: new Date().toISOString()
     }];
 

@@ -17,9 +17,225 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           setTimeout(() => {
             chrome.scripting.executeScript({
               target: { tabId: tab.id },
-              func: () => {
-                const el = document.querySelector('.jd-info[data-ph-at-id="jobdescription-text"]');
-                return el ? el.innerText.trim() : 'Description not found';
+              world: 'MAIN',
+              func: async () => {
+                const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
+                function hasUsefulPageContent() {
+                  const jobInfo = document.querySelector('.job-info[data-ph-at-id="job-info"], [data-ph-at-id="job-info"]');
+                  const descriptionElement = document.querySelector('.jd-info[data-ph-at-id="jobdescription-text"], [data-ph-at-id="jobdescription-text"]');
+                  const hasJobInfoValue = !!(
+                    jobInfo?.getAttribute('data-ph-at-job-title-text') ||
+                    jobInfo?.getAttribute('data-ph-at-job-id-text') ||
+                    document.querySelector('[data-ph-at-job-title-text]')?.getAttribute('data-ph-at-job-title-text') ||
+                    document.querySelector('h1.job-title')?.textContent?.trim()
+                  );
+                  const hasDescription = !!(descriptionElement?.innerText || descriptionElement?.textContent || '').trim();
+                  return hasJobInfoValue || hasDescription;
+                }
+
+                const waitUntil = Date.now() + 15000;
+                while (!hasUsefulPageContent() && Date.now() < waitUntil) {
+                  await sleep(500);
+                }
+
+                function cleanText(value) {
+                  return (value || '')
+                    .replace(/\u00a0/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                }
+
+                function decodeHtmlEntities(value) {
+                  let decoded = value || '';
+                  for (let i = 0; i < 3; i++) {
+                    const textarea = document.createElement('textarea');
+                    textarea.innerHTML = decoded;
+                    const next = textarea.value;
+                    if (next === decoded) break;
+                    decoded = next;
+                  }
+                  return decoded;
+                }
+
+                function removeHtmlTags(value) {
+                  return decodeHtmlEntities(value)
+                    .replace(/<br\s*\/?>/gi, '\n')
+                    .replace(/<\/(?:p|div|li|h[1-6]|section|ul|ol)>/gi, '\n')
+                    .replace(/<li[^>]*>/gi, '- ')
+                    .replace(/<[^>]+>/g, ' ')
+                    .replace(/\u00a0/g, ' ')
+                    .replace(/[ \t]+\n/g, '\n')
+                    .replace(/[ \t]{2,}/g, ' ')
+                    .replace(/\n{3,}/g, '\n\n')
+                    .trim();
+                }
+
+                function cleanLocation(value) {
+                  return cleanText(value)
+                    .replace(/\s*,?\s*(?:United States of America|USA)\b/gi, '')
+                    .replace(/^[,\s]+|[,\s]+$/g, '')
+                    .trim();
+                }
+
+                function textWithoutSrOnly(element) {
+                  if (!element) return '';
+                  const clone = element.cloneNode(true);
+                  clone.querySelectorAll('.sr-only, [aria-hidden="true"]').forEach(node => node.remove());
+                  return cleanText(clone.innerText || clone.textContent || '');
+                }
+
+                function attrOrText(root, attrName, selector, formatter = cleanText) {
+                  const attrValue = root?.getAttribute(attrName) || '';
+                  if (attrValue) return formatter(attrValue);
+
+                  const attrElement = document.querySelector(`[${attrName}]`);
+                  const globalAttrValue = attrElement?.getAttribute(attrName) || '';
+                  if (globalAttrValue) return formatter(globalAttrValue);
+
+                  const element = selector ? document.querySelector(selector) : null;
+                  return formatter(textWithoutSrOnly(element));
+                }
+
+                function getPhAppJobData() {
+                  try {
+                    const ddo = window.phApp?.ddo;
+                    if (!ddo) return null;
+
+                    return ddo.jobDetail?.data?.job ||
+                      ddo.jobDetail?.job ||
+                      ddo.job?.data?.job ||
+                      ddo.job ||
+                      null;
+                  } catch (_) {
+                    return null;
+                  }
+                }
+
+                function findJobPostingJsonLd(value) {
+                  if (!value) return null;
+                  if (Array.isArray(value)) {
+                    for (const item of value) {
+                      const found = findJobPostingJsonLd(item);
+                      if (found) return found;
+                    }
+                    return null;
+                  }
+                  if (typeof value !== 'object') return null;
+                  if (value['@type'] === 'JobPosting' || (Array.isArray(value['@type']) && value['@type'].includes('JobPosting'))) {
+                    return value;
+                  }
+                  if (value['@graph']) return findJobPostingJsonLd(value['@graph']);
+                  return null;
+                }
+
+                function getJsonLdJobData() {
+                  const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+                  for (const script of scripts) {
+                    try {
+                      const parsed = JSON.parse(script.textContent || '');
+                      const jobPosting = findJobPostingJsonLd(parsed);
+                      if (jobPosting) return jobPosting;
+                    } catch (_) {
+                      // Ignore invalid JSON-LD.
+                    }
+                  }
+                  return null;
+                }
+
+                function htmlToTextWithLinks(html) {
+                  if (!html) return '';
+                  const wrapper = document.createElement('div');
+                  wrapper.innerHTML = decodeHtmlEntities(html);
+
+                  const text = removeHtmlTags(wrapper.innerText || wrapper.textContent || '');
+
+                  const links = Array.from(wrapper.querySelectorAll('a[href]'))
+                    .map(link => {
+                      const label = cleanText(link.innerText || link.textContent || link.href);
+                      return { label, href: link.href };
+                    })
+                    .filter(link => link.href)
+                    .filter((link, index, list) => {
+                      return list.findIndex(other => other.href === link.href && other.label === link.label) === index;
+                    });
+
+                  if (links.length === 0) return text;
+
+                  const linkText = links.map(link => `- ${link.label}: ${link.href}`).join('\n');
+                  return `${text}\n\nDescription Links:\n${linkText}`;
+                }
+
+                function descriptionTextWithLinks(element) {
+                  if (!element) return '';
+
+                  const text = removeHtmlTags(element.innerText || element.textContent || '');
+
+                  const links = Array.from(element.querySelectorAll('a[href]'))
+                    .map(link => {
+                      const label = cleanText(link.innerText || link.textContent || link.href);
+                      return { label, href: link.href };
+                    })
+                    .filter(link => link.href)
+                    .filter((link, index, list) => {
+                      return list.findIndex(other => other.href === link.href && other.label === link.label) === index;
+                    });
+
+                  if (links.length === 0) return text;
+
+                  const linkText = links.map(link => `- ${link.label}: ${link.href}`).join('\n');
+                  return `${text}\n\nDescription Links:\n${linkText}`;
+                }
+
+                const jobInfo = document.querySelector('.job-info[data-ph-at-id="job-info"], [data-ph-at-id="job-info"]');
+                const descriptionElement = document.querySelector('.jd-info[data-ph-at-id="jobdescription-text"], [data-ph-at-id="jobdescription-text"]');
+                const jobData = getPhAppJobData();
+                const jsonLd = getJsonLdJobData();
+
+                const title = attrOrText(jobInfo, 'data-ph-at-job-title-text', '.job-info .job-title, h1.job-title') ||
+                  cleanText(jobData?.title || jobData?.jobTitle || jsonLd?.title || '');
+                const location = attrOrText(jobInfo, 'data-ph-at-job-location-text', '.job-info .job-location, span.job-location', cleanLocation) ||
+                  cleanLocation(jobData?.location || [jobData?.city, jobData?.state].filter(Boolean).join(', ') || '');
+                const category = attrOrText(jobInfo, 'data-ph-at-job-category-text', '.job-info .job-category, span.job-category') ||
+                  cleanText(jobData?.category || (Array.isArray(jobData?.jobFamilies) ? jobData.jobFamilies.join(', ') : '') || jsonLd?.industry || '');
+                const jobId = attrOrText(jobInfo, 'data-ph-at-job-id-text', '.job-info .jobId, span.jobId') ||
+                  cleanText(jobData?.jobId || jobData?.reqId || jobData?.jobReqId || '');
+                const jobType = attrOrText(jobInfo, 'data-ph-at-job-type-text', '.job-info .type, span.type') ||
+                  cleanText(jobData?.jobType || jsonLd?.employmentType || '');
+                const postDate = attrOrText(jobInfo, 'data-ph-at-job-post-date-text', '') ||
+                  cleanText(jobData?.postedDate || jobData?.datePosted || jsonLd?.datePosted || '');
+                const seqNo = attrOrText(jobInfo, 'data-ph-at-job-seqno-text', '') ||
+                  cleanText(jobData?.jobSeqNo || jobData?.seqNo || '');
+                const descriptionCandidates = [
+                  htmlToTextWithLinks(jobData?.description || ''),
+                  htmlToTextWithLinks(jsonLd?.description || ''),
+                  descriptionTextWithLinks(descriptionElement),
+                  htmlToTextWithLinks(jobData?.descriptionTeaser || '')
+                ].filter(Boolean);
+                const fullCandidates = descriptionCandidates.filter(candidate => !/(?:\.\.\.|…)$/i.test(candidate.trim()));
+                const description = (fullCandidates.length ? fullCandidates : descriptionCandidates)
+                  .sort((a, b) => b.length - a.length)[0] || '';
+
+                const hasAnyContent = [title, location, category, jobId, jobType, postDate, seqNo, description].some(Boolean);
+                if (!hasAnyContent) return 'Description not found';
+
+                const infoLines = [
+                  '=== JOB INFO ===',
+                  `Title: ${title}`,
+                  `Location: ${location}`,
+                  `Category: ${category}`,
+                  `Industry/Category: ${category}`,
+                  `Job ID: ${jobId}`,
+                  `Job Type: ${jobType}`,
+                  `Employment Type: ${jobType}`,
+                  `Post Date: ${postDate}`,
+                  `Job Seq No: ${seqNo}`,
+                  '',
+                  '=== JOB DESCRIPTION ===',
+                  description
+                ];
+
+                return infoLines.join('\n').trim();
               }
             }).then((results) => {
               chrome.tabs.remove(tab.id);
