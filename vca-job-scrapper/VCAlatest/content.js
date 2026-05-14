@@ -4,6 +4,8 @@ let currentPage = 1;
 let scrapingState = null;
 let totalPagesToScrape = 3;
 let floatingBox = null;
+let scrapeStepInProgress = false;
+let pageNavigationInProgress = false;
 const SKIP_KEYWORDS = ['Relief', 'Intern', 'Locum'];
 
 // Whitelist keywords from jobs.docx - only save jobs whose title matches at least one keyword
@@ -570,6 +572,7 @@ function startScrapingFromBox() {
 async function checkScrapingState() {
   const result = await chrome.storage.local.get(['scrapingState', 'skippedJobsStats']);
   if (result.scrapingState && result.scrapingState.active) {
+    pageNavigationInProgress = false;
     scrapingState = result.scrapingState;
     isScrapingActive = true;
     filtersApplied = true;
@@ -616,12 +619,31 @@ chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
 async function stopScraping() {
   isScrapingActive = false;
   scrapingState = null;
+  scrapeStepInProgress = false;
+  pageNavigationInProgress = false;
+  if (scrapingInterval) {
+    clearInterval(scrapingInterval);
+    scrapingInterval = null;
+  }
   await chrome.storage.local.remove(['scrapingState']);
   
   updateFloatingBoxUI('Stopped', false);
   chrome.runtime.sendMessage({
     action: 'updateStatus',
     status: 'Stopped'
+  });
+}
+
+async function finishAllJobsScraped(totalScraped) {
+  await stopScraping();
+  await chrome.storage.local.set({
+    scrapingComplete: true,
+    scrapingStatus: 'All jobs are scraped'
+  });
+  updateFloatingBoxUI('All jobs are scraped', false);
+  chrome.runtime.sendMessage({
+    action: 'scrapingComplete',
+    data: { totalScraped }
   });
 }
 
@@ -681,6 +703,12 @@ async function startScraping() {
 }
 
 async function continueScraping() {
+  if (scrapeStepInProgress || pageNavigationInProgress) {
+    return;
+  }
+
+  scrapeStepInProgress = true;
+
   try {
     // Load existing jobs from storage
     const result = await chrome.storage.local.get(['jobs']);
@@ -734,14 +762,18 @@ async function continueScraping() {
         jobs: updatedJobs
       }
     });
+
+    const nextPage = getNextPageInfo();
+    if (!nextPage.buttonPresent) {
+      console.log('Scraping complete: next arrow is not present on this page.');
+      await finishAllJobsScraped(newJobs.length);
+      return;
+    }
     
     // Check if we should continue to next page
     const shouldContinue = totalPagesToScrape === 'all' || currentPage < totalPagesToScrape;
     if (shouldContinue && isScrapingActive) {
-      // Check if next page exists
-      const nextButton = document.querySelector('a[data-ph-at-id="pagination-next-link"]');
-      const hasNextPage = nextButton && !nextButton.classList.contains('disabled') && !nextButton.getAttribute('aria-disabled');
-      if (hasNextPage) {
+      if (nextPage.canNavigate) {
         currentPage++;
         scrapingState.currentPage = currentPage;
         await chrome.storage.local.set({ scrapingState });
@@ -751,24 +783,16 @@ async function continueScraping() {
           status: `Moving to page ${currentPage}...`
         });
         // Navigate to next page
-        await navigateToNextPage();
+        const didNavigate = await navigateToNextPage(nextPage);
+        if (!didNavigate) {
+          await finishAllJobsScraped(newJobs.length);
+        }
       } else {
-        // No more pages available
-        await stopScraping();
-        updateFloatingBoxUI('All jobs are scraped', false);
-        chrome.runtime.sendMessage({
-          action: 'scrapingComplete',
-          data: { totalScraped: newJobs.length }
-        });
+        console.log('No next page available:', nextPage.reason);
+        await finishAllJobsScraped(newJobs.length);
       }
     } else {
-      // Scraping complete
-      await stopScraping();
-      updateFloatingBoxUI('All jobs are scraped', false);
-      chrome.runtime.sendMessage({
-        action: 'scrapingComplete',
-        data: { totalScraped: newJobs.length }
-      });
+      await finishAllJobsScraped(newJobs.length);
     }
     
     // Persist skipped stats after each page
@@ -785,6 +809,8 @@ async function continueScraping() {
       action: 'scrapingError',
       message: error.message
     });
+  } finally {
+    scrapeStepInProgress = false;
   }
 }
 
@@ -913,29 +939,102 @@ async function waitForJobsToLoad() {
   throw new Error('Jobs failed to load on page');
 }
 
-async function navigateToNextPage() {
+function isDisabledPaginationElement(element) {
+  if (!element) return true;
+
+  const disabledValues = [
+    element.getAttribute('aria-disabled'),
+    element.getAttribute('disabled'),
+    element.getAttribute('data-disabled'),
+    element.parentElement?.getAttribute('aria-disabled')
+  ].filter(Boolean).map(value => String(value).toLowerCase());
+
+  if (disabledValues.some(value => value === 'true' || value === 'disabled')) return true;
+  if (element.getAttribute('tabindex') === '-1') return true;
+
+  const classText = `${element.className || ''} ${element.parentElement?.className || ''}`.toLowerCase();
+  return /\b(disabled|inactive|unavailable|is-disabled|ph-disabled)\b/.test(classText);
+}
+
+function getComparableUrl(url) {
   try {
-    const nextButton = document.querySelector('a[data-ph-at-id="pagination-next-link"]');
-    
-    if (!nextButton) {
-      console.error('Next button not found');
+    const parsed = new URL(url, window.location.href);
+    parsed.hash = '';
+    return parsed.toString();
+  } catch (_) {
+    return '';
+  }
+}
+
+function getNumericPageValue(url, keys) {
+  try {
+    const parsed = new URL(url, window.location.href);
+    for (const key of keys) {
+      const raw = parsed.searchParams.get(key);
+      if (raw !== null && raw !== '') {
+        const value = parseInt(raw, 10);
+        if (!Number.isNaN(value)) return value;
+      }
+    }
+  } catch (_) {
+    // Ignore invalid URLs.
+  }
+  return null;
+}
+
+function getNextPageInfo() {
+  const nextButton = document.querySelector('a[data-ph-at-id="pagination-next-link"]');
+
+  if (!nextButton) {
+    return { canNavigate: false, buttonPresent: false, reason: 'next button not found' };
+  }
+
+  if (isDisabledPaginationElement(nextButton)) {
+    return { canNavigate: false, buttonPresent: true, reason: 'next button disabled' };
+  }
+
+  const href = nextButton.getAttribute('href') || '';
+  if (!href || href === '#' || /^javascript:/i.test(href)) {
+    return { canNavigate: false, buttonPresent: true, reason: 'next button has no usable href' };
+  }
+
+  const nextUrl = getComparableUrl(href);
+  const currentUrl = getComparableUrl(window.location.href);
+  if (!nextUrl) {
+    return { canNavigate: false, buttonPresent: true, reason: 'next href is invalid' };
+  }
+
+  if (nextUrl === currentUrl) {
+    return { canNavigate: false, buttonPresent: true, reason: 'next href points to current page' };
+  }
+
+  const currentOffset = getNumericPageValue(currentUrl, ['from', 'start', 'offset']);
+  const nextOffset = getNumericPageValue(nextUrl, ['from', 'start', 'offset']);
+  if (currentOffset !== null && nextOffset !== null && nextOffset <= currentOffset) {
+    return { canNavigate: false, buttonPresent: true, reason: 'next offset does not advance' };
+  }
+
+  const currentPageValue = getNumericPageValue(currentUrl, ['page', 'p']);
+  const nextPageValue = getNumericPageValue(nextUrl, ['page', 'p']);
+  if (currentPageValue !== null && nextPageValue !== null && nextPageValue <= currentPageValue) {
+    return { canNavigate: false, buttonPresent: true, reason: 'next page number does not advance' };
+  }
+
+  return { canNavigate: true, buttonPresent: true, reason: 'next page available', button: nextButton, url: nextUrl };
+}
+
+async function navigateToNextPage(nextPage = null) {
+  try {
+    const pageInfo = nextPage || getNextPageInfo();
+
+    if (!pageInfo.canNavigate) {
+      console.error('Next page unavailable:', pageInfo.reason);
       return false;
     }
-    
-    if (nextButton.classList.contains('disabled') || nextButton.getAttribute('aria-disabled') === 'true') {
-      console.error('Next button is disabled');
-      return false;
-    }
-    
-    // Navigate using the href URL to ensure proper page load
-    const nextUrl = nextButton.href;
-    if (nextUrl) {
-      window.location.href = nextUrl;
-      return true;
-    } else {
-      nextButton.click();
-      return true;
-    }
+
+    pageNavigationInProgress = true;
+    window.location.href = pageInfo.url;
+    return true;
     
   } catch (error) {
     console.error('Error navigating to next page:', error);
@@ -1079,6 +1178,79 @@ function extractJobDetails() {
   }
 }
 
+function cleanListingHospitalName(value) {
+  let name = (value || '')
+    .replace(/\s+/g, ' ')
+    .replace(/^\s*(?:Hospital|Facility|Clinic|Practice|Location|Company)\s*:?\s*/i, '')
+    .replace(/[\s,;:.]+$/, '')
+    .trim();
+
+  if (!name) return '';
+  if (/^(?:vca|vca animal hospitals?|animal hospitals?|united states of america|usa)$/i.test(name)) return '';
+  if (/^(?:this job is available in|multiple locations)/i.test(name)) return '';
+  if (/^[A-Za-z\s]+,\s*[A-Za-z\s]+(?:,\s*(?:United States of America|USA))?$/i.test(name)) return '';
+
+  if (name.length > 100) {
+    name = name.substring(0, 100).replace(/\s+\S*$/, '').trim();
+  }
+
+  return name;
+}
+
+function extractHospitalNameFromListing(jobItem) {
+  const attrNames = [
+    'data-ph-at-job-company-text',
+    'data-ph-at-job-location-name',
+    'data-ph-at-location-name',
+    'data-ph-at-job-hospital-text',
+    'data-ph-at-hospital-name',
+    'data-ph-at-facility-name'
+  ];
+
+  for (const attrName of attrNames) {
+    const attrValue = jobItem.getAttribute(attrName);
+    const cleaned = cleanListingHospitalName(attrValue);
+    if (cleaned) return cleaned;
+
+    const attrElement = jobItem.querySelector(`[${attrName}]`);
+    const elementAttrValue = attrElement?.getAttribute(attrName);
+    const cleanedElementAttr = cleanListingHospitalName(elementAttrValue);
+    if (cleanedElementAttr) return cleanedElementAttr;
+  }
+
+  const selectors = [
+    '[data-ph-at-id="job-company-text"]',
+    '[data-ph-at-id="job-location-name"]',
+    '[data-ph-at-id="location-name"]',
+    '.job-company',
+    '.company-name',
+    '.location-name',
+    '.facility-name',
+    '.hospital-name',
+    '.practice-name'
+  ];
+
+  for (const selector of selectors) {
+    const element = jobItem.querySelector(selector);
+    const cleaned = cleanListingHospitalName(element?.textContent);
+    if (cleaned) return cleaned;
+  }
+
+  const listingText = jobItem.innerText || '';
+  const hospitalPatterns = [
+    /\b((?:VCA\s+)?(?:[\w'.&-]+\s+){0,8}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)|Specialty\s+(?:Hospital|Center)|Medical\s+Center|Hospital)(?:\s+of\s+(?:the\s+)?[\w'.&-]+(?:\s+[\w'.&-]+)*)?)/i,
+    /\b(VCA\s+(?:[\w'.&-]+\s+){1,8})\b/i
+  ];
+
+  for (const pattern of hospitalPatterns) {
+    const match = listingText.match(pattern);
+    const cleaned = cleanListingHospitalName(match?.[1]);
+    if (cleaned) return cleaned;
+  }
+
+  return '';
+}
+
 function extractJobData(jobItem) {
   try {
     // Extract Department ID
@@ -1116,6 +1288,11 @@ function extractJobData(jobItem) {
     }
 
     console.log(`Job "${title}" raw location:`, fullLocationText);
+
+    const hospitalName = extractHospitalNameFromListing(jobItem);
+    if (hospitalName) {
+      console.log(`Job "${title}" listing hospital:`, hospitalName);
+    }
 
     // Extract Category
     let category = '';
@@ -1205,6 +1382,8 @@ function extractJobData(jobItem) {
         title: title,
         location: loc,
         category: category,
+        hospital: hospitalName,
+        hospitalName: hospitalName,
         url: validatedUrl,
         jobType: jobType,
         scrapedAt: new Date().toISOString()
@@ -1216,6 +1395,8 @@ function extractJobData(jobItem) {
       title: title,
       location: fullLocationText,
       category: category,
+      hospital: hospitalName,
+      hospitalName: hospitalName,
       url: validatedUrl,
       jobType: jobType,
       scrapedAt: new Date().toISOString()

@@ -26,14 +26,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               chrome.runtime.sendMessage({
                 action: 'descriptionFetched',
                 description: results && results[0] ? results[0].result : 'Error fetching description',
-                jobIndex: request.jobIndex
+                jobIndex: request.jobIndex,
+                jobKey: request.jobKey,
+                jobLink: request.jobLink || request.url
               }).catch(() => {});
             }).catch(() => {
               chrome.tabs.remove(tab.id);
               chrome.runtime.sendMessage({
                 action: 'descriptionFetched',
                 description: 'Error fetching description',
-                jobIndex: request.jobIndex
+                jobIndex: request.jobIndex,
+                jobKey: request.jobKey,
+                jobLink: request.jobLink || request.url
               }).catch(() => {});
             });
           }, 2000);
@@ -43,7 +47,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
 
   } else if (request.action === 'fetchJobDetails') {
-    chrome.tabs.create({ url: request.url, active: true }, (tab) => {
+    chrome.tabs.create({ url: request.url, active: false }, (tab) => {
       chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
         if (tabId === tab.id && info.status === 'complete') {
           chrome.tabs.onUpdated.removeListener(listener);
@@ -1146,11 +1150,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       }
                       if (!isValidCityState(city)) city = '';
                       if (!isValidCityState(state)) state = '';
-
-                      // Fallback hospital name
-                      if (!hospitalName) {
-                        hospitalName = 'VCA Veterinary Hospital';
-                      }
 
                       // Final logic for Salary and Area of Practice
                       try {
