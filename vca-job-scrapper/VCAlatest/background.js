@@ -2,6 +2,163 @@ chrome.runtime.onInstalled.addListener(() => {
   console.log('VCA Jobs Scraper extension installed');
 });
 
+function cleanDirectJobText(value) {
+  return (value || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function decodeDirectHtmlEntities(value) {
+  return (value || '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/&#x27;/gi, "'")
+    .replace(/&#x2F;/gi, '/')
+    .replace(/&#(\d+);/g, (_, code) => String.fromCharCode(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCharCode(parseInt(code, 16)));
+}
+
+function directJobHtmlToText(value) {
+  return decodeDirectHtmlEntities(value)
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(?:p|div|li|h[1-6]|section|ul|ol)>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '- ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+function findDirectJobPostingJsonLd(value) {
+  if (!value) return null;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findDirectJobPostingJsonLd(item);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (typeof value !== 'object') return null;
+  const type = value['@type'];
+  if (type === 'JobPosting' || (Array.isArray(type) && type.includes('JobPosting'))) return value;
+  if (value['@graph']) return findDirectJobPostingJsonLd(value['@graph']);
+  return null;
+}
+
+function extractDirectJobPostingJsonLd(html) {
+  const scriptPattern = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+  let match;
+
+  while ((match = scriptPattern.exec(html || '')) !== null) {
+    const attrs = match[1] || '';
+    if (!/type\s*=\s*["']application\/ld\+json["']/i.test(attrs)) continue;
+
+    try {
+      const parsed = JSON.parse(match[2] || '');
+      const jobPosting = findDirectJobPostingJsonLd(parsed);
+      if (jobPosting) return jobPosting;
+    } catch (_) {
+      // Ignore invalid JSON-LD blocks.
+    }
+  }
+
+  return null;
+}
+
+function formatDirectEmploymentType(value) {
+  const firstValue = Array.isArray(value) ? value[0] : value;
+  return cleanDirectJobText(firstValue || '')
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, char => char.toUpperCase());
+}
+
+function formatDirectJobPostingResult(jobPosting, expectedJobId) {
+  if (!jobPosting) return null;
+
+  const address = jobPosting.jobLocation?.address || {};
+  const fields = {
+    title: cleanDirectJobText(jobPosting.title || ''),
+    location: [address.addressLocality, address.addressRegion, address.addressCountry].filter(Boolean).join(', '),
+    category: cleanDirectJobText(jobPosting.occupationalCategory || jobPosting.industry || ''),
+    jobId: cleanDirectJobText(jobPosting.identifier?.value || ''),
+    jobType: formatDirectEmploymentType(jobPosting.employmentType || ''),
+    industry: cleanDirectJobText(jobPosting.industry || ''),
+    postDate: cleanDirectJobText(jobPosting.datePosted || ''),
+    seqNo: '',
+    jobDescription: directJobHtmlToText(jobPosting.description || '')
+  };
+
+  if (expectedJobId && fields.jobId && fields.jobId !== expectedJobId) {
+    return {
+      description: `Job info mismatch: expected ${expectedJobId}, found ${fields.jobId}`,
+      jobInfo: fields,
+      mismatch: true
+    };
+  }
+
+  const lines = [
+    '=== JOB INFO ===',
+    `Title: ${fields.title}`,
+    `Location: ${fields.location}`,
+    `Category: ${fields.category}`,
+    `Job ID: ${fields.jobId}`,
+    `Job Type: ${fields.jobType}`,
+    `Industry: ${fields.industry}`,
+    `Post Date: ${fields.postDate}`,
+    `Job Seq No: ${fields.seqNo}`
+  ];
+
+  if (fields.jobDescription) {
+    lines.push('', '=== JOB DESCRIPTION ===', fields.jobDescription);
+  }
+
+  return {
+    description: lines.join('\n').trim(),
+    jobInfo: fields,
+    mismatch: false
+  };
+}
+
+async function fetchJobDescriptionDirectly(request) {
+  const response = await fetch(request.url, {
+    cache: 'no-store',
+    credentials: 'omit',
+    redirect: 'follow'
+  });
+
+  if (!response.ok) {
+    throw new Error(`Direct fetch failed with HTTP ${response.status}`);
+  }
+
+  const html = await response.text();
+  const jobPosting = extractDirectJobPostingJsonLd(html);
+  const result = formatDirectJobPostingResult(jobPosting, request.jobId || request.departmentId || '');
+  if (!result) throw new Error('Direct fetch did not find JobPosting JSON-LD');
+  return result;
+}
+
+function sendDescriptionFetched(request, extractionResult) {
+  chrome.runtime.sendMessage({
+    action: 'descriptionFetched',
+    description: typeof extractionResult === 'string'
+      ? extractionResult
+      : (extractionResult?.description || 'Error fetching description'),
+    jobInfo: typeof extractionResult === 'object' ? extractionResult?.jobInfo || null : null,
+    mismatch: typeof extractionResult === 'object' ? !!extractionResult?.mismatch : false,
+    jobIndex: request.jobIndex,
+    jobKey: request.jobKey,
+    jobLink: request.jobLink || request.url
+  }).catch(() => {});
+}
+
 // Handle messages from content script and popup
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'updateProgress' ||
@@ -10,7 +167,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       request.action === 'updateStatus') {
     chrome.runtime.sendMessage(request).catch(() => {});
   } else if (request.action === 'fetchJobDescription') {
-    chrome.tabs.create({ url: request.url, active: false }, (tab) => {
+    fetchJobDescriptionDirectly(request)
+      .then((extractionResult) => {
+        sendDescriptionFetched(request, extractionResult);
+      })
+      .catch((error) => {
+        console.warn('Direct job description fetch failed, falling back to tab scraping:', error);
+        chrome.tabs.create({ url: request.url, active: false }, (tab) => {
       chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
         if (tabId === tab.id && info.status === 'complete') {
           chrome.tabs.onUpdated.removeListener(listener);
@@ -660,7 +823,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           }, 2000);
         }
       });
-    });
+        });
+      });
     return true;
 
   } else if (request.action === 'fetchJobDetails') {

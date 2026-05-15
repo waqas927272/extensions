@@ -35,6 +35,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let isFetchingAddresses = false;
     let currentJobIndex = 0;
     let descriptionQueue = [];
+    let nextDescriptionQueueIndex = 0;
+    let activeDescriptionRequests = 0;
+    let descriptionCompletedCount = 0;
+    let descriptionStorageWriteChain = Promise.resolve();
     let detailsQueue = [];
     let currentDetailsIndex = 0;
     let addressQueue = [];
@@ -44,6 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const getDescriptionsBtn = document.getElementById('getDescriptionsBtn');
     const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
     const fetchAddressesBtn = document.getElementById('fetchAddressesBtn');
+    const DESCRIPTION_FETCH_CONCURRENCY = 5;
 
     // ============ WEBHOOK URL DYNAMIC CONFIGURATION ============
 
@@ -2671,7 +2676,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const jobsToProcess = jobs
             .map((job, index) => ({ job, index, key: getJobSelectionKey(job) }))
-            .filter(item => item.job.link);
+            .filter(item => item.job.link || item.job.url);
 
         if (jobsToProcess.length === 0) {
             showToast('No jobs with links found.', 'error');
@@ -2680,6 +2685,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         isGettingDescriptions = true;
         currentJobIndex = 0;
+        nextDescriptionQueueIndex = 0;
+        activeDescriptionRequests = 0;
+        descriptionCompletedCount = 0;
         descriptionQueue = jobsToProcess;
 
         getDescriptionsBtn.disabled = true;
@@ -2698,93 +2706,135 @@ document.addEventListener('DOMContentLoaded', () => {
         processNextJob();
     });
 
-    async function processNextJob() {
-        if (currentJobIndex >= descriptionQueue.length) {
-            isGettingDescriptions = false;
-            getDescriptionsBtn.disabled = false;
-            getDescriptionsBtn.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M13,13H11V18H13V13M13,9.5H11V11.5H13V9.5Z"/>
-                </svg>
-                Get Descriptions
-            `;
-            document.getElementById('progressSection').classList.add('hidden');
-            showToast('All job info has been fetched!', 'success');
-            return;
-        }
-
-        const data = await chrome.storage.local.get(['jobs']);
-        const jobs = normalizeJobRecords(data.jobs || []);
-        const queueItem = descriptionQueue[currentJobIndex];
-
-        // Update progress
+    function updateDescriptionProgress() {
         const progressBar = document.getElementById('progressBar');
         const progressText = document.getElementById('progressText');
-        progressText.textContent = `${currentJobIndex} / ${descriptionQueue.length}`;
-        progressBar.style.width = `${(currentJobIndex / descriptionQueue.length) * 100}%`;
+        const total = descriptionQueue.length || 1;
+        currentJobIndex = descriptionCompletedCount;
+        progressText.textContent = `${descriptionCompletedCount} / ${descriptionQueue.length}`;
+        progressBar.style.width = `${(descriptionCompletedCount / total) * 100}%`;
+    }
 
-        const jobIndex = findJobIndexByKey(jobs, queueItem.key, queueItem.job);
-        if (jobIndex === -1) {
-            currentJobIndex++;
-            setTimeout(() => processNextJob(), 50);
+    function finishDescriptionFetchRun() {
+        if (!isGettingDescriptions) return;
+
+        isGettingDescriptions = false;
+        activeDescriptionRequests = 0;
+        getDescriptionsBtn.disabled = false;
+        getDescriptionsBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M13,13H11V18H13V13M13,9.5H11V11.5H13V9.5Z"/>
+            </svg>
+            Get Descriptions
+        `;
+        updateDescriptionProgress();
+        document.getElementById('progressSection').classList.add('hidden');
+        showToast('All job info has been fetched!', 'success');
+    }
+
+    function markDescriptionJobComplete() {
+        activeDescriptionRequests = Math.max(0, activeDescriptionRequests - 1);
+        descriptionCompletedCount++;
+        updateDescriptionProgress();
+
+        if (descriptionCompletedCount >= descriptionQueue.length && activeDescriptionRequests === 0) {
+            finishDescriptionFetchRun();
             return;
         }
 
-        const job = jobs[jobIndex];
+        setTimeout(() => processNextJob(), 0);
+    }
 
+    async function dispatchDescriptionJob(queueItem) {
         try {
+            const data = await chrome.storage.local.get(['jobs']);
+            const jobs = normalizeJobRecords(data.jobs || []);
+            const jobIndex = findJobIndexByKey(jobs, queueItem.key, queueItem.job);
+
+            if (jobIndex === -1) {
+                markDescriptionJobComplete();
+                return;
+            }
+
+            const job = jobs[jobIndex];
+            const jobUrl = job.link || job.url || '';
             chrome.runtime.sendMessage({
                 action: 'fetchJobDescription',
-                url: job.link,
+                url: jobUrl,
                 jobIndex: jobIndex,
                 jobKey: getJobSelectionKey(job),
-                jobLink: job.link,
+                jobLink: jobUrl,
                 jobId: job.jobId || job.departmentId || '',
                 departmentId: job.departmentId || job.jobId || '',
                 title: job.title || '',
                 location: job.location || ''
             });
         } catch (error) {
-            console.error('Error opening tab for job:', error);
-            currentJobIndex++;
-            setTimeout(() => processNextJob(), 1500);
+            console.error('Error requesting job description:', error);
+            markDescriptionJobComplete();
+        }
+    }
+
+    function processNextJob() {
+        if (!isGettingDescriptions) return;
+
+        if (descriptionCompletedCount >= descriptionQueue.length && activeDescriptionRequests === 0) {
+            finishDescriptionFetchRun();
+            return;
+        }
+
+        while (
+            activeDescriptionRequests < DESCRIPTION_FETCH_CONCURRENCY &&
+            nextDescriptionQueueIndex < descriptionQueue.length
+        ) {
+            const queueItem = descriptionQueue[nextDescriptionQueueIndex];
+            nextDescriptionQueueIndex++;
+            activeDescriptionRequests++;
+            dispatchDescriptionJob(queueItem);
+        }
+
+        updateDescriptionProgress();
+    }
+
+    async function handleDescriptionFetchedMessage(message) {
+        const data = await chrome.storage.local.get(['jobs']);
+        const jobs = normalizeJobRecords(data.jobs || []);
+        const jobIndex = findJobIndexByKey(
+            jobs,
+            message.jobKey,
+            { jobId: jobs[message.jobIndex]?.jobId || '', link: message.jobLink || '' }
+        );
+
+        if (jobIndex !== -1 && (!message.jobLink || jobs[jobIndex].link === message.jobLink || jobs[jobIndex].url === message.jobLink)) {
+            const expectedJobId = jobs[jobIndex].jobId || jobs[jobIndex].departmentId || '';
+            const returnedJobId = message.jobInfo?.jobId || '';
+            if (expectedJobId && returnedJobId && returnedJobId !== expectedJobId) {
+                console.warn(`Ignoring mismatched job info. Expected ${expectedJobId}, got ${returnedJobId}.`);
+            } else if (message.mismatch) {
+                console.warn(message.description || `Unable to find matching job info for ${expectedJobId}.`);
+            } else {
+                jobs[jobIndex].description = message.description || '';
+            }
+        }
+
+        await chrome.storage.local.set({ jobs });
+        allJobs = jobs;
+        renderCurrentView();
+
+        if (isGettingDescriptions) {
+            markDescriptionJobComplete();
         }
     }
 
     // Listen for description fetched messages from the existing VCA background scraper.
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         if (message.action === 'descriptionFetched') {
-            chrome.storage.local.get(['jobs'], (data) => {
-                const jobs = normalizeJobRecords(data.jobs || []);
-                const jobIndex = findJobIndexByKey(
-                    jobs,
-                    message.jobKey,
-                    { jobId: jobs[message.jobIndex]?.jobId || '', link: message.jobLink || '' }
-                );
-                if (jobIndex !== -1 && (!message.jobLink || jobs[jobIndex].link === message.jobLink || jobs[jobIndex].url === message.jobLink)) {
-                    const expectedJobId = jobs[jobIndex].jobId || jobs[jobIndex].departmentId || '';
-                    const returnedJobId = message.jobInfo?.jobId || '';
-                    if (expectedJobId && returnedJobId && returnedJobId !== expectedJobId) {
-                        console.warn(`Ignoring mismatched job info. Expected ${expectedJobId}, got ${returnedJobId}.`);
-                    } else if (message.mismatch) {
-                        console.warn(message.description || `Unable to find matching job info for ${expectedJobId}.`);
-                    } else {
-                        jobs[jobIndex].description = message.description || '';
-                    }
-                }
-                chrome.storage.local.set({ jobs });
-                allJobs = jobs;
-                renderCurrentView();
-
-                if (isGettingDescriptions) {
-                    currentJobIndex++;
-                    const progressBar = document.getElementById('progressBar');
-                    const progressText = document.getElementById('progressText');
-                    progressText.textContent = `${currentJobIndex} / ${descriptionQueue.length}`;
-                    progressBar.style.width = `${(currentJobIndex / descriptionQueue.length) * 100}%`;
-                    setTimeout(() => processNextJob(), 1500);
-                }
-            });
+            descriptionStorageWriteChain = descriptionStorageWriteChain
+                .then(() => handleDescriptionFetchedMessage(message))
+                .catch(error => {
+                    console.error('Error saving fetched description:', error);
+                    if (isGettingDescriptions) markDescriptionJobComplete();
+                });
         }
     });
 
