@@ -1223,59 +1223,33 @@ function cleanListingLocationText(value) {
 
 function extractJobData(jobItem) {
   try {
-    // Extract Department ID
     const departmentId = jobItem.querySelector('[data-ph-at-job-id-text]')?.getAttribute('data-ph-at-job-id-text') ||
                         jobItem.querySelector('.jobId span:last-child')?.textContent?.trim() || '';
 
-    // Extract Title
     const titleElement = jobItem.querySelector('.job-title span') || jobItem.querySelector('[data-ph-at-job-title-text]');
     const title = titleElement?.textContent?.trim() || titleElement?.getAttribute('data-ph-at-job-title-text') || '';
 
-    // Extract Location - use attribute first (most reliable), then text content
     const locationElement = jobItem.querySelector('[data-ph-at-job-location-text]') || jobItem.querySelector('.job-location');
-    let fullLocationText = '';
-    if (locationElement) {
-      // Prefer the data attribute which has clean location text
-      const attrLoc = locationElement.getAttribute('data-ph-at-job-location-text') || '';
-      if (attrLoc) {
-        fullLocationText = attrLoc;
-      } else {
-        // Fallback to text content but strip the title if it's mixed in
-        let locText = locationElement.textContent?.replace('Location', '').trim() || '';
-        // Remove the job title from the beginning if it got mixed in
-        if (title && locText.startsWith(title)) {
-          locText = locText.substring(title.length).trim();
-        }
-        fullLocationText = locText;
-      }
-    }
+    let location = locationElement?.getAttribute('data-ph-at-job-location-text') ||
+      locationElement?.textContent?.replace('Location', '').trim() ||
+      '';
+    location = cleanListingLocationText(location);
 
-    // Validate: Skip multi-location placeholder text
-    if (fullLocationText &&
-        (fullLocationText.toLowerCase().includes('this job is available in') ||
-         fullLocationText.toLowerCase().includes('multiple locations'))) {
-      fullLocationText = ''; // Clear it so Fetch Details can populate it properly
-    }
+    const typeElement = jobItem.querySelector('[data-ph-at-job-type-text]') || jobItem.querySelector('.type');
+    const jobType = typeElement?.getAttribute('data-ph-at-job-type-text') ||
+      typeElement?.textContent?.replace('Job Type', '').trim() ||
+      '';
 
-    const rawLocationText = fullLocationText;
-    fullLocationText = cleanListingLocationText(fullLocationText);
-    console.log(`Job "${title}" listing location:`, fullLocationText);
-
-    // Extract URL - Use more specific selectors to get the correct job link
-    // Priority 1: Link with data attribute (most specific)
     let linkElement = jobItem.querySelector('[data-ph-at-id="job-link"]');
 
-    // Priority 2: Job title link (most common)
     if (!linkElement) {
       linkElement = jobItem.querySelector('.job-title a[href*="/job/"]');
     }
 
-    // Priority 3: Any link with job ID matching the department ID (ensures URL matches the job)
     if (!linkElement && departmentId) {
       linkElement = jobItem.querySelector(`a[href*="/job/${departmentId}"]`);
     }
 
-    // Priority 4: First link with /job/ in URL (fallback)
     if (!linkElement) {
       linkElement = jobItem.querySelector('a[href*="/job/"]');
     }
@@ -1292,51 +1266,23 @@ function extractJobData(jobItem) {
       }
     }
 
-    // Re-extract URL after validation fix
     const validatedUrl = linkElement?.href || url;
 
-    // Validate required fields
     if (!departmentId || !title) {
       console.warn('Missing required fields for job item:', { departmentId, title });
       return null;
     }
 
-    // Check for multiple locations
-    // VCA shows: "Las Vegas, Nevada, United States of America Reno, Nevada, United States of America"
-    const locations = [];
-    const locParts = rawLocationText.split(/United States of America|USA/i).filter(s => s.replace(/[,\s]+/g, '').trim());
-    if (locParts.length > 1) {
-      for (const part of locParts) {
-        let cleaned = part.replace(/[,\s]+$/, '').replace(/^[,\s]+/, '').trim();
-        if (!cleaned) continue;
-        const commaIdx = cleaned.lastIndexOf(',');
-        if (commaIdx === -1) continue;
-        const segments = cleaned.split(',').map(s => s.trim()).filter(Boolean);
-        if (segments.length >= 2) {
-          const locationSegments = segments.slice(-2);
-          locations.push(cleanListingLocationText(locationSegments.join(', ')));
-        }
-      }
-    }
-
-    // If multiple locations found, return one job per location
-    if (locations.length > 1) {
-      console.log(`Job "${title}" has ${locations.length} locations:`, locations);
-      return locations.map((loc, i) => ({
-        departmentId: i === 0 ? departmentId : departmentId + '-loc' + (i + 1),
-        title: title,
-        location: loc,
-        url: validatedUrl,
-        scrapedAt: new Date().toISOString()
-      }));
-    }
-
     return [{
-      departmentId: departmentId,
-      title: title,
-      location: fullLocationText,
+      title,
+      location,
+      jobType: jobType.trim(),
+      jobId: departmentId,
+      departmentId,
+      aggregator: 'VCA Animal Hospitals (Parent Client)',
+      link: validatedUrl,
       url: validatedUrl,
-      scrapedAt: new Date().toISOString()
+      listingSeedOnly: true
     }];
 
   } catch (error) {

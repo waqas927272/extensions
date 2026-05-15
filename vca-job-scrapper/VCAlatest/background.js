@@ -18,8 +18,404 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             chrome.scripting.executeScript({
               target: { tabId: tab.id },
               world: 'MAIN',
-              func: async () => {
+              args: [{
+                expectedJobId: request.jobId || request.departmentId || '',
+                expectedTitle: request.title || '',
+                expectedLocation: request.location || ''
+              }],
+              func: async (expected = {}) => {
                 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+                const expectedJobId = (expected.expectedJobId || '').trim();
+
+                function cleanSelectedJobInfoText(value) {
+                  return (value || '')
+                    .replace(/\u00a0/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                }
+
+                function selectedJobInfoTextWithoutHiddenLabels(element) {
+                  if (!element) return '';
+                  const clone = element.cloneNode(true);
+                  clone.querySelectorAll('.sr-only, [aria-hidden="true"]').forEach(node => node.remove());
+                  return cleanSelectedJobInfoText(clone.innerText || clone.textContent || '');
+                }
+
+                function selectedJobInfoField(root, selector, attrName) {
+                  const elementText = selectedJobInfoTextWithoutHiddenLabels(root.querySelector(selector));
+                  if (elementText) return elementText;
+                  return cleanSelectedJobInfoText(root.getAttribute(attrName) || '');
+                }
+
+                function decodeSelectedJobInfoHtml(value) {
+                  let decoded = value || '';
+                  for (let i = 0; i < 3; i++) {
+                    const textarea = document.createElement('textarea');
+                    textarea.innerHTML = decoded;
+                    const next = textarea.value;
+                    if (next === decoded) break;
+                    decoded = next;
+                  }
+                  return decoded;
+                }
+
+                function selectedJobInfoHtmlToText(value) {
+                  if (!value) return '';
+                  const wrapper = document.createElement('div');
+                  wrapper.innerHTML = decodeSelectedJobInfoHtml(value);
+                  return cleanSelectedJobInfoText(wrapper.innerText || wrapper.textContent || '');
+                }
+
+                function findSelectedJobPostingJsonLd(value) {
+                  if (!value) return null;
+                  if (Array.isArray(value)) {
+                    for (const item of value) {
+                      const found = findSelectedJobPostingJsonLd(item);
+                      if (found) return found;
+                    }
+                    return null;
+                  }
+                  if (typeof value !== 'object') return null;
+                  const type = value['@type'];
+                  if (type === 'JobPosting' || (Array.isArray(type) && type.includes('JobPosting'))) return value;
+                  if (value['@graph']) return findSelectedJobPostingJsonLd(value['@graph']);
+                  return null;
+                }
+
+                function getSelectedJobPostingJsonLd() {
+                  const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+                  for (const script of scripts) {
+                    try {
+                      const parsed = JSON.parse(script.textContent || '');
+                      const jobPosting = findSelectedJobPostingJsonLd(parsed);
+                      if (jobPosting) return jobPosting;
+                    } catch (_) {
+                      // Ignore unrelated or invalid structured data.
+                    }
+                  }
+                  return null;
+                }
+
+                function formatEmploymentType(value) {
+                  const firstValue = Array.isArray(value) ? value[0] : value;
+                  return cleanSelectedJobInfoText(firstValue || '')
+                    .replace(/_/g, ' ')
+                    .toLowerCase()
+                    .replace(/\b\w/g, char => char.toUpperCase());
+                }
+
+                function formatSelectedJobPostingFallback() {
+                  const jobPosting = getSelectedJobPostingJsonLd();
+                  if (!jobPosting) return null;
+
+                  const address = jobPosting.jobLocation?.address || {};
+                  const fields = {
+                    title: cleanSelectedJobInfoText(jobPosting.title || ''),
+                    location: [address.addressLocality, address.addressRegion, address.addressCountry].filter(Boolean).join(', '),
+                    category: cleanSelectedJobInfoText(jobPosting.occupationalCategory || jobPosting.industry || ''),
+                    jobId: cleanSelectedJobInfoText(jobPosting.identifier?.value || ''),
+                    jobType: formatEmploymentType(jobPosting.employmentType || ''),
+                    industry: cleanSelectedJobInfoText(jobPosting.industry || ''),
+                    postDate: cleanSelectedJobInfoText(jobPosting.datePosted || ''),
+                    seqNo: '',
+                    selectorText: '',
+                    jobDescription: selectedJobInfoHtmlToText(jobPosting.description || '')
+                  };
+
+                  if (expectedJobId && fields.jobId && fields.jobId !== expectedJobId) {
+                    return {
+                      description: `Job info mismatch: expected ${expectedJobId}, found ${fields.jobId}`,
+                      jobInfo: fields,
+                      mismatch: true
+                    };
+                  }
+
+                  const lines = [
+                    '=== JOB INFO ===',
+                    `Title: ${fields.title}`,
+                    `Location: ${fields.location}`,
+                    `Category: ${fields.category}`,
+                    `Job ID: ${fields.jobId}`,
+                    `Job Type: ${fields.jobType}`,
+                    `Industry: ${fields.industry}`,
+                    `Post Date: ${fields.postDate}`,
+                    `Job Seq No: ${fields.seqNo}`
+                  ];
+
+                  if (fields.jobDescription) {
+                    lines.push('', '=== JOB DESCRIPTION ===', fields.jobDescription);
+                  }
+
+                  return {
+                    description: lines.join('\n').trim(),
+                    jobInfo: fields,
+                    mismatch: false
+                  };
+                }
+
+                function hasSelectedJobInfoContent(root) {
+                  if (!root) return false;
+                  const fieldsToCheck = [
+                    selectedJobInfoField(root, 'h1.job-title', 'data-ph-at-job-title-text'),
+                    selectedJobInfoField(root, '.job-location', 'data-ph-at-job-location-text'),
+                    selectedJobInfoField(root, '.job-category', 'data-ph-at-job-category-text'),
+                    selectedJobInfoField(root, '.jobId', 'data-ph-at-job-id-text'),
+                    selectedJobInfoField(root, '.type', 'data-ph-at-job-type-text'),
+                    cleanSelectedJobInfoText(root.getAttribute('data-ph-at-job-seqno-text') || ''),
+                    selectedJobInfoTextWithoutHiddenLabels(root)
+                  ];
+                  return fieldsToCheck.some(Boolean);
+                }
+
+                function hasSelectedJobInfoIdentity(root) {
+                  if (!root) return false;
+                  const title = selectedJobInfoField(root, 'h1.job-title', 'data-ph-at-job-title-text');
+                  const jobId = selectedJobInfoField(root, '.jobId', 'data-ph-at-job-id-text');
+                  if (expectedJobId) return jobId === expectedJobId;
+                  return !!(title || jobId);
+                }
+
+                function formatSelectedJobInfo(root) {
+                  const fields = {
+                    title: selectedJobInfoField(root, 'h1.job-title', 'data-ph-at-job-title-text'),
+                    location: selectedJobInfoField(root, '.job-location', 'data-ph-at-job-location-text'),
+                    category: selectedJobInfoField(root, '.job-category', 'data-ph-at-job-category-text'),
+                    jobId: selectedJobInfoField(root, '.jobId', 'data-ph-at-job-id-text'),
+                    jobType: selectedJobInfoField(root, '.type', 'data-ph-at-job-type-text'),
+                    industry: cleanSelectedJobInfoText(root.getAttribute('data-ph-at-job-industry-text') || ''),
+                    postDate: cleanSelectedJobInfoText(root.getAttribute('data-ph-at-job-post-date-text') || ''),
+                    seqNo: cleanSelectedJobInfoText(root.getAttribute('data-ph-at-job-seqno-text') || ''),
+                    selectorText: selectedJobInfoTextWithoutHiddenLabels(root)
+                  };
+
+                  if (expectedJobId && fields.jobId && fields.jobId !== expectedJobId) {
+                    return {
+                      description: `Job info mismatch: expected ${expectedJobId}, found ${fields.jobId}`,
+                      jobInfo: fields,
+                      mismatch: true
+                    };
+                  }
+
+                  return {
+                    description: [
+                      '=== JOB INFO ===',
+                      `Title: ${fields.title}`,
+                      `Location: ${fields.location}`,
+                      `Category: ${fields.category}`,
+                      `Job ID: ${fields.jobId}`,
+                      `Job Type: ${fields.jobType}`,
+                      `Industry: ${fields.industry}`,
+                      `Post Date: ${fields.postDate}`,
+                      `Job Seq No: ${fields.seqNo}`,
+                      '',
+                      '=== JOB INFO TEXT ===',
+                      fields.selectorText
+                    ].join('\n').trim(),
+                    jobInfo: fields,
+                    mismatch: false
+                  };
+                }
+
+                function findSelectedJobInfoElement() {
+                  const exactSelector = 'body > div.ph-page > div.body-wrapper.ph-page-container > div > div.jd-banner > div.job-header-block > section:nth-child(1) > div > div > div > div.job-info.au-target';
+                  const exact = document.querySelector(exactSelector);
+                  if (exact && hasSelectedJobInfoIdentity(exact)) return exact;
+
+                  const candidates = Array.from(document.querySelectorAll('.jd-banner .job-header-block .job-info.au-target, .job-info[data-ph-at-id="job-info"]'));
+                  if (expectedJobId) {
+                    const expectedMatch = candidates.find(candidate => {
+                      const jobId = selectedJobInfoField(candidate, '.jobId', 'data-ph-at-job-id-text');
+                      return jobId === expectedJobId;
+                    });
+                    if (expectedMatch) return expectedMatch;
+                  }
+                  const identityCandidate = candidates.find(hasSelectedJobInfoIdentity);
+                  return identityCandidate || exact || candidates[0] || null;
+                }
+
+                const selectedJobInfoWaitUntil = Date.now() + 15000;
+                let selectedJobInfoElement = findSelectedJobInfoElement();
+                while ((!selectedJobInfoElement || !hasSelectedJobInfoIdentity(selectedJobInfoElement)) && Date.now() < selectedJobInfoWaitUntil) {
+                  await sleep(500);
+                  selectedJobInfoElement = findSelectedJobInfoElement();
+                }
+
+                if (!selectedJobInfoElement || !hasSelectedJobInfoIdentity(selectedJobInfoElement)) {
+                  const structuredJobInfoResult = formatSelectedJobPostingFallback();
+                  if (structuredJobInfoResult) {
+                    return {
+                      description: structuredJobInfoResult.description || 'Job info not found',
+                      jobInfo: structuredJobInfoResult.jobInfo || null,
+                      mismatch: !!structuredJobInfoResult.mismatch
+                    };
+                  }
+
+                  return {
+                    description: 'Job info not found',
+                    jobInfo: null,
+                    mismatch: false
+                  };
+                }
+
+                const selectedJobInfoResult = formatSelectedJobInfo(selectedJobInfoElement);
+                return {
+                  description: selectedJobInfoResult.description || 'Job info not found',
+                  jobInfo: selectedJobInfoResult.jobInfo || null,
+                  mismatch: !!selectedJobInfoResult.mismatch
+                };
+
+                function cleanJobInfoText(value) {
+                  return (value || '')
+                    .replace(/\u00a0/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                }
+
+                function cleanJobInfoLocation(value) {
+                  return cleanJobInfoText(value)
+                    .replace(/\s*,?\s*(?:United States of America|USA)\b/gi, '')
+                    .replace(/^[,\s]+|[,\s]+$/g, '')
+                    .trim();
+                }
+
+                function textWithoutHiddenLabels(element) {
+                  if (!element) return '';
+                  const clone = element.cloneNode(true);
+                  clone.querySelectorAll('.sr-only, [aria-hidden="true"]').forEach(node => node.remove());
+                  return cleanJobInfoText(clone.innerText || clone.textContent || '');
+                }
+
+                function isVisibleElement(element) {
+                  const rect = element?.getBoundingClientRect?.();
+                  return !!rect && rect.width > 0 && rect.height > 0;
+                }
+
+                function getElementJobInfoSnapshot(element) {
+                  if (!element) return -1;
+
+                  const title = textWithoutHiddenLabels(element.querySelector('h1.job-title')) ||
+                    cleanJobInfoText(element.getAttribute('data-ph-at-job-title-text') || '');
+                  const location = textWithoutHiddenLabels(element.querySelector('.job-location')) ||
+                    cleanJobInfoText(element.getAttribute('data-ph-at-job-location-text') || '');
+                  const category = textWithoutHiddenLabels(element.querySelector('.job-category')) ||
+                    cleanJobInfoText(element.getAttribute('data-ph-at-job-category-text') || '');
+                  const jobId = textWithoutHiddenLabels(element.querySelector('.jobId')) ||
+                    cleanJobInfoText(element.getAttribute('data-ph-at-job-id-text') || '');
+                  const jobType = textWithoutHiddenLabels(element.querySelector('.type')) ||
+                    cleanJobInfoText(element.getAttribute('data-ph-at-job-type-text') || '');
+
+                  return { title, location, category, jobId, jobType };
+                }
+
+                function scoreJobInfoElement(element) {
+                  if (!element) return -1;
+
+                  const { title, location, category, jobId, jobType } = getElementJobInfoSnapshot(element);
+
+                  let score = 0;
+                  if (expectedJobId && jobId === expectedJobId) score += 1000;
+                  if (expectedJobId && jobId && jobId !== expectedJobId) score -= 1000;
+                  if (isVisibleElement(element)) score += 10;
+                  if (element.matches('.job-info[data-ph-at-id="job-info"]')) score += 10;
+                  if (element.querySelector('h1.job-title')) score += 30;
+                  if (title) score += 20;
+                  if (jobId) score += 20;
+                  if (jobType) score += 10;
+                  if (category) score += 5;
+                  if (location && !/this\s+job\s+is\s+available\s+in|multiple locations/i.test(location)) score += 15;
+                  if (/^R-\d+/i.test(jobId)) score += 10;
+                  return score;
+                }
+
+                function findJobInfoElement() {
+                  const candidates = Array.from(document.querySelectorAll('.job-info[data-ph-at-id="job-info"], [data-ph-at-id="job-info"]'));
+                  const scoredCandidates = candidates
+                    .map(element => ({ element, score: scoreJobInfoElement(element) }))
+                    .sort((a, b) => b.score - a.score);
+
+                  if (expectedJobId) {
+                    const exactMatch = scoredCandidates.find(({ element }) => getElementJobInfoSnapshot(element).jobId === expectedJobId);
+                    if (exactMatch) return exactMatch.element;
+                  }
+
+                  return scoredCandidates[0]?.element || null;
+                }
+
+                function hasJobInfoContent() {
+                  const root = findJobInfoElement();
+                  return !!(
+                    root?.getAttribute('data-ph-at-job-title-text') ||
+                    root?.getAttribute('data-ph-at-job-id-text') ||
+                    root?.querySelector('.job-title')?.textContent?.trim()
+                  );
+                }
+
+                const jobInfoWaitUntil = Date.now() + 15000;
+                while (!hasJobInfoContent() && Date.now() < jobInfoWaitUntil) {
+                  await sleep(500);
+                }
+
+                const jobInfoRoot = findJobInfoElement();
+                if (!jobInfoRoot) return { description: 'Description not found', jobInfo: null };
+
+                function jobInfoTextOrAttr(selector, attrName, formatter = cleanJobInfoText) {
+                  const element = selector ? jobInfoRoot.querySelector(selector) : null;
+                  const elementText = textWithoutHiddenLabels(element);
+                  if (elementText) return formatter(elementText);
+
+                  return formatter(jobInfoRoot.getAttribute(attrName) || '');
+                }
+
+                const extractedJobInfo = {
+                  title: jobInfoTextOrAttr('h1.job-title', 'data-ph-at-job-title-text'),
+                  location: jobInfoTextOrAttr('.job-location', 'data-ph-at-job-location-text', cleanJobInfoLocation),
+                  rawLocation: jobInfoTextOrAttr('.job-location', 'data-ph-at-job-location-text'),
+                  category: jobInfoTextOrAttr('.job-category', 'data-ph-at-job-category-text'),
+                  jobId: jobInfoTextOrAttr('.jobId', 'data-ph-at-job-id-text'),
+                  jobType: jobInfoTextOrAttr('.type', 'data-ph-at-job-type-text'),
+                  industry: cleanJobInfoText(jobInfoRoot.getAttribute('data-ph-at-job-industry-text') || ''),
+                  postDate: cleanJobInfoText(jobInfoRoot.getAttribute('data-ph-at-job-post-date-text') || ''),
+                  seqNo: cleanJobInfoText(jobInfoRoot.getAttribute('data-ph-at-job-seqno-text') || ''),
+                  visibleText: textWithoutHiddenLabels(jobInfoRoot)
+                };
+
+                if (expectedJobId && extractedJobInfo.jobId && extractedJobInfo.jobId !== expectedJobId) {
+                  return {
+                    description: `Job info mismatch: expected ${expectedJobId}, found ${extractedJobInfo.jobId}`,
+                    jobInfo: null,
+                    mismatch: true
+                  };
+                }
+
+                if (expectedJobId && !extractedJobInfo.jobId) {
+                  return {
+                    description: `Job info not found for expected job ${expectedJobId}`,
+                    jobInfo: null,
+                    mismatch: true
+                  };
+                }
+
+                if (!Object.values(extractedJobInfo).some(Boolean)) {
+                  return { description: 'Description not found', jobInfo: null };
+                }
+
+                return {
+                  description: [
+                    '=== JOB INFO ===',
+                    `Title: ${extractedJobInfo.title}`,
+                    `Location: ${extractedJobInfo.location || extractedJobInfo.rawLocation}`,
+                    `Category: ${extractedJobInfo.category}`,
+                    `Job ID: ${extractedJobInfo.jobId}`,
+                    `Job Type: ${extractedJobInfo.jobType}`,
+                    `Industry: ${extractedJobInfo.industry}`,
+                    `Post Date: ${extractedJobInfo.postDate}`,
+                    `Job Seq No: ${extractedJobInfo.seqNo}`,
+                    '',
+                    '=== JOB INFO TEXT ===',
+                    extractedJobInfo.visibleText
+                  ].join('\n').trim(),
+                  jobInfo: extractedJobInfo
+                };
 
                 function hasUsefulPageContent() {
                   const jobInfo = document.querySelector('.job-info[data-ph-at-id="job-info"], [data-ph-at-id="job-info"]');
@@ -239,9 +635,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               }
             }).then((results) => {
               chrome.tabs.remove(tab.id);
+              const extractionResult = results && results[0] ? results[0].result : null;
               chrome.runtime.sendMessage({
                 action: 'descriptionFetched',
-                description: results && results[0] ? results[0].result : 'Error fetching description',
+                description: typeof extractionResult === 'string'
+                  ? extractionResult
+                  : (extractionResult?.description || 'Error fetching description'),
+                jobInfo: typeof extractionResult === 'object' ? extractionResult?.jobInfo || null : null,
+                mismatch: typeof extractionResult === 'object' ? !!extractionResult?.mismatch : false,
                 jobIndex: request.jobIndex,
                 jobKey: request.jobKey,
                 jobLink: request.jobLink || request.url

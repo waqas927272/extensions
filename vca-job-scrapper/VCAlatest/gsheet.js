@@ -1,7 +1,6 @@
 class GoogleSheetsExporter {
   constructor() {
     this.accessToken = null;
-    this.apiKey = 'AIzaSyARmow4i2QpMgeGuET-LJ4_iHDb9Wn9e-M'; 
   }
 
   async authenticate() {

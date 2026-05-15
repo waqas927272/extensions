@@ -34,6 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let isFetchingDetails = false;
     let isFetchingAddresses = false;
     let currentJobIndex = 0;
+    let descriptionQueue = [];
     let detailsQueue = [];
     let currentDetailsIndex = 0;
     let addressQueue = [];
@@ -227,11 +228,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const hospital = job.hospital || job.hospitalName || '';
         const website = job.website || job.websiteUrl || '';
         const streetAddress = job.streetAddress || job.address || '';
+        const aggregator = job.aggregator || 'VCA Animal Hospitals (Parent Client)';
 
         job.link = link;
         job.url = job.url || link;
         job.jobId = jobId;
         job.departmentId = job.departmentId || jobId;
+        job.aggregator = aggregator;
         job.hospital = hospital;
         job.hospitalName = job.hospitalName || hospital;
         job.website = website;
@@ -239,7 +242,7 @@ document.addEventListener('DOMContentLoaded', () => {
         job.streetAddress = streetAddress;
         job.address = job.address || streetAddress;
 
-        if ((!job.city || !job.state) && job.location) {
+        if (!job.listingSeedOnly && (!job.city || !job.state) && job.location) {
             const locationText = cleanLocationText(job.location);
             const parts = locationText.split(',').map(part => part.trim()).filter(Boolean);
             if (parts.length >= 2) {
@@ -2209,7 +2212,7 @@ document.addEventListener('DOMContentLoaded', () => {
             jobIdCell.style.fontSize = '12px';
             jobIdCell.style.color = '#64748b';
             row.insertCell(4).textContent = job.hospital;
-            row.insertCell(5).textContent = 'VCA Animal Hospitals (Parent Client)';
+            row.insertCell(5).textContent = job.aggregator || 'VCA Animal Hospitals (Parent Client)';
             row.insertCell(6).textContent = job.streetAddress || '-';
             row.insertCell(7).textContent = job.city;
             row.insertCell(8).textContent = job.state;
@@ -2300,7 +2303,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 `"${(job.title || '').replace(/"/g, '""')}"`,
                 `"${(job.jobId || '').replace(/"/g, '""')}"`,
                 `"${(job.hospital || '').replace(/"/g, '""')}"`,
-                `"VCA Animal Hospitals (Parent Client)"`,
+                `"${(job.aggregator || 'VCA Animal Hospitals (Parent Client)').replace(/"/g, '""')}"`,
                 `"${(job.streetAddress || '').replace(/"/g, '""')}"`,
                 `"${(job.city || '').replace(/"/g, '""')}"`,
                 `"${(job.state || '').replace(/"/g, '""')}"`,
@@ -2548,9 +2551,9 @@ document.addEventListener('DOMContentLoaded', () => {
             job_id: job.jobId || '',
             department_id: job.jobId || '',
             hospital: job.hospital,
-            aggregator: "VCA Animal Hospitals (Parent Client)",
+            aggregator: job.aggregator || "VCA Animal Hospitals (Parent Client)",
             street_address: job.streetAddress || '',
-            parent_client: "VCA Animal Hospitals (Parent Client)",
+            parent_client: job.aggregator || "VCA Animal Hospitals (Parent Client)",
             city: job.city,
             state: job.state,
             zip_code: job.zipCode || '',
@@ -2666,14 +2669,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await chrome.storage.local.get(['jobs']);
         const jobs = normalizeJobRecords(data.jobs || []);
 
-        const jobsWithoutDesc = jobs.filter(job => !hasUsableDescription(job.description) && job.link);
-        if (jobsWithoutDesc.length === 0) {
-            showToast('All jobs already have descriptions!', 'success');
+        const jobsToProcess = jobs
+            .map((job, index) => ({ job, index, key: getJobSelectionKey(job) }))
+            .filter(item => item.job.link);
+
+        if (jobsToProcess.length === 0) {
+            showToast('No jobs with links found.', 'error');
             return;
         }
 
         isGettingDescriptions = true;
         currentJobIndex = 0;
+        descriptionQueue = jobsToProcess;
 
         getDescriptionsBtn.disabled = true;
         getDescriptionsBtn.textContent = 'Getting Descriptions...';
@@ -2684,30 +2691,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const progressText = document.getElementById('progressText');
         const progressLabel = document.getElementById('progressLabel');
         progressSection.classList.remove('hidden');
-        progressLabel.textContent = 'Getting Descriptions';
-        progressText.textContent = `0 / ${jobsWithoutDesc.length}`;
+        progressLabel.textContent = 'Getting Job Info';
+        progressText.textContent = `0 / ${descriptionQueue.length}`;
         progressBar.style.width = '0%';
 
         processNextJob();
     });
 
     async function processNextJob() {
-        const data = await chrome.storage.local.get(['jobs']);
-        const jobs = normalizeJobRecords(data.jobs || []);
-
-        const jobsWithoutDesc = jobs.filter(job => !hasUsableDescription(job.description) && job.link);
-        const totalOriginal = jobs.filter(job => job.link).length;
-        const totalWithoutDesc = jobsWithoutDesc.length;
-        const processed = totalOriginal - totalWithoutDesc;
-
-        // Update progress
-        const progressBar = document.getElementById('progressBar');
-        const progressText = document.getElementById('progressText');
-        const totalToProcess = allJobs.filter(job => !hasUsableDescription(job.description) && job.link).length;
-        progressText.textContent = `${processed} / ${totalToProcess + processed}`;
-        progressBar.style.width = `${(processed / (totalToProcess + processed)) * 100}%`;
-
-        if (jobsWithoutDesc.length === 0) {
+        if (currentJobIndex >= descriptionQueue.length) {
             isGettingDescriptions = false;
             getDescriptionsBtn.disabled = false;
             getDescriptionsBtn.innerHTML = `
@@ -2717,24 +2709,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 Get Descriptions
             `;
             document.getElementById('progressSection').classList.add('hidden');
-            showToast('All descriptions have been fetched!', 'success');
+            showToast('All job info has been fetched!', 'success');
             return;
         }
 
-        const job = jobsWithoutDesc[0];
-        const jobIndex = jobs.indexOf(job);
-        const jobKey = getJobSelectionKey(job);
+        const data = await chrome.storage.local.get(['jobs']);
+        const jobs = normalizeJobRecords(data.jobs || []);
+        const queueItem = descriptionQueue[currentJobIndex];
+
+        // Update progress
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        progressText.textContent = `${currentJobIndex} / ${descriptionQueue.length}`;
+        progressBar.style.width = `${(currentJobIndex / descriptionQueue.length) * 100}%`;
+
+        const jobIndex = findJobIndexByKey(jobs, queueItem.key, queueItem.job);
+        if (jobIndex === -1) {
+            currentJobIndex++;
+            setTimeout(() => processNextJob(), 50);
+            return;
+        }
+
+        const job = jobs[jobIndex];
 
         try {
             chrome.runtime.sendMessage({
                 action: 'fetchJobDescription',
                 url: job.link,
                 jobIndex: jobIndex,
-                jobKey: jobKey,
-                jobLink: job.link
+                jobKey: getJobSelectionKey(job),
+                jobLink: job.link,
+                jobId: job.jobId || job.departmentId || '',
+                departmentId: job.departmentId || job.jobId || '',
+                title: job.title || '',
+                location: job.location || ''
             });
         } catch (error) {
             console.error('Error opening tab for job:', error);
+            currentJobIndex++;
             setTimeout(() => processNextJob(), 1500);
         }
     }
@@ -2750,13 +2762,26 @@ document.addEventListener('DOMContentLoaded', () => {
                     { jobId: jobs[message.jobIndex]?.jobId || '', link: message.jobLink || '' }
                 );
                 if (jobIndex !== -1 && (!message.jobLink || jobs[jobIndex].link === message.jobLink || jobs[jobIndex].url === message.jobLink)) {
-                    jobs[jobIndex].description = message.description || '';
+                    const expectedJobId = jobs[jobIndex].jobId || jobs[jobIndex].departmentId || '';
+                    const returnedJobId = message.jobInfo?.jobId || '';
+                    if (expectedJobId && returnedJobId && returnedJobId !== expectedJobId) {
+                        console.warn(`Ignoring mismatched job info. Expected ${expectedJobId}, got ${returnedJobId}.`);
+                    } else if (message.mismatch) {
+                        console.warn(message.description || `Unable to find matching job info for ${expectedJobId}.`);
+                    } else {
+                        jobs[jobIndex].description = message.description || '';
+                    }
                 }
                 chrome.storage.local.set({ jobs });
                 allJobs = jobs;
                 renderCurrentView();
 
                 if (isGettingDescriptions) {
+                    currentJobIndex++;
+                    const progressBar = document.getElementById('progressBar');
+                    const progressText = document.getElementById('progressText');
+                    progressText.textContent = `${currentJobIndex} / ${descriptionQueue.length}`;
+                    progressBar.style.width = `${(currentJobIndex / descriptionQueue.length) * 100}%`;
                     setTimeout(() => processNextJob(), 1500);
                 }
             });
