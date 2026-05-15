@@ -317,7 +317,9 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/^.*\bat\s+(VCA\s+)/i, 'VCA ')
             .replace(/,\s*(?:we|our)\b.*$/i, '')
             .replace(/\s+outside\s+of\b.*$/i, '')
-            .replace(/\s+[-–—]\s+[A-Z][A-Za-z .'-]+,\s*(?:[A-Z]{2}|[A-Z][a-z]+)\s*$/i, '')
+            .replace(/\s+as\s+(?:Medical\s+Director|Associate\s+Veterinarian|Veterinarian|Emergency\s+Veterinarian|Specialist|Doctor)\b.*$/i, '')
+            .replace(/^.*\b(?:at|with)\s+((?:VCA\s+)?[A-Z][A-Za-z0-9&'()_\- ]{2,120}?\b(?:Animal Hospital|Animal Medical Center|Veterinary Specialists?|Veterinary Hospital|Veterinary Clinic|Veterinary Center|Veterinary Care|Pet Hospital|Pet Center|Pet Care|Emergency Hospital|Emergency Center|Referral Hospital|Referral Center|Specialty Hospital|Specialty Center|Medical Center|Hospital|Clinic|Center|Care|Specialists?|VREC|CAVES|Service|Services|Veterinary Group))/i, '$1')
+            .replace(/\s+(?:[-\u2013\u2014]|\u00e2\u20ac[\u201c\u009d])\s+[A-Z][A-Za-z .'-]+,\s*(?:[A-Z]{2}|[A-Z][a-z]+)\s*$/i, '')
             .replace(/,\s*(?:[A-Z]{2}|[A-Z][a-z]+)\s*$/i, '')
             .replace(/\s+(?:and\s+you|where\b|we\b|our\b|you\S*ll|you\s+will|located\b|located\s+in\b|is\s+located\b|in\s+[A-Z][A-Za-z .'-]+,?\s+(?:[A-Z]{2}|[A-Z][a-z]+)\b).*$/i, '')
             .replace(/\s+(?:is|are)\s+(?:seeking|looking|hiring|excited|pleased|proud|growing|accepting).*$/i, '')
@@ -331,8 +333,21 @@ document.addEventListener('DOMContentLoaded', () => {
         const value = (candidate || '').trim();
         if (!value || value.length < 3 || value.length > 120) return false;
         if (/^(?:vca|vcacareers|vca we|vca,|vca is|vca animal hospitals?|at vca)$/i.test(value)) return false;
-        if (/(?:future of veterinary|committed to equity|veterinary medicine is|corporate handbook|current associate|vcacareers)/i.test(value)) return false;
+        if (/(?:future of veterinary|committed to equity|veterinary medicine is|corporate handbook|current associate|vcacareers|board certification|american board|pathway to|certification|residency program|approved residency|practitioners)/i.test(value)) return false;
         return /\b(?:VCA|Animal|Veterinary|Pet|Hospital|Clinic|Center|Care|Specialists?|Referral|Emergency|Oncology Service|CAVES|VREC|Vet Specs|Katonah Bedford|South Shore|Choptank|Woodbridge|Blairstown|Manhattan|Freehold|Sugar Grove|Old Marple|Pike Creek|Delaware Valley|Loomis Basin|Park East|Westbury|Chancellor|Everett|Beech Grove|Bakerstown|Carriage Hills)\b/i.test(value);
+    }
+
+    function getFallbackHospitalByLocation(location = '', city = '', state = '') {
+        const locationParts = parseLocationParts(cleanLocationText(location));
+        const fallbackCity = formatCityForStorage(city || locationParts.city || '');
+        const fallbackState = formatStateForStorage(state || locationParts.state || '');
+
+        if (!fallbackCity || !fallbackState) return '';
+        return `VCA Animal Hospital - ${fallbackCity}, ${fallbackState}`;
+    }
+
+    function isFallbackHospitalName(hospitalName) {
+        return /^VCA Animal Hospital\s+-\s+.+,\s+.+$/i.test((hospitalName || '').trim());
     }
 
     function extractMetadataField(text, labels) {
@@ -378,9 +393,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const namedHospital = /([A-Z][A-Za-z0-9&'()_\- ]{2,120}?\b(?:Animal Hospital|Animal Medical Center|Veterinary Specialists?|Veterinary Hospital|Veterinary Clinic|Veterinary Center|Veterinary Care|Pet Hospital|Pet Center|Pet Care|Emergency Hospital|Emergency Center|Referral Hospital|Referral Center|Specialty Hospital|Specialty Center|Medical Center|Hospital|Clinic|Center|Care|Specialists?|VREC|CAVES|Service|Services|Veterinary Group)(?:\s+(?:of|and|&)\s+(?:the\s+)?[A-Z][A-Za-z0-9&'()_\- ]{1,60})?(?:\s*\([^)]+\))?)/i;
         const searchText = text.replace(/_/g, ' ');
         const patterns = [
+            /\bLearn\s+more\s+about\s+the\s+hospital\s+([A-Z][A-Za-z0-9&'()_\- ]{2,80}?)(?=\s+If\s+you\s+are|\s+Benefits:|[.\n\r]|$)/i,
+            new RegExp(`\\b(?:at|with)\\s+${namedHospital.source}\\s+as\\s+(?:Medical\\s+Director|Associate\\s+Veterinarian|Veterinarian|Emergency\\s+Veterinarian|Specialist|Doctor)`, 'i'),
             /Join us as\s+(?:an?|the)?\s*[^.]{0,180}?\s+at\s+([^.;\n]+?)(?=\s+(?:and|where|in\s+[A-Z]|you\S*ll|you\s+will)|[.])/i,
             /Join us as\s+(?:an?|the)?\s*[^.]{0,180}?\s+((?:VCA\s+)?[A-Z][^.;\n]+?)(?=\s+in\s+[A-Z][A-Za-z .'-]+,?\s+(?:[A-Z]{2}|[A-Z][a-z]+)|[.])/i,
-            /(?:at|with)\s+([^.;\n]{3,120}?)(?=\s+(?:and|where|in\s+[A-Z]|you\S*ll|you\s+will)|[.])/i,
             new RegExp(`\\bWelcome\\s+to\\s+${namedHospital.source}`, 'i'),
             new RegExp(`${namedHospital.source}\\s+(?:is\\s+located|located\\s+in)`, 'i'),
             new RegExp(`${namedHospital.source}\\s+is\\s+(?:an?\\s+)?(?:multi-specialty|full-service|specialty|emergency|small|busy|progressive|premier|well-established|thriving|AAHA|hybrid|24-hour|referral|veterinary)`, 'i'),
@@ -402,7 +418,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        return '';
+        return getFallbackHospitalByLocation(location, city, state);
     }
 
     function resolveHospitalNameFromDetails(currentHospital, detailHospital, description, location, city, state) {
@@ -425,6 +441,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function canFetchAddressForHospital(hospitalName, location = '', city = '', state = '') {
         if (!hospitalName || !location) return false;
+        if (isFallbackHospitalName(hospitalName)) return false;
         if (isLocationOnlyHospitalName(hospitalName, location, city, state)) return false;
         if (isGenericOrganizationHospitalName(hospitalName)) return false;
         return true;
@@ -1001,8 +1018,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Format salary to standard "$X–$Y per year" or "$X per hour"
         function formatSalary(raw) {
             if (!raw) return '';
-            const isHourly = /(?:per\s+)?(?:hour|hr|\/hr)/i.test(raw);
-            const isShift = /(?:per\s+)?(?:shift|\/shift)/i.test(raw);
+            const isHourly = /\b(?:per\s+(?:hour|hr)|hourly)\b|\/hr\b/i.test(raw);
+            const isShift = /\bper\s+shift\b|\/shift\b/i.test(raw);
             const amounts = [];
             let hasThousandsSuffix = false;
             const amountRegex = /\$?\s*([\d,]+(?:\.\d{2})?)\s*(?:\/?\s*k)?\b/gi;
@@ -1017,6 +1034,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             if (amounts.length === 0) return raw;
             if (hasThousandsSuffix) {
+                for (let i = 0; i < amounts.length; i++) {
+                    if (amounts[i] < 1000) amounts[i] = amounts[i] * 1000;
+                }
+            }
+            if (amounts.length >= 2 && amounts.some(amount => amount >= 1000)) {
                 for (let i = 0; i < amounts.length; i++) {
                     if (amounts[i] < 1000) amounts[i] = amounts[i] * 1000;
                 }
@@ -2470,20 +2492,21 @@ document.addEventListener('DOMContentLoaded', () => {
         exportCsvButton.addEventListener('click', exportToCSV);
     }
 
-    // Clear details only (area of practice, position, salary, experience)
+    // Clear only the columns populated by Fetch Details.
     const clearDetailsBtn = document.getElementById('clearDetailsBtn');
     clearDetailsBtn.addEventListener('click', () => {
-        if (confirm('Are you sure you want to clear all job details? This will remove Area of Practice, Position, Salary, Job Type, and Experience from all jobs.')) {
+        if (confirm('Are you sure you want to clear all fetched details? This will remove Hospital, Area of Practice, Position, Salary, and Experience from all jobs.')) {
             chrome.storage.local.get(['jobs'], (data) => {
                 const jobs = normalizeJobRecords(data.jobs || []);
                 let clearedCount = 0;
 
                 jobs.forEach(job => {
-                    if (job.areaOfPractice || job.position || job.salary || job.jobType || job.experience) {
+                    if (job.hospital || job.hospitalName || job.areaOfPractice || job.position || job.salary || job.experience) {
+                        job.hospital = '';
+                        job.hospitalName = '';
                         job.areaOfPractice = '';
                         job.position = '';
                         job.salary = '';
-                        job.jobType = '';
                         job.experience = '';
                         clearedCount++;
                     }
@@ -3021,7 +3044,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 const firstDetail = detailsList[0] || {};
                 const listingTitle = originalJob.title || '';
                 const descText = firstDetail.description || originalJob.description || '';
-                const detailHospital = firstDetail.hospitalName || '';
+                const detailHospital = firstDetail.hospitalName ||
+                    extractBetterHospitalNameFromDescription(
+                        descText,
+                        originalJob.location || '',
+                        originalJob.city || '',
+                        originalJob.state || ''
+                    );
                 const validHospital = detailHospital &&
                     !isLocationOnlyHospitalName(detailHospital, originalJob.location, originalJob.city, originalJob.state) &&
                     !isGenericOrganizationHospitalName(detailHospital);
