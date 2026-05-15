@@ -6,7 +6,7 @@ let totalPagesToScrape = 3;
 let floatingBox = null;
 let scrapeStepInProgress = false;
 let pageNavigationInProgress = false;
-const SKIP_KEYWORDS = ['Relief', 'Intern', 'Locum'];
+const SKIP_KEYWORDS = ['Relief', 'Intern', 'Internship', 'Locum'];
 
 // Whitelist keywords from jobs.docx - only save jobs whose title matches at least one keyword
 const ALLOWED_POSITION_KEYWORDS = [

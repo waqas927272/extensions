@@ -1,7 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(dir /s /b \"C:\\\\wamp64\\\\www\\\\extensions\\\\webhookusvta\")"
-    ]
-  }
-}
