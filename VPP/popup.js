@@ -51,23 +51,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 scrapingStatus: 'Starting scraper...'
             });
 
-            // For VetPracticePartners site, inject vpp-content.js directly.
-            status.textContent = 'Scraping jobs from current page...';
+            const tabUrl = tab?.url || '';
+            const isGreenhouseAgencyPage = /https:\/\/app\.greenhouse\.io\/agency\/jobs\//i.test(tabUrl);
+            const scraperFile = isGreenhouseAgencyPage ? 'vpp-greenhouse-content.js' : 'vpp-content.js';
+
+            status.textContent = isGreenhouseAgencyPage
+                ? 'Scraping jobs from Greenhouse dashboard...'
+                : 'Scraping jobs from current page...';
             const [result] = await chrome.scripting.executeScript({
                 target: { tabId: tab.id },
-                files: ['vpp-content.js'],
+                files: [scraperFile],
             });
 
             if (result && result.result) {
-                const scrapedJobs = result.result;
+                const scrapedJobs = normalizeJobsForRecordsPage(result.result);
                 await chrome.storage.local.set({
                     scrapedJobs: scrapedJobs,
                     scraping: false, // Done in one go
                     scrapingComplete: true,
-                    scrapingStatus: `Successfully scraped ${scrapedJobs.length} jobs from VetPracticePartners!`
+                    scrapingStatus: `Successfully scraped ${scrapedJobs.length} jobs from ${isGreenhouseAgencyPage ? 'Greenhouse' : 'VetPracticePartners'}!`
                 });
             } else {
-                throw new Error('No jobs returned from VetPracticePartners scraper or script failed.');
+                throw new Error('No jobs returned from scraper or script failed.');
             }
 
             checkScrapingStatus();
@@ -98,6 +103,43 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 });
+
+function normalizeJobsForRecordsPage(jobs) {
+    return (jobs || []).map((job, index) => {
+        const city = job.city && job.city !== 'N/A' ? job.city : '';
+        const state = job.state && job.state !== 'N/A' ? job.state : '';
+        const location = [city, state].filter(Boolean).join(', ');
+        const hospital = job.hospital || (job.location && job.location !== 'N/A' ? job.location : '');
+        const jobIdFromLink = getVppJobIdFromLink(job.link);
+        const jobId = jobIdFromLink || job.jobId || job.id || `VPP-${index + 1}`;
+
+        return {
+            ...job,
+            id: job.id || jobId,
+            jobId,
+            title: job.title || job.jobTitle || '',
+            hospital,
+            location,
+            city,
+            state,
+            source: job.source || 'Veterinary Practice Partners'
+        };
+    });
+}
+
+function getVppJobIdFromLink(link) {
+    if (!link) return '';
+    try {
+        const url = new URL(link);
+        const greenhouseId = url.searchParams.get('gh_jid');
+        if (greenhouseId) return `VPP-${greenhouseId}`;
+    } catch (error) {
+        // Fall back to regex parsing below.
+    }
+
+    const match = String(link).match(/(?:jobs\/|gh_jid=)(\d+)/);
+    return match ? `VPP-${match[1]}` : '';
+}
 
 function checkScrapingStatus() {
     const scrapeBtn = document.getElementById('scrapeBtn');

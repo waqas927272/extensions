@@ -1,6 +1,6 @@
-// VIPVet Job Scraper - Background Service Worker
+﻿// VIP Vet Job Scraper - Background Service Worker
 
-console.log("VIPVet Job Scraper background script loaded");
+console.log("VIP Vet Job Scraper background script loaded");
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "scrapeProgress") {
@@ -104,5 +104,7 @@ function handleFetchDetails(request) {
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("VIPVet Job Scraper installed");
+  console.log("VIP Vet Job Scraper installed");
 });
+
+

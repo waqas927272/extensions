@@ -1,15 +1,15 @@
-/* VIPVet Job Scraper - Results Styles */
+﻿/* VIP Vet Job Scraper - Results Styles */
 
 :root {
-  --primary-color: #00214e;
-  --primary-light: #6c97cd;
+  --primary-color: #4f6488;
+  --primary-light: #fec432;
   --primary-lighter: #cbd9eb;
   --primary-lightest: #f0f5fb;
-  --secondary-color: #14c097;
-  --accent-color: #f37136;
+  --secondary-color: #4277b8;
+  --accent-color: #fec432;
   --danger-color: #dc3545;
-  --success-color: #14c097;
-  --warning-color: #f37136;
+  --success-color: #4277b8;
+  --warning-color: #fec432;
   --text-color: #333;
   --text-light: #666;
   --text-muted: #999;
@@ -752,3 +752,5 @@ input[type="checkbox"] {
     min-width: 900px;
   }
 }
+
+

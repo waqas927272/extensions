@@ -1,12 +1,12 @@
-/* VIPVet Job Scraper - Popup Styles */
+﻿/* VIP Vet Job Scraper - Popup Styles */
 
 :root {
-  --primary-color: #00214e; /* VIPVet Dark Blue */
-  --primary-light: #6c97cd; /* VIPVet Light Blue */
-  --secondary-color: #14c097; /* VIPVet Teal */
-  --accent-color: #f37136; /* VIPVet Orange */
+  --primary-color: #4f6488; /* VIP Vet Dark Blue */
+  --primary-light: #fec432; /* VIP Vet Light Blue */
+  --secondary-color: #4277b8; /* VIP Vet Teal */
+  --accent-color: #fec432; /* VIP Vet Orange */
   --danger-color: #dc3545;
-  --success-color: #14c097;
+  --success-color: #4277b8;
   --warning-color: #ffc107;
   --text-color: #333;
   --text-light: #666;
@@ -38,7 +38,7 @@ header {
   margin-bottom: 16px;
   padding-bottom: 16px;
   border-bottom: 3px solid var(--secondary-color);
-  background: linear-gradient(135deg, #00214e 0%, #6c97cd 100%);
+  background: linear-gradient(135deg, #4f6488 0%, #fec432 100%);
   margin: -16px -16px 16px -16px;
   padding: 20px 16px;
   color: white;
@@ -74,7 +74,7 @@ h1 {
   background: var(--card-bg);
   border-radius: 8px;
   padding: 12px;
-  box-shadow: 0 2px 4px rgba(0,33,78,0.1);
+  box-shadow: 0 2px 4px rgba(79,100,136,0.1);
 }
 
 .status-item {
@@ -103,7 +103,7 @@ h1 {
   background: var(--card-bg);
   border-radius: 8px;
   padding: 12px;
-  box-shadow: 0 2px 4px rgba(0,33,78,0.1);
+  box-shadow: 0 2px 4px rgba(79,100,136,0.1);
 }
 
 .progress-text {
@@ -130,7 +130,7 @@ h1 {
 
 .progress-fill {
   height: 100%;
-  background: linear-gradient(135deg, #00214e 0%, #14c097 100%);
+  background: linear-gradient(135deg, #4f6488 0%, #4277b8 100%);
   width: 0%;
   transition: width 0.3s ease;
 }
@@ -190,7 +190,7 @@ h1 {
 
 .btn:hover {
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0,33,78,0.2);
+  box-shadow: 0 2px 8px rgba(79,100,136,0.2);
 }
 
 .btn:active {
@@ -209,12 +209,12 @@ h1 {
 }
 
 .btn-primary {
-  background: linear-gradient(135deg, #00214e 0%, #6c97cd 100%);
+  background: linear-gradient(135deg, #4f6488 0%, #fec432 100%);
   color: white;
 }
 
 .btn-primary:hover {
-  box-shadow: 0 4px 12px rgba(0,33,78,0.3);
+  box-shadow: 0 4px 12px rgba(79,100,136,0.3);
 }
 
 .btn-secondary {
@@ -253,3 +253,4 @@ footer {
   font-size: 11px;
   color: var(--text-light);
 }
+

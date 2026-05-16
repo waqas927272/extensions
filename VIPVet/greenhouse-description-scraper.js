@@ -1,15 +1,55 @@
 (() => {
     // This script is injected into a Greenhouse job page (embed format).
     try {
+        let structuredText = '';
+        let bodyText = '';
+
         // Try JSON-LD structured data first (most reliable)
         const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
         for (const script of jsonLdScripts) {
             try {
-                const data = JSON.parse(script.textContent);
-                if (data.description && data.description.length > 50) {
+                const parsed = JSON.parse(script.textContent);
+                const items = Array.isArray(parsed) ? parsed : [parsed];
+                for (const data of items) {
+                if (data && (data['@type'] === 'JobPosting' || data.description || data.title)) {
+                    structuredText += `\n=== JOB POSTING DATA ===\n`;
+                    structuredText += `Title: ${data.title || ''}\n`;
+                    structuredText += `Date Posted: ${data.datePosted || ''}\n`;
+                    structuredText += `Industry/Category: ${data.industry || data.occupationalCategory || ''}\n`;
+                    structuredText += `Employment Type: ${data.employmentType || ''}\n`;
+
+                    if (data.hiringOrganization && data.hiringOrganization.name) {
+                        structuredText += `Hiring Organization: ${data.hiringOrganization.name}\n`;
+                    }
+
+                    if (data.jobLocation) {
+                        const locations = Array.isArray(data.jobLocation) ? data.jobLocation : [data.jobLocation];
+                        structuredText += `Locations:\n`;
+                        locations.forEach(loc => {
+                            if (loc.address) {
+                                const addr = loc.address;
+                                structuredText += `  - ${addr.addressLocality || ''}, ${addr.addressRegion || ''}, ${addr.addressCountry || ''}\n`;
+                            }
+                        });
+                    }
+
+                    if (data.baseSalary && data.baseSalary.value) {
+                        const salary = data.baseSalary.value;
+                        if (salary.minValue || salary.maxValue || salary.value) {
+                            structuredText += `Salary Range: ${salary.currency || '$'}${salary.minValue || salary.value || ''} - ${salary.maxValue || salary.value || ''} ${salary.unitText || ''}\n`;
+                        }
+                    }
+
+                    if (data.description && data.description.length > 50) {
+                        const temp = document.createElement('div');
+                        temp.innerHTML = data.description;
+                        bodyText = temp.innerText.trim();
+                    }
+                } else if (data.description && data.description.length > 50) {
                     const temp = document.createElement('div');
                     temp.innerHTML = data.description;
-                    return temp.innerText.trim();
+                    bodyText = temp.innerText.trim();
+                }
                 }
             } catch (e) {}
         }
@@ -30,9 +70,16 @@
                 cloned.querySelectorAll('.social-media-links, form, #job-app, nav, header, footer, .apply-button, [data-ui="apply-button"]').forEach(node => node.remove());
                 const text = cloned.innerText.trim();
                 if (text.length > 50) {
-                    return text;
+                    bodyText = text;
+                    break;
                 }
             }
+        }
+
+        if (structuredText || bodyText) {
+            return `${structuredText}${bodyText ? `\n\n=== FULL JOB DESCRIPTION ===\n${bodyText}` : ''}`
+                .replace(/\n{3,}/g, '\n\n')
+                .trim();
         }
 
         return '';

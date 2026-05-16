@@ -1,8 +1,8 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>Scraped Job Records - Encore</title>
+  <title>Scraped Job Records - VPP</title>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     * {
@@ -13,7 +13,7 @@
 
     body {
       font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: linear-gradient(135deg, #fffbf5 0%, #fef3e2 50%, #fff7ed 100%);
+      background: linear-gradient(135deg, #f8fbff 0%, #e8f2fb 50%, #f5f8fc 100%);
       min-height: 100vh;
       color: #1e293b;
     }
@@ -27,22 +27,22 @@
       right: 0;
       bottom: 0;
       background:
-        radial-gradient(circle at 20% 80%, rgba(79, 100, 136, 0.08) 0%, transparent 50%),
-        radial-gradient(circle at 80% 20%, rgba(251, 191, 36, 0.06) 0%, transparent 50%),
-        radial-gradient(circle at 40% 40%, rgba(254, 196, 50, 0.05) 0%, transparent 40%);
+        radial-gradient(circle at 20% 80%, rgba(79, 100, 136, 0.10) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(254, 196, 50, 0.12) 0%, transparent 50%),
+        radial-gradient(circle at 40% 40%, rgba(79, 100, 136, 0.06) 0%, transparent 40%);
       pointer-events: none;
       z-index: 0;
     }
 
     .header {
-      background: linear-gradient(135deg, #4f6488 0%, #fec432 40%, #3f5170 100%);
+      background: linear-gradient(135deg, #4f6488 0%, #fec432 40%, #4f6488 100%);
       padding: 12px 20px;
       color: white;
       position: relative;
       overflow: hidden;
       box-shadow:
-        0 4px 30px rgba(79, 100, 136, 0.3),
-        0 10px 60px rgba(232, 146, 15, 0.2);
+        0 4px 30px rgba(79, 100, 136, 0.30),
+        0 10px 60px rgba(254, 196, 50, 0.22);
     }
 
     /* Decorative header elements */
@@ -196,7 +196,7 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
-      border: 1px solid rgba(79, 100, 136, 0.1);
+      border: 1px solid rgba(249, 161, 27, 0.1);
       transition: all 0.3s ease;
     }
 
@@ -242,7 +242,7 @@
 
     .webhook-input-group input:focus {
       border-color: #4f6488;
-      box-shadow: 0 0 0 4px rgba(79, 100, 136, 0.12);
+      box-shadow: 0 0 0 4px rgba(249, 161, 27, 0.12);
       background: white;
     }
 
@@ -269,7 +269,7 @@
 
     .search-box:focus-within {
       border-color: #4f6488;
-      box-shadow: 0 0 0 4px rgba(79, 100, 136, 0.12), 0 4px 20px rgba(79, 100, 136, 0.1);
+      box-shadow: 0 0 0 4px rgba(249, 161, 27, 0.12), 0 4px 20px rgba(249, 161, 27, 0.1);
     }
 
     .search-box svg {
@@ -350,21 +350,21 @@
     }
 
     .btn-primary {
-      background: linear-gradient(135deg, #4f6488 0%, #fec432 50%, #3f5170 100%);
+      background: linear-gradient(135deg, #4f6488 0%, #fec432 50%, #4f6488 100%);
       color: white;
     }
 
     .btn-primary:hover {
-      box-shadow: 0 8px 32px rgba(79, 100, 136, 0.45);
+      box-shadow: 0 8px 32px rgba(249, 161, 27, 0.45);
     }
 
     .btn-webhook {
-      background: linear-gradient(135deg, #4f6488 0%, #fec432 50%, #3f5170 100%);
+      background: linear-gradient(135deg, #4f6488 0%, #fec432 50%, #4f6488 100%);
       color: white;
     }
 
     .btn-webhook:hover {
-      box-shadow: 0 8px 32px rgba(79, 100, 136, 0.45);
+      box-shadow: 0 8px 32px rgba(249, 161, 27, 0.45);
     }
 
     .btn-danger {
@@ -393,10 +393,10 @@
       box-shadow:
         0 4px 24px rgba(0, 0, 0, 0.06),
         0 1px 2px rgba(0, 0, 0, 0.04);
-      border: 1px solid rgba(79, 100, 136, 0.1);
+      border: 1px solid rgba(249, 161, 27, 0.1);
     }
 
-    /* Wrapper handles horizontal scroll — sticky bottom keeps scrollbar visible on screen */
+    /* Wrapper handles horizontal scroll â€” sticky bottom keeps scrollbar visible on screen */
     .table-scroll-wrapper {
       overflow-x: auto;
       max-height: calc(100vh - 146px);
@@ -422,30 +422,28 @@
 
     table {
       width: 100%;
-      min-width: 1780px;
+      min-width: 2350px;
       border-collapse: collapse;
       table-layout: fixed;
     }
 
-    th:nth-child(1), td:nth-child(1) { width: 34px; }
+    th:nth-child(1), td:nth-child(1) { width: 300px; }
     th:nth-child(2), td:nth-child(2) { width: 120px; }
-    th:nth-child(3), td:nth-child(3) { width: 84px; }
-    th:nth-child(4), td:nth-child(4) { width: 155px; }
-    th:nth-child(5), td:nth-child(5) { width: 130px; }
-    th:nth-child(6), td:nth-child(6) { width: 150px; }
-    th:nth-child(7), td:nth-child(7) { width: 75px; }
-    th:nth-child(8), td:nth-child(8) { width: 70px; }
-    th:nth-child(9), td:nth-child(9) { width: 68px; }
-    th:nth-child(10), td:nth-child(10) { width: 92px; }
-    th:nth-child(11), td:nth-child(11) { width: 60px; }
-    th:nth-child(12), td:nth-child(12) { width: 95px; }
-    th:nth-child(13), td:nth-child(13) { width: 110px; }
-    th:nth-child(14), td:nth-child(14) { width: 110px; }
-    th:nth-child(15), td:nth-child(15) { width: 105px; }
-    th:nth-child(16), td:nth-child(16) { width: 72px; }
-    th:nth-child(17), td:nth-child(17) { width: 70px; }
-    th:nth-child(18), td:nth-child(18) { width: 55px; }
-    th:nth-child(19), td:nth-child(19) { width: 225px; }
+    th:nth-child(3), td:nth-child(3) { width: 135px; }
+    th:nth-child(4), td:nth-child(4) { width: 125px; }
+    th:nth-child(5), td:nth-child(5) { width: 150px; }
+    th:nth-child(6), td:nth-child(6) { width: 85px; }
+    th:nth-child(7), td:nth-child(7) { width: 120px; }
+    th:nth-child(8), td:nth-child(8) { width: 85px; }
+    th:nth-child(9), td:nth-child(9) { width: 220px; }
+    th:nth-child(10), td:nth-child(10) { width: 100px; }
+    th:nth-child(11), td:nth-child(11) { width: 95px; }
+    th:nth-child(12), td:nth-child(12) { width: 170px; }
+    th:nth-child(13), td:nth-child(13) { width: 85px; }
+    th:nth-child(14), td:nth-child(14) { width: 125px; }
+    th:nth-child(15), td:nth-child(15) { width: 80px; }
+    th:nth-child(16), td:nth-child(16) { width: 70px; }
+    th:nth-child(17), td:nth-child(17) { width: 310px; }
 
     thead {
       background: linear-gradient(135deg, #4f6488 0%, #fec432 100%);
@@ -470,27 +468,17 @@
       text-overflow: ellipsis;
     }
 
-    th:first-child {
-      text-align: center;
-      width: 34px;
-      cursor: default;
-    }
-
-    th:first-child:hover {
-      background: transparent;
-    }
-
     th:hover {
       background: rgba(255, 255, 255, 0.1);
     }
 
     th.sort-asc::after {
-      content: " ▲";
+      content: " â–²";
       font-size: 10px;
     }
 
     th.sort-desc::after {
-      content: " ▼";
+      content: " â–¼";
       font-size: 10px;
     }
 
@@ -524,7 +512,7 @@
     }
 
     tbody tr:hover {
-      background-color: #fef3e2;
+      background-color: #e8f2fb;
     }
 
     tbody tr:last-child td {
@@ -551,7 +539,7 @@
     }
 
     td a:hover {
-      color: #3f5170;
+      color: #4f6488;
       text-decoration: underline;
     }
 
@@ -569,14 +557,14 @@
     .empty-state-icon {
       width: 120px;
       height: 120px;
-      background: linear-gradient(135deg, #fef3e2 0%, #fffbf5 100%);
+      background: linear-gradient(135deg, #e8f2fb 0%, #f8fbff 100%);
       border-radius: 32px;
       display: flex;
       align-items: center;
       justify-content: center;
       margin: 0 auto 32px;
-      border: 2px solid #fec432;
-      box-shadow: 0 8px 32px rgba(79, 100, 136, 0.15);
+      border: 2px solid #fcd34d;
+      box-shadow: 0 8px 32px rgba(249, 161, 27, 0.15);
     }
 
     .empty-state svg {
@@ -609,7 +597,7 @@
       padding: 8px 10px;
       margin-bottom: 8px;
       box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-      border: 1px solid rgba(79, 100, 136, 0.1);
+      border: 1px solid rgba(249, 161, 27, 0.1);
     }
 
     .progress-info {
@@ -660,8 +648,8 @@
       background: #fafaf9;
       border-radius: 4px;
       border: 1px solid #f1f5f9;
-      min-width: 160px;
-      max-width: 220px;
+      min-width: 260px;
+      max-width: 300px;
     }
 
     td:has(.description-cell) {
@@ -724,12 +712,12 @@
     }
 
     ::-webkit-scrollbar-track {
-      background: #fef3e2;
+      background: #e8f2fb;
       border-radius: 8px;
     }
 
     ::-webkit-scrollbar-thumb {
-      background: linear-gradient(135deg, #fec432 0%, #4f6488 100%);
+      background: linear-gradient(135deg, #fcd34d 0%, #4f6488 100%);
       border-radius: 8px;
     }
 
@@ -804,7 +792,7 @@
         </div>
         <div>
           <h1>Scraped Job Records</h1>
-          <p>Encore Job Listings</p>
+            <p>VPP Job Listings</p>
         </div>
       </div>
       <div class="stats-badge">
@@ -904,23 +892,21 @@
       <table id="jobRecordsTable">
         <thead>
           <tr>
-            <th>#</th>
             <th data-sort="title">Job Title</th>
             <th data-sort="jobId">Job ID</th>
             <th data-sort="areaOfPractice">Area of Practice</th>
             <th data-sort="position">Position</th>
             <th data-sort="salary">Salary</th>
             <th data-sort="jobType">Job Type</th>
+            <th data-sort="experience">Experience</th>
             <th>Aggregator</th>
-            <th data-sort="hospital">Hospital</th>
+            <th data-sort="hospital">Hospital Name</th>
             <th data-sort="city">City</th>
             <th data-sort="state">State</th>
             <th data-sort="streetAddress">Street Address</th>
             <th data-sort="zipCode">Zip Code</th>
             <th data-sort="phone">Phone</th>
             <th data-sort="website">Website</th>
-            <th data-sort="location">Location</th>
-            <th data-sort="experience">Experience</th>
             <th data-sort="link">Link</th>
             <th>Description</th>
           </tr>
@@ -937,7 +923,7 @@
           </svg>
         </div>
         <h2>No Jobs Scraped Yet</h2>
-        <p>Use the Encore extension on the careers page to scrape available job listings.</p>
+        <p>Visit the VPP careers page and use the extension to scrape available job listings.</p>
       </div>
     </div>
   </div>
@@ -946,3 +932,5 @@
   <script src="results.js"></script>
 </body>
 </html>
+
+

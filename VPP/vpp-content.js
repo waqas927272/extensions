@@ -9,7 +9,15 @@
 
         // Same preprocessing as Encore: evaluate the primary role only.
         const titleBase = jobTitle.split(' - ')[0].trim();
-        const primaryRole = titleBase.split('/')[0].trim().toLowerCase();
+        const primaryRole = titleBase.toLowerCase();
+
+        // Explicitly skip known non-target roles requested for VPP.
+        if (
+            /\bswim instructor\b/i.test(primaryRole) ||
+            /\b(?:certified\s*\/?\s*licensed|certified|licensed)\s+veterinary\s+technician\b/i.test(primaryRole)
+        ) {
+            return true;
+        }
 
         return /\b(client service|service representative|receptionist|kennel|groomer|grooming|practice manager|hospital manager|office manager|administrator|billing|human resources|patient care coordinator|client care coordinator|customer service|front desk|inventory|housekeeper|janitorial|marketing|it technician|accountant|boarding assistant|assistant|technician|tech|externship|externships|extern|join our talent community)\b/.test(primaryRole);
     }
@@ -48,9 +56,18 @@
             }
         }
         
-        // Use the job link for a unique ID
-        const jobIdMatch = link.match(/jobs\/(\d+)/);
-        const rawJobId = jobIdMatch ? jobIdMatch[1] : link;
+        // Use the Greenhouse job id for a stable, correct ID.
+        let rawJobId = '';
+        try {
+            const url = new URL(link);
+            rawJobId = url.searchParams.get('gh_jid') || '';
+        } catch (error) {
+            rawJobId = '';
+        }
+        if (!rawJobId) {
+            const jobIdMatch = link.match(/(?:jobs\/|gh_jid=)(\d+)/);
+            rawJobId = jobIdMatch ? jobIdMatch[1] : link;
+        }
         const jobId = rawJobId ? 'VPP-' + rawJobId : '';
 
         jobs.push({

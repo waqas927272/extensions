@@ -1,4 +1,4 @@
-// VIPVet Job Scraper - Popup Script
+﻿// VIP Vet Job Scraper - Popup Script
 
 document.addEventListener('DOMContentLoaded', () => {
   const scrapeBtn = document.getElementById('scrape-btn');
@@ -26,6 +26,36 @@ document.addEventListener('DOMContentLoaded', () => {
   let scrapedJobs = [];
   let currentTabId = null;
 
+  const isGreenhouseAgencyPage = (url) => /https:\/\/app\.greenhouse\.io\/agency\/jobs\//i.test(url || '');
+  const isVipVetJobsPage = (url) => /vip-vet\.com/i.test(url || '');
+
+  function normalizeAgencyGreenhouseJobs(jobs) {
+    return (jobs || []).map((job, index) => {
+      const reqId = job.reqId || job.jobId || job.id || `VIP-${index + 1}`;
+      const hospitalName = job.hospitalName || job.hospital || '';
+      return {
+        ...job,
+        id: reqId,
+        reqId,
+        jobId: reqId,
+        title: job.title || job.jobTitle || '',
+        hospitalName,
+        hospital: hospitalName,
+        city: job.city || '',
+        state: job.state || '',
+        country: job.country || 'USA',
+        category: job.category || '',
+        jobType: job.jobType || '',
+        link: job.link || '',
+        description: job.description || '',
+        streetAddress: job.streetAddress || '',
+        postalCode: job.postalCode || job.zipCode || '',
+        zipCode: job.zipCode || job.postalCode || '',
+        source: job.source || 'VIP Vet'
+      };
+    });
+  }
+
   // Initialize
   init();
 
@@ -42,13 +72,38 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
 
-      if (!tab || !tab.url || !tab.url.includes('vip-vet.com')) {
-        showError('Please navigate to vip-vet.com/about/careers/jobs to use this extension.');
+      if (!tab || !tab.url || (!isVipVetJobsPage(tab.url) && !isGreenhouseAgencyPage(tab.url))) {
+        showError('Please navigate to vip-vet.com careers page or app.greenhouse.io/agency/jobs page.');
         scrapeBtn.disabled = true;
         return;
       }
 
       currentTabId = tab.id;
+
+      if (isGreenhouseAgencyPage(tab.url)) {
+        const [response] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            const rows = document.querySelectorAll('#jobs tbody tr');
+            const pageText = document.body?.innerText || '';
+            const showingMatch = pageText.match(/Showing\s+(\d+)\s+of\s+(\d+)\s+jobs/i);
+            return {
+              jobsOnPage: rows.length,
+              totalJobs: showingMatch ? parseInt(showingMatch[2], 10) : rows.length,
+              totalPages: 1,
+              currentPage: 1
+            };
+          }
+        });
+
+        const stats = response?.result || { jobsOnPage: 0, totalJobs: 0, totalPages: 1, currentPage: 1 };
+        jobsCount.textContent = stats.jobsOnPage || 0;
+        currentPage.textContent = stats.currentPage || 1;
+        totalPages.textContent = stats.totalPages || 1;
+        totalJobs.textContent = stats.totalJobs || stats.jobsOnPage || 0;
+        scrapeBtn.disabled = false;
+        return;
+      }
 
       // Wait for page to be ready
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -151,6 +206,28 @@ document.addEventListener('DOMContentLoaded', () => {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       currentTabId = tab.id;
 
+      if (isGreenhouseAgencyPage(tab?.url || '')) {
+        updateProgress('Scraping...', 'Greenhouse dashboard jobs', 15);
+        const [result] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['vipvet-greenhouse-content.js']
+        });
+
+        if (!result || !Array.isArray(result.result)) {
+          throw new Error('No jobs returned from Greenhouse dashboard scraper.');
+        }
+
+        scrapedJobs = normalizeAgencyGreenhouseJobs(result.result);
+        await chrome.storage.local.set({ vipvetJobs: scrapedJobs });
+        updateProgress('Complete!', `${scrapedJobs.length} jobs found`, 100);
+        showSummary(scrapedJobs.length);
+        isScraping = false;
+        scrapeBtn.classList.remove('hidden');
+        stopBtn.classList.add('hidden');
+        progressSection.classList.add('hidden');
+        return;
+      }
+
       await new Promise(resolve => setTimeout(resolve, 500));
 
       // First, click page 1 to ensure we start from the beginning
@@ -227,7 +304,7 @@ document.addEventListener('DOMContentLoaded', () => {
               const fullText = title + ' ' + hospitalName;
 
               // Pattern 1: "- City, ST" or "- City ST" at end of title
-              let match = title.match(/[-–]\s*([A-Za-z\s\.]+),?\s*([A-Z]{2})\s*$/);
+              let match = title.match(/[-â€“]\s*([A-Za-z\s\.]+),?\s*([A-Z]{2})\s*$/);
               if (match) {
                 city = match[1].trim();
                 state = match[2];
@@ -235,11 +312,11 @@ document.addEventListener('DOMContentLoaded', () => {
               }
 
               // Pattern 2: Just "- ST" at end (2-letter state code)
-              match = title.match(/[-–]\s*([A-Z]{2})\s*$/);
+              match = title.match(/[-â€“]\s*([A-Z]{2})\s*$/);
               if (match) {
                 state = match[1];
                 // Try to get city from earlier in title
-                const cityMatch = title.match(/[-–]\s*([A-Za-z\s\.]+)\s*[-–]\s*[A-Z]{2}\s*$/);
+                const cityMatch = title.match(/[-â€“]\s*([A-Za-z\s\.]+)\s*[-â€“]\s*[A-Z]{2}\s*$/);
                 if (cityMatch) {
                   city = cityMatch[1].trim();
                 }
@@ -279,7 +356,7 @@ document.addEventListener('DOMContentLoaded', () => {
               }
 
               // Pattern 5: State abbreviation anywhere in title after a dash
-              match = title.match(/[-–]\s*[^-–]*\b([A-Z]{2})\b/);
+              match = title.match(/[-â€“]\s*[^-â€“]*\b([A-Z]{2})\b/);
               if (match) {
                 const possibleState = match[1];
                 const validStates = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
@@ -484,3 +561,4 @@ document.addEventListener('DOMContentLoaded', () => {
     resultsSummary.classList.remove('hidden');
   }
 });
+

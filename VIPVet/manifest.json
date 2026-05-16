@@ -1,6 +1,6 @@
-{
+﻿{
   "manifest_version": 3,
-  "name": "VIPVet Job Scraper",
+  "name": "VIP Vet Job Scraper",
   "version": "1.0",
   "description": "Scrapes job data from Veterinary Innovative Partners careers page.",
   "permissions": ["activeTab", "storage", "scripting", "tabs"],
@@ -31,8 +31,9 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["greenhouse-description-scraper.js", "detail-extractor.js", "google-maps-scraper.js"],
+      "resources": ["description-scraper.js", "greenhouse-description-scraper.js", "detail-extractor.js", "google-maps-scraper.js", "google-search-scraper.js", "vipvet-greenhouse-content.js"],
       "matches": ["<all_urls>"]
     }
   ]
 }
+

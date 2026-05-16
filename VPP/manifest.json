@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Encore Job Scraper",
+  "name": "VPP Job Scraper",
   "version": "1.0",
-  "description": "Scrape job listings and enrich records for Encore",
+  "description": "Scrape job listings and enrich records for VPP",
   "host_permissions": [
     "http://*/*",
     "https://*/*"
@@ -29,6 +29,7 @@
     {
       "resources": [
         "vpp-content.js",
+        "vpp-greenhouse-content.js",
         "description-scraper.js",
         "greenhouse-description-scraper.js",
         "detail-extractor.js",
