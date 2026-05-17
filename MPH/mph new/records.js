@@ -28,6 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let isFetchingDetails = false;
     let isFetchingAddresses = false;
     let currentJobIndex = 0;
+    let descriptionQueue = [];
+    let failedDescriptionCount = 0;
     let detailsQueue = [];
     let currentDetailsIndex = 0;
     let addressQueue = [];
@@ -373,15 +375,31 @@ document.addEventListener('DOMContentLoaded', () => {
     function addressMatchesExpectedHospitalBrand(hospitalName, addressData) {
         if (!isLivewellHospital(hospitalName)) return true;
 
-        const website = addressData?.website || '';
+        const website = resolveWebsiteForHospital(hospitalName, addressData?.website || '');
         if (website) return isLivewellWebsite(website);
 
         return false;
     }
 
+    function resolveWebsiteForHospital(hospitalName, website = '') {
+        const name = (hospitalName || '').trim();
+        if (/^mission pet health$/i.test(name)) return 'https://missionpethealth.com/';
+        if (/livewell animal hospital/i.test(name)) return 'https://www.livewellanimal.com/';
+        return website || '';
+    }
+
+    function applyMissingAddressDefaults(job) {
+        const locationParts = parseLocationParts(job.location || '');
+        job.streetAddress = !job.streetAddress || job.streetAddress === 'Not Available' ? 'TBD' : job.streetAddress;
+        job.zipCode = job.zipCode || '00000';
+        job.city = formatCityForStorage(job.city || locationParts.city || '');
+        job.state = formatStateForStorage(job.state || locationParts.state || '');
+        job.website = resolveWebsiteForHospital(job.hospital || '', job.website || '');
+    }
+
     function getLivewellFallbackAddress() {
         return {
-            streetAddress: 'Not Available',
+            streetAddress: 'TBD',
             zipCode: '00000',
             city: '',
             state: '',
@@ -394,7 +412,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function getMissionPetHealthFallbackAddress() {
         return {
             businessName: 'Mission Pet Health',
-            streetAddress: 'Not Available',
+            streetAddress: 'TBD',
             zipCode: '00000',
             city: '',
             state: '',
@@ -2481,14 +2499,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await chrome.storage.local.get(['scrapedJobs']);
         const jobs = data.scrapedJobs || [];
 
-        const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
-        if (jobsWithoutDesc.length === 0) {
+        descriptionQueue = jobs
+            .map((job, index) => ({
+                index,
+                jobId: job.jobId || '',
+                link: job.link || '',
+                attempts: 0
+            }))
+            .filter(item => !jobs[item.index].description && item.link);
+
+        if (descriptionQueue.length === 0) {
             showToast('All jobs already have descriptions!', 'success');
             return;
         }
 
         isGettingDescriptions = true;
         currentJobIndex = 0;
+        failedDescriptionCount = 0;
 
         getDescriptionsBtn.disabled = true;
         getDescriptionsBtn.textContent = 'Getting Descriptions...';
@@ -2500,29 +2527,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const progressLabel = document.getElementById('progressLabel');
         progressSection.classList.remove('hidden');
         progressLabel.textContent = 'Getting Descriptions';
-        progressText.textContent = `0 / ${jobsWithoutDesc.length}`;
+        progressText.textContent = `0 / ${descriptionQueue.length}`;
         progressBar.style.width = '0%';
 
         processNextJob();
     });
 
     async function processNextJob() {
-        const data = await chrome.storage.local.get(['scrapedJobs']);
-        const jobs = data.scrapedJobs || [];
-
-        const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
-        const totalOriginal = jobs.filter(job => job.link).length;
-        const totalWithoutDesc = jobsWithoutDesc.length;
-        const processed = totalOriginal - totalWithoutDesc;
-
         // Update progress
         const progressBar = document.getElementById('progressBar');
         const progressText = document.getElementById('progressText');
-        const totalToProcess = allJobs.filter(job => !job.description && job.link).length;
-        progressText.textContent = `${processed} / ${totalToProcess + processed}`;
-        progressBar.style.width = `${(processed / (totalToProcess + processed)) * 100}%`;
+        const totalToProcess = descriptionQueue.length;
+        progressText.textContent = `${Math.min(currentJobIndex, totalToProcess)} / ${totalToProcess}`;
+        progressBar.style.width = totalToProcess
+            ? `${(Math.min(currentJobIndex, totalToProcess) / totalToProcess) * 100}%`
+            : '0%';
 
-        if (jobsWithoutDesc.length === 0) {
+        if (currentJobIndex >= descriptionQueue.length) {
             isGettingDescriptions = false;
             getDescriptionsBtn.disabled = false;
             getDescriptionsBtn.innerHTML = `
@@ -2532,12 +2553,31 @@ document.addEventListener('DOMContentLoaded', () => {
                 Get Descriptions
             `;
             document.getElementById('progressSection').classList.add('hidden');
-            showToast('All descriptions have been fetched!', 'success');
+            if (failedDescriptionCount > 0) {
+                showToast(`Descriptions finished with ${failedDescriptionCount} failed job(s). Check console for details.`, 'error');
+            } else {
+                showToast('All descriptions have been fetched!', 'success');
+            }
             return;
         }
 
-        const job = jobsWithoutDesc[0];
-        const jobIndex = jobs.findIndex(j => j.link === job.link);
+        const data = await chrome.storage.local.get(['scrapedJobs']);
+        const jobs = data.scrapedJobs || [];
+        const queueItem = descriptionQueue[currentJobIndex];
+        const jobIndex = jobs.findIndex((job, index) => {
+            if (queueItem.jobId && job.jobId === queueItem.jobId) return true;
+            if (queueItem.link && job.link === queueItem.link) return true;
+            return index === queueItem.index;
+        });
+
+        if (jobIndex === -1 || jobs[jobIndex]?.description || !jobs[jobIndex]?.link) {
+            currentJobIndex++;
+            setTimeout(() => processNextJob(), 50);
+            return;
+        }
+
+        const job = jobs[jobIndex];
+        getDescriptionsBtn.textContent = `Getting Descriptions... (${currentJobIndex + 1}/${descriptionQueue.length})`;
 
         try {
             // Add nl=1 param so Jobvite serves the standalone page instead of redirecting to the parent site iframe
@@ -2548,10 +2588,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 action: 'scrapeJobDescription',
                 tabId: tab.id,
                 jobIndex: jobIndex,
+                queueIndex: currentJobIndex,
                 jobLink: job.link
+            }).catch((error) => {
+                console.error('Error starting description scrape:', error);
+                chrome.tabs.remove(tab.id).catch(() => {});
+                failedDescriptionCount++;
+                currentJobIndex++;
+                setTimeout(() => processNextJob(), 1500);
             });
         } catch (error) {
             console.error('Error opening tab for job:', error);
+            failedDescriptionCount++;
+            currentJobIndex++;
             setTimeout(() => processNextJob(), 1500);
         }
     }
@@ -2565,6 +2614,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderCurrentView();
 
                 if (isGettingDescriptions) {
+                    const queueItem = descriptionQueue[currentJobIndex];
+                    const isCurrentQueueMessage = message.queueIndex === undefined || message.queueIndex === currentJobIndex;
+
+                    if (!message.success) {
+                        const error = message.error || 'Description scrape failed.';
+                        const canRetry = queueItem && queueItem.attempts < 1 && !/quota|storage|save/i.test(error);
+
+                        if (canRetry && isCurrentQueueMessage) {
+                            queueItem.attempts++;
+                            console.warn(`Retrying description for job ${queueItem.jobId || queueItem.link}: ${error}`);
+                            setTimeout(() => processNextJob(), 2000);
+                            return;
+                        }
+
+                        failedDescriptionCount++;
+                        console.warn(`Description failed for job index ${message.jobIndex}: ${error}`);
+                    }
+
+                    if (isCurrentQueueMessage) {
+                        currentJobIndex++;
+                    }
+
                     setTimeout(() => processNextJob(), 1500);
                 }
             });
@@ -2950,7 +3021,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function hasUsableCachedAddress(data) {
-        return !!(data && data.streetAddress && data.zipCode);
+        return !!(data && data.streetAddress && data.zipCode && data.streetAddress !== 'TBD' && data.zipCode !== '00000');
     }
 
     function parseLocationParts(location) {
@@ -2995,7 +3066,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function hasLivewellFallbackAddress(job) {
         return isLivewellHospital(job.hospital) &&
-            job.streetAddress === 'Not Available' &&
+            (job.streetAddress === 'TBD' || job.streetAddress === 'Not Available') &&
             job.zipCode === '00000';
     }
 
@@ -3071,8 +3142,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await chrome.storage.local.get(['scrapedJobs']);
         const jobs = data.scrapedJobs || [];
         let clearedInvalidAddressCount = 0;
+        let defaultedAddressCount = 0;
 
         jobs.forEach(job => {
+            const resolvedWebsite = resolveWebsiteForHospital(job.hospital || '', job.website || '');
+            if (resolvedWebsite !== (job.website || '')) {
+                job.website = resolvedWebsite;
+            }
+            if (job.streetAddress === 'Not Available') {
+                job.streetAddress = 'TBD';
+            }
+
             if (
                 canLookupAddressForJob(job) &&
                 !savedAddressStateMismatch(job) &&
@@ -3088,7 +3168,16 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        if (clearedInvalidAddressCount > 0) {
+        jobs.forEach(job => {
+            const missingAddress = !job.streetAddress || !job.zipCode;
+            if (!missingAddress || canLookupAddressForJob(job)) return;
+            if (!job.hospital && !job.location) return;
+
+            applyMissingAddressDefaults(job);
+            defaultedAddressCount++;
+        });
+
+        if (clearedInvalidAddressCount > 0 || defaultedAddressCount > 0) {
             await chrome.storage.local.set({ scrapedJobs: jobs });
             allJobs = jobs;
             renderCurrentView();
@@ -3108,8 +3197,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 addressQueue = jobs.map((job, index) => ({ job, index }))
                     .filter(item => canLookupAddressForJob(item.job) && !hasLivewellFallbackAddress(item.job));
             } else {
-                if (clearedInvalidAddressCount > 0) {
-                    showToast(`Cleared invalid address data from ${clearedInvalidAddressCount} regional/location-only row(s).`, 'success');
+                if (clearedInvalidAddressCount > 0 || defaultedAddressCount > 0) {
+                    showToast(`Updated address defaults for ${clearedInvalidAddressCount + defaultedAddressCount} row(s).`, 'success');
                 }
                 return;
             }
@@ -3161,10 +3250,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const data = await chrome.storage.local.get(['scrapedJobs']);
                 const jobs = data.scrapedJobs || [];
                 if (jobs[index]) {
-                    jobs[index].streetAddress = '';
-                    jobs[index].zipCode = '';
-                    jobs[index].website = '';
-                    jobs[index].phone = '';
+                    applyMissingAddressDefaults(jobs[index]);
                     await chrome.storage.local.set({ scrapedJobs: jobs });
                     allJobs = jobs;
                     renderCurrentView();
@@ -3245,34 +3331,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const jobs = data.scrapedJobs || [];
 
             if (jobs[index]) {
-                if (addressData.streetAddress) {
-                    jobs[index].streetAddress = addressData.streetAddress;
-                } else {
-                    jobs[index].streetAddress = '';
-                }
-                if (addressData.zipCode) {
-                    jobs[index].zipCode = addressData.zipCode;
-                } else {
-                    jobs[index].zipCode = '';
-                }
+                const zipFromFull = addressData.fullAddress?.match(/\b(\d{5}(?:-\d{4})?)\b/);
+                jobs[index].streetAddress = addressData.streetAddress || 'TBD';
+                jobs[index].zipCode = addressData.zipCode || zipFromFull?.[1] || '00000';
 
                 // City and state come from the row's Location column. Fetched address data
                 // is accepted only when it matches this location.
                 jobs[index].city = formatCityForStorage(searchCity || addressData.city || jobs[index].city || '');
                 jobs[index].state = formatStateForStorage(searchState || addressData.state || jobs[index].state || '');
 
-                // Try to extract zip from fullAddress if parsing missed it
-                if (!jobs[index].zipCode && addressData.fullAddress) {
-                    const zipFromFull = addressData.fullAddress.match(/\b(\d{5}(?:-\d{4})?)\b/);
-                    if (zipFromFull) jobs[index].zipCode = zipFromFull[1];
-                }
-
                 // Website and phone from Google Maps
-                if (addressData.website) {
-                    jobs[index].website = addressData.website;
-                } else {
-                    jobs[index].website = '';
-                }
+                jobs[index].website = resolveWebsiteForHospital(jobs[index].hospital || searchHospital, addressData.website || '');
                 if (addressData.phone) {
                     jobs[index].phone = addressData.phone;
                 } else {
@@ -3287,6 +3356,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             console.error('Error fetching address:', error);
+            const data = await chrome.storage.local.get(['scrapedJobs']);
+            const jobs = data.scrapedJobs || [];
+            if (jobs[index]) {
+                applyMissingAddressDefaults(jobs[index]);
+                await chrome.storage.local.set({ scrapedJobs: jobs });
+                allJobs = jobs;
+                renderCurrentView();
+            }
         }
 
         // Move to next address
