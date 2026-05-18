@@ -156,7 +156,62 @@
         return /\blivewell\b/i.test(value || '');
     }
 
+    function cleanLine(value) {
+        return (value || '')
+            .replace(/\u00a0/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function isAddressLikeName(value) {
+        const text = cleanLine(value);
+        return /\d/.test(text) && (
+            /\b(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail)\b/i.test(text) ||
+            /#\s*\w+/i.test(text) ||
+            /\b[A-Z]{2}\s+\d{5}(?:-\d{4})?\b/i.test(text)
+        );
+    }
+
+    function isAtThisPlaceCandidate(value) {
+        const text = cleanLine(value);
+        if (!text || text.length < 3 || text.length > 120) return false;
+        if (isAddressLikeName(text)) return false;
+        if (/^(?:At this place|Directions|Save|Nearby|Send to phone|Share|Photos|Suggest an edit|Add a missing place|Add your business|Add a label|Your Maps history|Open 24 hours|Closed|Floor \d+|Located in)$/i.test(text)) return false;
+        if (/^\d+(?:\.\d+)?\s*\(\d+[\d,]*\)$/i.test(text)) return false;
+        if (/^(?:Emergency veterinarian service|Veterinarian|Animal hospital|Veterinary care|Pet groomer|Kennel|Animal shelter)(?:\s*·.*)?$/i.test(text)) return false;
+        return /[A-Za-z]/.test(text);
+    }
+
+    function tryExtractAtThisPlaceBusinessName() {
+        const lines = (document.body.innerText || '')
+            .split(/\r?\n/)
+            .map(cleanLine)
+            .filter(Boolean);
+
+        for (let i = 0; i < lines.length; i++) {
+            if (!/^At this place$/i.test(lines[i])) continue;
+
+            for (let j = i + 1; j < Math.min(lines.length, i + 18); j++) {
+                if (isAtThisPlaceCandidate(lines[j])) return lines[j];
+            }
+        }
+
+        const headingCandidates = Array.from(document.querySelectorAll('[role="heading"], h1, h2, h3, a, button'))
+            .map(element => cleanLine(element.textContent || element.getAttribute('aria-label') || ''))
+            .filter(isAtThisPlaceCandidate);
+
+        const bodyText = document.body.innerText || '';
+        const atThisPlaceIndex = bodyText.search(/At this place/i);
+        if (atThisPlaceIndex !== -1) {
+            const after = bodyText.slice(atThisPlaceIndex, atThisPlaceIndex + 2000);
+            return headingCandidates.find(candidate => after.includes(candidate)) || '';
+        }
+
+        return '';
+    }
+
     function tryExtractBusinessName() {
+        const atThisPlaceName = tryExtractAtThisPlaceBusinessName();
         const selectors = [
             'h1.DUwDvf',
             'h1',
@@ -167,10 +222,13 @@
         for (const selector of selectors) {
             const element = document.querySelector(selector);
             const text = (element?.textContent || '').trim();
-            if (text) return text;
+            if (text) {
+                if (atThisPlaceName && isAddressLikeName(text)) return atThisPlaceName;
+                return text;
+            }
         }
 
-        return '';
+        return atThisPlaceName;
     }
 
     // ===== Extract website URL from place detail panel =====

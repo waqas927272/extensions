@@ -48,7 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const getDescriptionsBtn = document.getElementById('getDescriptionsBtn');
     const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
     const fetchAddressesBtn = document.getElementById('fetchAddressesBtn');
-    const DESCRIPTION_FETCH_CONCURRENCY = 5;
+    const DESCRIPTION_FETCH_CONCURRENCY = 1;
 
     // ============ WEBHOOK URL DYNAMIC CONFIGURATION ============
 
@@ -230,7 +230,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const link = job.link || job.url || '';
         const jobId = job.jobId || job.departmentId || '';
-        const hospital = job.hospital || job.hospitalName || '';
+        const rawHospital = job.hospital || job.hospitalName || '';
+        let hospital = /\s+(?:and|&|nearby)\s*$/i.test(rawHospital)
+            ? cleanExtractedHospitalName(rawHospital)
+            : rawHospital;
         const website = job.website || job.websiteUrl || '';
         const streetAddress = job.streetAddress || job.address || '';
         const aggregator = job.aggregator || 'VCA Animal Hospitals (Parent Client)';
@@ -241,7 +244,7 @@ document.addEventListener('DOMContentLoaded', () => {
         job.departmentId = job.departmentId || jobId;
         job.aggregator = aggregator;
         job.hospital = hospital;
-        job.hospitalName = job.hospitalName || hospital;
+        job.hospitalName = hospital;
         job.website = website;
         job.websiteUrl = job.websiteUrl || website;
         job.streetAddress = streetAddress;
@@ -341,6 +344,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/\s+(?:is|are)\s+(?:seeking|looking|hiring|excited|pleased|proud|growing|accepting).*$/i, '')
             .replace(/\s*\([A-Z0-9]{2,}\)\s*$/i, '')
             .replace(/^the\s+/i, '')
+            .replace(/\s+(?:and|&|nearby)\s*$/i, '')
             .replace(/[\s,;:.!-]+$/, '')
             .trim();
     }
@@ -349,6 +353,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const value = (candidate || '').trim();
         if (!value || value.length < 3 || value.length > 120) return false;
         if (/^(?:vca|vcacareers|vca we|vca,|vca is|vca animal hospitals?|at vca)$/i.test(value)) return false;
+        if (/\s+(?:and|&|nearby)$/i.test(value)) return false;
         if (/(?:future of veterinary|committed to equity|veterinary medicine is|corporate handbook|current associate|vcacareers|board certification|american board|pathway to|certification|residency program|approved residency|practitioners)/i.test(value)) return false;
         return /\b(?:VCA|Animal|Veterinary|Pet|Hospital|Clinic|Center|Care|Specialists?|Referral|Emergency|Oncology Service|CAVES|VREC|Vet Specs|Katonah Bedford|South Shore|Choptank|Woodbridge|Blairstown|Manhattan|Freehold|Sugar Grove|Old Marple|Pike Creek|Delaware Valley|Loomis Basin|Park East|Westbury|Chancellor|Everett|Beech Grove|Bakerstown|Carriage Hills)\b/i.test(value);
     }
@@ -359,11 +364,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const fallbackState = formatStateForStorage(state || locationParts.state || '');
 
         if (!fallbackCity || !fallbackState) return '';
-        return `VCA Animal Hospital - ${fallbackCity}, ${fallbackState}`;
+        return `VCA Animal Hospitals - ${fallbackCity}, ${fallbackState}`;
     }
 
     function isFallbackHospitalName(hospitalName) {
-        return /^VCA Animal Hospital\s+-\s+.+,\s+.+$/i.test((hospitalName || '').trim());
+        return /^VCA Animal Hospitals?\s+(?:-\s+)?.+,\s+.+$/i.test((hospitalName || '').trim());
     }
 
     // Some VCA postings expose a known-bad abbreviated value even though the
@@ -563,6 +568,47 @@ document.addEventListener('DOMContentLoaded', () => {
         return true;
     }
 
+    function getCompleteAddressParts(job = {}, parsedAddress = null) {
+        const streetAddress = parsedAddress?.streetAddress || job.streetAddress || job.address || '';
+        const city = parsedAddress?.city || job.city || '';
+        const state = parsedAddress?.state || job.state || '';
+        const zipCode = parsedAddress?.zipCode || job.zipCode || '';
+
+        if (!streetAddress || !city || !state || !zipCode) return null;
+
+        return {
+            streetAddress: streetAddress.trim(),
+            city: formatCityForStorage(city),
+            state: formatStateForStorage(state),
+            zipCode: String(zipCode).trim(),
+            location: `${formatCityForStorage(city)}, ${formatStateForStorage(state)}`
+        };
+    }
+
+    function buildFullAddressForLookup(addressParts) {
+        if (!addressParts) return '';
+        const city = formatCityForStorage(addressParts.city || '');
+        const stateAbbr = getStateAbbreviation(addressParts.state || '') || addressParts.state || '';
+        return [
+            addressParts.streetAddress,
+            city,
+            [stateAbbr, addressParts.zipCode].filter(Boolean).join(' ')
+        ].filter(Boolean).join(', ');
+    }
+
+    function cleanHospitalNameFromAddressLookup(value) {
+        const clean = cleanExtractedHospitalName(value || '')
+            .replace(/\s*\|\s*\d+\s*$/i, '')
+            .trim();
+
+        if (!clean) return '';
+        if (isFallbackHospitalName(clean)) return '';
+        if (isGenericOrganizationHospitalName(clean)) return '';
+        if (isLocationOnlyHospitalName(clean)) return '';
+        if (!isValidExtractedHospitalName(clean)) return '';
+        return clean;
+    }
+
     function getAlphabeticSuffix(index) {
         let n = index + 1;
         let suffix = '';
@@ -626,6 +672,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function cleanMultiLocationHospitalName(value) {
         return cleanExtractedHospitalName(value)
             .replace(/\s+(?:available|opening|opportunity|role|position)\b.*$/i, '')
+            .replace(/\s+(?:and|&|nearby)\s*$/i, '')
             .trim();
     }
 
@@ -2394,6 +2441,86 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
+    async function fetchHospitalNameFromCompleteAddress(addressParts) {
+        const fullAddress = buildFullAddressForLookup(addressParts);
+        if (!fullAddress) return '';
+
+        try {
+            const directResult = await scrapeAddressForBusinessName(fullAddress);
+            const directHospital = cleanHospitalNameFromAddressLookup(directResult?.businessName || '');
+            if (directHospital) return directHospital;
+
+            const lookupResult = await fetchAddressFromGoogleMaps(fullAddress, addressParts.location || '', '');
+            return cleanHospitalNameFromAddressLookup(lookupResult?.businessName || '');
+        } catch (error) {
+            console.warn(`Unable to resolve hospital from address "${fullAddress}":`, error);
+            return '';
+        }
+    }
+
+    function scrapeAddressForBusinessName(fullAddress) {
+        return new Promise((resolve) => {
+            let settled = false;
+            let tabId = null;
+            let listener = null;
+
+            const empty = () => ({ businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' });
+            const finish = (result) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeout);
+                if (listener) chrome.tabs.onUpdated.removeListener(listener);
+                if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+                resolve(result || empty());
+            };
+
+            const timeout = setTimeout(() => {
+                console.warn(`Google Maps address business lookup timeout for: "${fullAddress}"`);
+                finish(empty());
+            }, 26000);
+
+            const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(fullAddress)}`;
+            chrome.tabs.create({ url: mapsUrl, active: false }, (tab) => {
+                if (!tab) {
+                    finish(empty());
+                    return;
+                }
+
+                tabId = tab.id;
+                listener = (updatedTabId, info) => {
+                    if (updatedTabId !== tabId || info.status !== 'complete') return;
+
+                    chrome.tabs.onUpdated.removeListener(listener);
+                    listener = null;
+                    setTimeout(() => {
+                        if (settled) return;
+                        chrome.scripting.executeScript({
+                            target: { tabId },
+                            files: ['google-maps-scraper.js']
+                        }).then((results) => {
+                            const data = results?.[0]?.result || {};
+                            finish({
+                                businessName: data.businessName || '',
+                                streetAddress: data.streetAddress || '',
+                                zipCode: data.zipCode || '',
+                                city: data.city || '',
+                                state: data.state || '',
+                                fullAddress: data.fullAddress || '',
+                                website: data.website || '',
+                                phone: data.phone || ''
+                            });
+                        }).catch((error) => {
+                            console.error(`Google Maps address business script error for "${fullAddress}":`, error);
+                            finish(empty());
+                        });
+                    }, 1400);
+                };
+
+                chrome.tabs.onUpdated.addListener(listener);
+            });
+        });
+    }
+
     if (!tableBody) {
         console.error('Could not find table body!');
         return;
@@ -3386,6 +3513,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 item.job.state
             );
             const descriptionAddress = extractAddressFromDescription(item.job.description);
+            const completeAddress = getCompleteAddressParts(item.job, descriptionAddress);
             const hasAddressToApply = !!descriptionAddress && (
                 !item.job.streetAddress ||
                 !item.job.zipCode ||
@@ -3393,6 +3521,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 normalizeSimpleText(item.job.city) !== normalizeSimpleText(descriptionAddress.city) ||
                 normalizeSimpleText(item.job.state) !== normalizeSimpleText(descriptionAddress.state)
             );
+            const hasFallbackHospitalWithAddress = isFallbackHospitalName(item.job.hospital) && !!completeAddress;
             const hasMultiLocationRows = extractMultiLocationEntries(item.job.description, item.job).length > 1;
             const hasBetterHospital = betterHospital &&
                 normalizeHospitalNameForCompare(betterHospital) !== normalizeHospitalNameForCompare(item.job.hospital || '');
@@ -3404,6 +3533,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 isLocationOnlyHospitalName(item.job.hospital, item.job.location, item.job.city, item.job.state) ||
                 isGenericOrganizationHospitalName(item.job.hospital) ||
                 isLikelyIncompleteHospitalName(item.job.hospital) ||
+                hasFallbackHospitalWithAddress ||
                 hasBetterHospital ||
                 hasAddressToApply ||
                 hasMultiLocationRows;
@@ -3499,7 +3629,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Save detail extraction results to chrome storage
     function saveDetailResults(detailsList, jobIndex) {
         return new Promise((resolve) => {
-            chrome.storage.local.get(['jobs'], (data) => {
+            chrome.storage.local.get(['jobs'], async (data) => {
+                try {
                 const jobs = normalizeJobRecords(data.jobs || []);
                 const originalJob = jobs[jobIndex];
 
@@ -3557,12 +3688,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 const multiLocationEntries = extractMultiLocationEntries(descText, originalJob);
                 if (multiLocationEntries.length > 1) {
                     const baseJobId = getBaseJobId(originalJob) || originalJob.jobId || originalJob.departmentId || '';
-                    const splitJobs = multiLocationEntries.map((entry, index) => {
+                    const splitJobs = [];
+                    for (let index = 0; index < multiLocationEntries.length; index++) {
+                        const entry = multiLocationEntries[index];
                         const suffix = getAlphabeticSuffix(index);
                         const splitJobId = baseJobId ? `${baseJobId}-${suffix}` : `${originalJob.jobId || 'JOB'}-${suffix}`;
                         const rowTitle = entry.title || listingTitle;
-                        const rowHospital = entry.hospital || '';
                         const entryAddress = entry.streetAddress ? entry : null;
+                        const addressHospital = !entry.hospital && entryAddress
+                            ? await fetchHospitalNameFromCompleteAddress(getCompleteAddressParts(originalJob, entryAddress))
+                            : '';
+                        const rowHospital = entry.hospital ||
+                            addressHospital ||
+                            getFallbackHospitalByLocation(
+                                entry.location || originalJob.location || '',
+                                entry.city || originalJob.city || '',
+                                entry.state || originalJob.state || ''
+                            );
                         const fields = getFinalClinicalFields(rowTitle, rowHospital);
                         const splitJob = {
                             ...originalJob,
@@ -3593,8 +3735,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         };
 
                         splitJob.description = buildSplitDescription(descText, splitJob, baseJobId);
-                        return splitJob;
-                    });
+                        splitJobs.push(splitJob);
+                    }
 
                     jobs.splice(jobIndex, 1, ...splitJobs);
                     chrome.storage.local.set({ jobs }, () => {
@@ -3605,10 +3747,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     return;
                 }
 
-                const { finalAOP, finalPosition } = getFinalClinicalFields(listingTitle, detailHospital);
+                const completeAddress = getCompleteAddressParts(originalJob, descriptionAddress);
+                const addressHospital = validHospital ? '' : await fetchHospitalNameFromCompleteAddress(completeAddress);
+                const fallbackHospital = getFallbackHospitalByLocation(
+                    completeAddress?.location || descriptionAddress?.location || originalJob.location || '',
+                    completeAddress?.city || descriptionAddress?.city || originalJob.city || '',
+                    completeAddress?.state || descriptionAddress?.state || originalJob.state || ''
+                );
+                const finalHospital = validHospital ? detailHospital : (addressHospital || fallbackHospital);
+                const { finalAOP, finalPosition } = getFinalClinicalFields(listingTitle, finalHospital);
 
-                originalJob.hospital = validHospital ? detailHospital : '';
-                originalJob.hospitalName = validHospital ? detailHospital : '';
+                originalJob.hospital = finalHospital || '';
+                originalJob.hospitalName = finalHospital || '';
                 if (descriptionAddress) {
                     originalJob.streetAddress = descriptionAddress.streetAddress;
                     originalJob.address = descriptionAddress.streetAddress;
@@ -3627,6 +3777,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     renderCurrentView();
                     resolve();
                 });
+                } catch (error) {
+                    console.error('Error saving detail results:', error);
+                    resolve();
+                }
             });
         });
     }

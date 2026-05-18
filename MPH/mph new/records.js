@@ -541,6 +541,20 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         },
         {
+            hospitals: ['riverbark veterinary hospital of spring lake', 'riverbark veterinary hospital'],
+            location: 'spring lake|north carolina',
+            searchHospital: 'Riverbark Veterinary Hospital of Spring Lake',
+            result: {
+                streetAddress: '1311 N Bragg Blvd',
+                zipCode: '28390',
+                city: 'Spring Lake',
+                state: 'North Carolina',
+                fullAddress: '1311 N Bragg Blvd, Spring Lake, NC 28390, United States',
+                website: 'https://www.riverbarkvetspringlake.com/',
+                phone: '+1 910-436-4801'
+            }
+        },
+        {
             hospitals: ['mission pet health'],
             location: 'birmingham|alabama',
             result: {
@@ -3070,6 +3084,10 @@ document.addEventListener('DOMContentLoaded', () => {
             job.zipCode === '00000';
     }
 
+    function hasDefaultAddress(job) {
+        return (job?.streetAddress || '') === 'TBD' || (job?.zipCode || '') === '00000';
+    }
+
     function applyLivewellFallback(job) {
         const fallback = getLivewellFallbackAddress();
         const locationParts = parseLocationParts(job.location || '');
@@ -3189,7 +3207,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (hasLivewellFallbackAddress(item.job)) return false;
                 // Jobs missing any core location/contact field
                 return canLookupAddressForJob(item.job) &&
-                    (!item.job.streetAddress || !item.job.zipCode || jobLocationMismatch(item.job) || savedAddressStateMismatch(item.job) || savedAddressBrandMismatch(item.job) || isMissionPetHealthHospital(item.job.hospital));
+                    (!item.job.streetAddress || !item.job.zipCode || hasDefaultAddress(item.job) || jobLocationMismatch(item.job) || savedAddressStateMismatch(item.job) || savedAddressBrandMismatch(item.job) || isMissionPetHealthHospital(item.job.hospital));
             });
 
         if (jobsNeedingAddresses.length === 0) {
@@ -3298,12 +3316,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const normalizeLocationValue = normalizeCityForCompare;
 
             const cacheKeys = getAddressCacheKeys(searchHospital, searchLocation, job.hospital || '');
-            let addressData = null;
+            let addressData = lookupTarget.directResult ? { ...lookupTarget.directResult } : null;
             const shouldSkipCache = !!lookupTarget.directResult || isMissionPetHealthHospital(job.hospital);
             if (!shouldSkipCache) addressData = getRememberedAddress(cacheKeys);
 
             if (addressData) {
-                console.log(`Using cached address for "${searchHospital}, ${searchLocation}"`);
+                console.log(`${lookupTarget.directResult ? 'Using override' : 'Using cached'} address for "${searchHospital}, ${searchLocation}"`);
             } else {
                 addressData = await fetchAddressFromGoogleMaps(searchHospital, searchLocation, job.hospital || '');
             }
