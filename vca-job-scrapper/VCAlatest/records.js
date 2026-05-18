@@ -599,6 +599,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function cleanHospitalNameFromAddressLookup(value) {
         const clean = cleanExtractedHospitalName(value || '')
             .replace(/\s*\|\s*\d+\s*$/i, '')
+            .replace(/\s+\d+(?:\.\d+)?\s*\(\d[\d,]*\).*$/i, '')
+            .replace(/\s+(?:Open|Closed)\b.*$/i, '')
             .trim();
 
         if (!clean) return '';
@@ -2450,6 +2452,20 @@ document.addEventListener('DOMContentLoaded', () => {
             const directHospital = cleanHospitalNameFromAddressLookup(directResult?.businessName || '');
             if (directHospital) return directHospital;
 
+            const searchResult = await scrapeGoogleSearchForBusinessName(fullAddress);
+            const searchHospital = cleanHospitalNameFromAddressLookup(searchResult?.businessName || '');
+            if (searchHospital) return searchHospital;
+
+            for (const query of [
+                `${fullAddress} veterinary`,
+                `${fullAddress} animal hospital`,
+                `${fullAddress} veterinarian`
+            ]) {
+                const mapsResult = await scrapeAddressForBusinessName(query);
+                const mapsHospital = cleanHospitalNameFromAddressLookup(mapsResult?.businessName || '');
+                if (mapsHospital) return mapsHospital;
+            }
+
             const lookupResult = await fetchAddressFromGoogleMaps(fullAddress, addressParts.location || '', '');
             return cleanHospitalNameFromAddressLookup(lookupResult?.businessName || '');
         } catch (error) {
@@ -2514,6 +2530,69 @@ document.addEventListener('DOMContentLoaded', () => {
                             finish(empty());
                         });
                     }, 1400);
+                };
+
+                chrome.tabs.onUpdated.addListener(listener);
+            });
+        });
+    }
+
+    function scrapeGoogleSearchForBusinessName(fullAddress) {
+        return new Promise((resolve) => {
+            let settled = false;
+            let tabId = null;
+            let listener = null;
+
+            const empty = () => ({ businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' });
+            const finish = (result) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeout);
+                if (listener) chrome.tabs.onUpdated.removeListener(listener);
+                if (tabId) chrome.tabs.remove(tabId).catch(() => {});
+                resolve(result || empty());
+            };
+
+            const timeout = setTimeout(() => {
+                console.warn(`Google Search address business lookup timeout for: "${fullAddress}"`);
+                finish(empty());
+            }, 26000);
+
+            const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(fullAddress)}`;
+            chrome.tabs.create({ url: searchUrl, active: false }, (tab) => {
+                if (!tab) {
+                    finish(empty());
+                    return;
+                }
+
+                tabId = tab.id;
+                listener = (updatedTabId, info) => {
+                    if (updatedTabId !== tabId || info.status !== 'complete') return;
+
+                    chrome.tabs.onUpdated.removeListener(listener);
+                    listener = null;
+                    setTimeout(() => {
+                        if (settled) return;
+                        chrome.scripting.executeScript({
+                            target: { tabId },
+                            files: ['google-search-scraper.js']
+                        }).then((results) => {
+                            const data = results?.[0]?.result || {};
+                            finish({
+                                businessName: data.businessName || '',
+                                streetAddress: data.streetAddress || '',
+                                zipCode: data.zipCode || '',
+                                city: data.city || '',
+                                state: data.state || '',
+                                fullAddress: data.fullAddress || '',
+                                website: data.website || '',
+                                phone: data.phone || ''
+                            });
+                        }).catch((error) => {
+                            console.error(`Google Search address business script error for "${fullAddress}":`, error);
+                            finish(empty());
+                        });
+                    }, 1600);
                 };
 
                 chrome.tabs.onUpdated.addListener(listener);

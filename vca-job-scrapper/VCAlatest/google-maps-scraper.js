@@ -11,7 +11,7 @@
 // Uses polling — checks every 500ms for up to 15 seconds total.
 (async () => {
     try {
-        const MAX_WAIT = 15000;   // 15 seconds max total
+        const MAX_WAIT = 35000;   // 35 seconds max total
         const POLL = 500;         // Check every 500ms
         const startTime = Date.now();
 
@@ -23,15 +23,23 @@
         // Either a single place detail OR a search results list
         // ============================================================
         let addressData = null;
+        let lastAddressData = null;
+        const isAddressSearch = isAddressLikeName(getFullSearchQueryFromUrl());
+        let sawResultList = false;
 
         while (Date.now() - startTime < MAX_WAIT) {
             // Check if we're on a single place page (address button exists)
             addressData = tryExtractFromPlaceDetail();
-            if (addressData) return addressData;
+            if (addressData) {
+                lastAddressData = addressData;
+                if (!shouldWaitForAtThisPlaceBusiness(addressData, isAddressSearch)) return addressData;
+                gentlyScrollPlacePanelForAtThisPlace();
+            }
 
             // Check if search results list has loaded
             const resultLinks = document.querySelectorAll('a.hfpxzc');
             if (resultLinks.length > 0) {
+                sawResultList = true;
                 // Results list is loaded — go to Phase 2
                 break;
             }
@@ -40,26 +48,30 @@
         }
 
         // If we already got address data from place detail, return it
-        if (addressData) return addressData;
+        if (addressData && !shouldWaitForAtThisPlaceBusiness(addressData, isAddressSearch)) return addressData;
+        if (lastAddressData && !sawResultList) return lastAddressData;
 
         // ============================================================
         // PHASE 2: Search results list is showing
         // Find the best matching result by comparing aria-label to hospital name
         // The hospital name is embedded in the search URL query
         // ============================================================
+        const fullSearchQuery = getFullSearchQueryFromUrl();
         const hospitalName = getHospitalNameFromUrl();
         const resultLinks = document.querySelectorAll('a.hfpxzc');
 
         if (resultLinks.length === 0) {
             // No results and no place detail — nothing we can do
-            return emptyResult();
+            return tryExtractFromPageBody() || lastAddressData || emptyResult();
         }
 
         // Find best matching result
-        const bestMatch = findBestMatch(resultLinks, hospitalName);
+        const bestMatch = isAddressSearch
+            ? (findBestAddressMatch(resultLinks, fullSearchQuery) || resultLinks[0])
+            : findBestMatch(resultLinks, hospitalName);
         if (!bestMatch) {
             console.log('No acceptable Maps result match found; skipping first-result fallback');
-            return emptyResult();
+            return lastAddressData || emptyResult();
         }
 
         const targetLink = bestMatch;
@@ -79,11 +91,17 @@
             await wait(POLL);
 
             addressData = tryExtractFromPlaceDetail();
-            if (addressData) return addressData;
+            if (addressData) {
+                lastAddressData = addressData;
+                if (!shouldWaitForAtThisPlaceBusiness(addressData, isAddressSearch)) return addressData;
+                gentlyScrollPlacePanelForAtThisPlace();
+            }
         }
 
         // Last resort: try extracting from whatever is on the page now
-        return tryExtractFromPageBody() || emptyResult();
+        const bodyResult = tryExtractFromPageBody();
+        if (bodyResult && !shouldWaitForAtThisPlaceBusiness(bodyResult, isAddressSearch)) return bodyResult;
+        return bodyResult || lastAddressData || emptyResult();
 
     } catch (e) {
         return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: e.message };
@@ -92,13 +110,51 @@
     // ===== Extract hospital name from the Google Maps URL query =====
     // URL format: https://www.google.com/maps/search/Hospital+Name+City+State
     function getHospitalNameFromUrl() {
+        const decoded = getFullSearchQueryFromUrl();
+        return decoded.split(',')[0].trim();
+    }
+
+    function getFullSearchQueryFromUrl() {
         const url = window.location.href;
         const searchMatch = url.match(/\/maps\/search\/([^?#]+)/);
         if (searchMatch) {
-            const decoded = decodeURIComponent(searchMatch[1]).replace(/\+/g, ' ').trim();
-            return decoded.split(',')[0].trim();
+            return decodeURIComponent(searchMatch[1]).replace(/\+/g, ' ').trim();
         }
         return '';
+    }
+
+    function shouldWaitForAtThisPlaceBusiness(result, isAddressSearch) {
+        if (!isAddressSearch) return false;
+        const businessName = cleanLine(result?.businessName || '');
+        return !businessName || isAddressLikeName(businessName);
+    }
+
+    function gentlyScrollPlacePanelForAtThisPlace() {
+        const containers = [
+            document.querySelector('[role="main"]'),
+            document.querySelector('.m6QErb[aria-label]'),
+            document.querySelector('.m6QErb'),
+            ...Array.from(document.querySelectorAll('div')).filter(element => {
+                try {
+                    return element.scrollHeight > element.clientHeight + 100;
+                } catch (_) {
+                    return false;
+                }
+            }).slice(0, 12),
+            document.scrollingElement,
+            document.documentElement,
+            document.body
+        ].filter(Boolean);
+
+        for (const container of containers) {
+            try {
+                container.scrollBy({ top: 500, behavior: 'instant' });
+            } catch (_) {
+                try {
+                    container.scrollTop = (container.scrollTop || 0) + 500;
+                } catch (_) {}
+            }
+        }
     }
 
     // ===== Find the search result that best matches the hospital name =====
@@ -150,6 +206,42 @@
         }
 
         return bestScore >= 0.34 ? bestLink : null;
+    }
+
+    function findBestAddressMatch(links, searchQuery) {
+        const query = normalizeAddressForCompare(searchQuery);
+        let bestLink = null;
+        let bestScore = 0;
+
+        for (const link of links) {
+            const label = cleanLine(link.getAttribute('aria-label') || link.textContent || '');
+            const normalized = normalizeAddressForCompare(label);
+            if (!normalized) continue;
+
+            let score = 0;
+            for (const token of query.split(' ').filter(part => part.length > 1)) {
+                if (normalized.includes(token)) score++;
+            }
+            if (normalized.includes('10507') && query.includes('10507')) score += 3;
+            if (normalized.includes('bedford') && query.includes('bedford')) score += 2;
+
+            if (score > bestScore) {
+                bestScore = score;
+                bestLink = link;
+            }
+        }
+
+        return bestScore >= 3 ? bestLink : null;
+    }
+
+    function normalizeAddressForCompare(value) {
+        return cleanLine(value)
+            .toLowerCase()
+            .replace(/\broad\b/g, 'rd')
+            .replace(/\bnorth\b/g, 'n')
+            .replace(/[^a-z0-9#]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
     }
 
     function isLivewellQuery(value) {
