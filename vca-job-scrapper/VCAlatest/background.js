@@ -80,14 +80,76 @@ function formatDirectEmploymentType(value) {
     .replace(/\b\w/g, char => char.toUpperCase());
 }
 
-function formatDirectJobPostingResult(jobPosting, expectedJobId) {
+function uniqueDirectValues(values) {
+  const seen = new Set();
+  const unique = [];
+
+  for (const value of values) {
+    const clean = cleanDirectJobText(value || '');
+    const key = clean.toLowerCase();
+    if (!clean || seen.has(key)) continue;
+    seen.add(key);
+    unique.push(clean);
+  }
+
+  return unique;
+}
+
+function getDirectJobLocations(jobPosting) {
+  const locations = Array.isArray(jobPosting?.jobLocation)
+    ? jobPosting.jobLocation
+    : (jobPosting?.jobLocation ? [jobPosting.jobLocation] : []);
+
+  return locations
+    .map(location => location?.address || location || {})
+    .map(address => ({
+      city: cleanDirectJobText(address.addressLocality || ''),
+      state: cleanDirectJobText(address.addressRegion || ''),
+      country: cleanDirectJobText(address.addressCountry || ''),
+      postalCode: cleanDirectJobText(address.postalCode || '')
+    }))
+    .filter(location => location.city || location.state || location.country || location.postalCode);
+}
+
+function extractDirectJobCategoriesFromHtml(html) {
+  const categories = [];
+  const match = (html || '').match(/"multi_category"\s*:\s*(\[[\s\S]*?\])/);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[1]);
+      for (const item of parsed) {
+        categories.push(item?.category, item?.primaryLocaleCategory);
+      }
+    } catch (_) {
+      // Fall back to the simpler regex below.
+    }
+  }
+
+  const categoryPattern = /"category"\s*:\s*"([^"]+)"/g;
+  let categoryMatch;
+  while ((categoryMatch = categoryPattern.exec(match?.[1] || '')) !== null) {
+    categories.push(categoryMatch[1]);
+  }
+
+  return uniqueDirectValues(categories);
+}
+
+function formatDirectJobPostingResult(jobPosting, expectedJobId, pageCategories = []) {
   if (!jobPosting) return null;
 
-  const address = jobPosting.jobLocation?.address || {};
+  const locations = getDirectJobLocations(jobPosting);
+  const address = locations[0] || {};
+  const categories = uniqueDirectValues([
+    ...pageCategories,
+    jobPosting.occupationalCategory || '',
+    jobPosting.industry || ''
+  ]);
   const fields = {
     title: cleanDirectJobText(jobPosting.title || ''),
-    location: [address.addressLocality, address.addressRegion, address.addressCountry].filter(Boolean).join(', '),
-    category: cleanDirectJobText(jobPosting.occupationalCategory || jobPosting.industry || ''),
+    location: [address.city, address.state, address.country].filter(Boolean).join(', '),
+    allLocations: locations,
+    category: categories.join(' / '),
+    categories,
     jobId: cleanDirectJobText(jobPosting.identifier?.value || ''),
     jobType: formatDirectEmploymentType(jobPosting.employmentType || ''),
     industry: cleanDirectJobText(jobPosting.industry || ''),
@@ -116,6 +178,25 @@ function formatDirectJobPostingResult(jobPosting, expectedJobId) {
     `Job Seq No: ${fields.seqNo}`
   ];
 
+  if (fields.allLocations.length > 1) {
+    lines.push(
+      '',
+      'Locations:',
+      ...fields.allLocations.map(location => {
+        const cityState = [location.city, location.state].filter(Boolean).join(', ');
+        return `  - ${cityState || location.country || location.postalCode}`;
+      })
+    );
+  }
+
+  if (fields.categories.length > 1) {
+    lines.push(
+      '',
+      `Job available in ${fields.categories.length} categories.`,
+      ...fields.categories.map(category => `  - ${category}`)
+    );
+  }
+
   if (fields.jobDescription) {
     lines.push('', '=== JOB DESCRIPTION ===', fields.jobDescription);
   }
@@ -140,7 +221,8 @@ async function fetchJobDescriptionDirectly(request) {
 
   const html = await response.text();
   const jobPosting = extractDirectJobPostingJsonLd(html);
-  const result = formatDirectJobPostingResult(jobPosting, request.jobId || request.departmentId || '');
+  const pageCategories = extractDirectJobCategoriesFromHtml(html);
+  const result = formatDirectJobPostingResult(jobPosting, request.jobId || request.departmentId || '', pageCategories);
   if (!result) throw new Error('Direct fetch did not find JobPosting JSON-LD');
   return result;
 }
@@ -267,15 +349,81 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     .replace(/\b\w/g, char => char.toUpperCase());
                 }
 
+                function uniqueSelectedValues(values) {
+                  const seen = new Set();
+                  const unique = [];
+
+                  for (const value of values) {
+                    const clean = cleanSelectedJobInfoText(value || '');
+                    const key = clean.toLowerCase();
+                    if (!clean || seen.has(key)) continue;
+                    seen.add(key);
+                    unique.push(clean);
+                  }
+
+                  return unique;
+                }
+
+                function extractSelectedJobCategoriesFromPage() {
+                  const categories = [];
+                  const sources = Array.from(document.scripts || [])
+                    .map(script => script.textContent || '')
+                    .filter(Boolean);
+
+                  for (const source of sources) {
+                    const match = source.match(/"multi_category"\s*:\s*(\[[\s\S]*?\])/);
+                    if (!match) continue;
+
+                    try {
+                      const parsed = JSON.parse(match[1]);
+                      for (const item of parsed) {
+                        categories.push(item?.category, item?.primaryLocaleCategory);
+                      }
+                    } catch (_) {
+                      const categoryPattern = /"category"\s*:\s*"([^"]+)"/g;
+                      let categoryMatch;
+                      while ((categoryMatch = categoryPattern.exec(match[1] || '')) !== null) {
+                        categories.push(categoryMatch[1]);
+                      }
+                    }
+                  }
+
+                  return uniqueSelectedValues(categories);
+                }
+
+                function getSelectedJobLocations(jobPosting) {
+                  const locations = Array.isArray(jobPosting?.jobLocation)
+                    ? jobPosting.jobLocation
+                    : (jobPosting?.jobLocation ? [jobPosting.jobLocation] : []);
+
+                  return locations
+                    .map(location => location?.address || location || {})
+                    .map(address => ({
+                      city: cleanSelectedJobInfoText(address.addressLocality || ''),
+                      state: cleanSelectedJobInfoText(address.addressRegion || ''),
+                      country: cleanSelectedJobInfoText(address.addressCountry || ''),
+                      postalCode: cleanSelectedJobInfoText(address.postalCode || '')
+                    }))
+                    .filter(location => location.city || location.state || location.country || location.postalCode);
+                }
+
                 function formatSelectedJobPostingFallback() {
                   const jobPosting = getSelectedJobPostingJsonLd();
                   if (!jobPosting) return null;
 
-                  const address = jobPosting.jobLocation?.address || {};
+                  const locations = getSelectedJobLocations(jobPosting);
+                  const address = locations[0] || {};
+                  const categories = uniqueSelectedValues([
+                    ...extractSelectedJobCategoriesFromPage(),
+                    jobPosting.occupationalCategory || '',
+                    jobPosting.industry || ''
+                  ]);
                   const fields = {
                     title: cleanSelectedJobInfoText(jobPosting.title || ''),
-                    location: [address.addressLocality, address.addressRegion, address.addressCountry].filter(Boolean).join(', '),
-                    category: cleanSelectedJobInfoText(jobPosting.occupationalCategory || jobPosting.industry || ''),
+                    location: [address.city, address.state, address.country].filter(Boolean).join(', '),
+                    allLocations: locations,
+                    category: categories.join(' / '),
+                    categories,
                     jobId: cleanSelectedJobInfoText(jobPosting.identifier?.value || ''),
                     jobType: formatEmploymentType(jobPosting.employmentType || ''),
                     industry: cleanSelectedJobInfoText(jobPosting.industry || ''),
@@ -304,6 +452,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     `Post Date: ${fields.postDate}`,
                     `Job Seq No: ${fields.seqNo}`
                   ];
+
+                  if (fields.allLocations.length > 1) {
+                    lines.push(
+                      '',
+                      'Locations:',
+                      ...fields.allLocations.map(location => {
+                        const cityState = [location.city, location.state].filter(Boolean).join(', ');
+                        return `  - ${cityState || location.country || location.postalCode}`;
+                      })
+                    );
+                  }
+
+                  if (fields.categories.length > 1) {
+                    lines.push(
+                      '',
+                      `Job available in ${fields.categories.length} categories.`,
+                      ...fields.categories.map(category => `  - ${category}`)
+                    );
+                  }
 
                   if (fields.jobDescription) {
                     lines.push('', '=== JOB DESCRIPTION ===', fields.jobDescription);
@@ -339,10 +506,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 }
 
                 function formatSelectedJobInfo(root) {
+                  const categories = uniqueSelectedValues([
+                    ...extractSelectedJobCategoriesFromPage(),
+                    selectedJobInfoField(root, '.job-category', 'data-ph-at-job-category-text')
+                  ]);
                   const fields = {
                     title: selectedJobInfoField(root, 'h1.job-title', 'data-ph-at-job-title-text'),
                     location: selectedJobInfoField(root, '.job-location', 'data-ph-at-job-location-text'),
-                    category: selectedJobInfoField(root, '.job-category', 'data-ph-at-job-category-text'),
+                    category: categories.join(' / '),
+                    categories,
                     jobId: selectedJobInfoField(root, '.jobId', 'data-ph-at-job-id-text'),
                     jobType: selectedJobInfoField(root, '.type', 'data-ph-at-job-type-text'),
                     industry: cleanSelectedJobInfoText(root.getAttribute('data-ph-at-job-industry-text') || ''),
@@ -370,6 +542,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       `Industry: ${fields.industry}`,
                       `Post Date: ${fields.postDate}`,
                       `Job Seq No: ${fields.seqNo}`,
+                      ...(fields.categories.length > 1 ? [
+                        '',
+                        `Job available in ${fields.categories.length} categories.`,
+                        ...fields.categories.map(category => `  - ${category}`)
+                      ] : []),
                       '',
                       '=== JOB INFO TEXT ===',
                       fields.selectorText
@@ -973,6 +1150,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     function lookupPosition(rawText) {
                       if (!rawText) return '';
                       const textLower = rawText.toLowerCase();
+                      if (/\bmedical director\b/i.test(rawText)) return 'Medical Director';
                       for (const entry of positionMap) {
                         for (const kw of entry.keywords) {
                           if (textLower.includes(kw)) {

@@ -339,6 +339,14 @@
         return /\b(?:criticalist|ecc specialist|emergency\s*(?:&|and)\s*critical\s*care specialist|dacvecc)\b/i.test(openingRoleText);
     }
 
+    function isMedicalDirectorRole(title = '', description = '') {
+        if (/\bmedical director\b/i.test(title || '')) return true;
+
+        const text = description || '';
+        return /\bTitle:\s*[^\n]*\bmedical director\b/i.test(text) ||
+            /\bjoin\s+us\s+as\b[\s\S]{0,240}\bmedical director\b/i.test(text);
+    }
+
     function hasSpecialtyMedicalDirectorRequirement(title = '', description = '') {
         const roleText = `${title || ''} ${(description || '').slice(0, 1800)}`;
         if (!/\bmedical director\b/i.test(roleText)) return false;
@@ -464,6 +472,7 @@
         }
 
         if (titleLower.includes('specialist') && !titleLower.includes('technician specialist')) return 'Specialty Care';
+        if (/\bspecialty\s+(?:veterinarian|vet|doctor|dvm)\b/.test(titleLower)) return 'Specialty Care';
         if (titleLower.match(/\bsurgeon\b/)) return 'Specialty Care';
 
         // STEP 3: Emergency from title
@@ -582,7 +591,9 @@
     //     Neurologist & Neurosurgeon, Ophthalmologist, Radiation Oncologist, Radiologist, Surgeon
     //   Urgent Care: Associate Veterinarian, Partner Veterinarian
     function determinePosition(title, areaOfPractice, descriptionText) {
-        if (areaOfPractice === 'Specialty Care' && hasSpecialtyEccSignal(title, descriptionText)) {
+        if (areaOfPractice === 'Specialty Care' &&
+            !isMedicalDirectorRole(title, descriptionText) &&
+            hasSpecialtyEccSignal(title, descriptionText)) {
             return 'ECC Specialist';
         }
 

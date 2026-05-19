@@ -276,6 +276,24 @@ document.addEventListener('DOMContentLoaded', () => {
         return /-(?:loc\d+|[A-Z]+)$/i.test(job?.jobId || job?.departmentId || '') || !!job?.sourceLink || !!job?.isMultiLocationSplit;
     }
 
+    function getSplitSourceJobId(job) {
+        return (job?.sourceJobId || job?.originalJobId || '').trim();
+    }
+
+    function getSplitParentJobIds(jobs = []) {
+        return new Set(
+            jobs
+                .map(getSplitSourceJobId)
+                .filter(Boolean)
+        );
+    }
+
+    function isSplitChildOrParentJob(job, splitParentJobIds) {
+        if (job?.isMultiLocationSplit || getSplitSourceJobId(job)) return true;
+        const baseJobId = getBaseJobId(job) || job?.jobId || job?.departmentId || '';
+        return !!baseJobId && splitParentJobIds.has(baseJobId);
+    }
+
     function getLocationVariants(location = '', city = '', state = '') {
         const variants = new Set();
         const parts = (location || '').split(',').map(part => part.trim()).filter(Boolean);
@@ -701,6 +719,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const vcaMatch = text.match(/^(.+?),\s*([A-Z]{2})\s+(.+?)\s+(VCA\s+.+)$/i);
         if (vcaMatch) {
+            if (!isStateValue(vcaMatch[2])) return null;
             const city = formatCityForStorage(vcaMatch[1].replace(/\s{2,}/g, ' '));
             const state = formatStateForStorage(vcaMatch[2].toUpperCase());
             const roleTitle = normalizeSplitRoleTitle(vcaMatch[3], fallbackTitle);
@@ -721,6 +740,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const facilityMatch = text.match(/^(.+?),\s*([A-Z]{2})\s+(.+?)\s+([A-Z][A-Za-z0-9&'().\/\-\s]{2,160}?\b(?:Animal Hospital|Veterinary Hospital|Veterinary Center|Veterinary Clinic|Veterinary Specialists?|Pet Hospital|Pet Center|Emergency Center|Medical Center|Specialty Center|Hospital|Clinic|Center|Care|Specialists?)(?:\s+\([^)]+\))?)$/i);
         if (facilityMatch) {
+            if (!isStateValue(facilityMatch[2])) return null;
             const city = formatCityForStorage(facilityMatch[1].replace(/\s{2,}/g, ' '));
             const state = formatStateForStorage(facilityMatch[2].toUpperCase());
             const roleTitle = normalizeSplitRoleTitle(facilityMatch[3], fallbackTitle);
@@ -877,19 +897,169 @@ document.addEventListener('DOMContentLoaded', () => {
         return entries;
     }
 
+    function extractApprovedMultiPositions(text = '') {
+        const source = text || '';
+        const hasMedicalDirector = /\bmedical director\b/i.test(source);
+        const generalPracticeRules = [
+            ['Medical Lead Veterinarian', /\bmedical lead(?:\s+veterinarian)?\b/i],
+            ['Lead Veterinarian', /\blead veterinarian\b|\blead vet\b/i],
+            ['Partner Veterinarian', /\bpartner veterinarian\b|\bpartner vet\b/i],
+            ['Associate Veterinarian', /\bassociate veterinarian\b|\bassociate vet\b|\bassociate dvm\b/i]
+        ];
+        const positionRules = [
+            ['Medical Director', /\bmedical director\b/i],
+            ...generalPracticeRules,
+            ['Anesthesiologist', /\banesthesiologist\b|\banesthesia\b/i],
+            ['Cardiologist', /\bcardiologist\b|\bcardiology\b/i],
+            ['DABVP Specialist', /\bdabvp\b|\bavian\b|\bexotics?\b|\bzoo(?:logical)? medicine\b/i],
+            ['Dental Specialist', /\bdental specialist\b|\bveterinary dentist\b|\bdentistry\b/i],
+            ['Dermatologist', /\bdermatologist\b|\bdermatology\b/i],
+            ['ECC Specialist', /\bcriticalist\b|\becc specialist\b|\bemergency\s*(?:&|and)?\s*critical care specialist\b/i],
+            ['Internal Medicine Specialist', /\binternist\b|\binternal medicine specialist\b/i],
+            ['Medical Oncologist', /\bmedical oncologist\b|\boncologist\b|\boncology\b/i],
+            ['Neurologist & Neurosurgeon', /\bneurologist\b|\bneurosurgeon\b|\bneurology\b/i],
+            ['Ophthalmologist', /\bophthalmologist\b|\bophthalmology\b/i],
+            ['Radiation Oncologist', /\bradiation oncologist\b|\bradiation oncology\b/i],
+            ['Radiologist', /\bradiologist\b|\bradiology\b|\bdiagnostic imaging\b/i],
+            ['Surgeon', /\bsurgeon\b|\bsurgery\b/i]
+        ];
+        const positions = [];
+
+        if (hasMedicalDirector) {
+            positions.push('Medical Director');
+            for (const [position, pattern] of generalPracticeRules) {
+                if (pattern.test(source) && !positions.includes(position)) {
+                    positions.push(position);
+                }
+            }
+            return positions;
+        }
+
+        for (const [position, pattern] of positionRules) {
+            if (pattern.test(source) && !positions.includes(position)) {
+                if (position === 'Medical Oncologist' && /\bradiation oncolog/i.test(source)) continue;
+                if (position === 'Radiologist' && /\bradiation oncolog/i.test(source)) continue;
+                if (position === 'Surgeon' && /\bneuro(?:logy|surgeon)\b/i.test(source)) continue;
+                if (position === 'Dental Specialist' && /\bassistant\b/i.test(source)) continue;
+                positions.push(position);
+            }
+        }
+
+        return positions;
+    }
+
+    function extractHospitalFromOpeningRole(text = '') {
+        const source = (text || '').replace(/\u00a0/g, ' ');
+        const match = source.match(/\bjoin\s+us\s+as\s+[^.\n]{0,220}?\s+at\s+([^.\n]+?)(?=\.|\s+You|\s+you|$)/i);
+        if (!match) return '';
+
+        const hospitals = splitCompoundHospitalNames(match[1]);
+        if (hospitals.length > 1) return hospitals.join(' / ');
+
+        return cleanMultiLocationHospitalName(match[1]);
+    }
+
+    function hasMentionedSplitHospital(entry = {}) {
+        const hospital = entry.hospital || entry.hospitalName || '';
+        return !!hospital &&
+            isValidExtractedHospitalName(hospital) &&
+            !isFallbackHospitalName(hospital) &&
+            !isGenericOrganizationHospitalName(hospital) &&
+            !isLocationOnlyHospitalName(hospital, entry.location, entry.city, entry.state);
+    }
+
+    function extractMultiplePositionEntries(text, originalJob = {}, fallbackTitle = '') {
+        const openingRoleText = ((text || '').match(/\bjoin\s+us\s+as[\s\S]{0,300}/i) || [''])[0];
+        const roleText = `${fallbackTitle || ''} ${openingRoleText}`;
+        const positions = extractApprovedMultiPositions(roleText);
+        if (positions.length < 2) return [];
+
+        const loc = getEntryLocationFromJob(originalJob, text);
+        if (!loc) return [];
+
+        const hospital = extractHospitalFromOpeningRole(text);
+        if (!hasMentionedSplitHospital({ ...loc, hospital })) return [];
+
+        return positions.map(position => ({
+            city: loc.city,
+            state: loc.state,
+            location: loc.location,
+            title: position,
+            hospital,
+            streetAddress: loc.streetAddress || '',
+            zipCode: loc.zipCode || ''
+        }));
+    }
+
+    function getSplitEntryPositionKey(entry = {}, fallbackTitle = '') {
+        const title = entry.title || fallbackTitle || '';
+        return getPositionFromTitle(title) ||
+            getPositionFromDescription(title) ||
+            normalizeSplitRoleTitle(title, fallbackTitle) ||
+            title;
+    }
+
+    function getSplitEntryHospitalKey(entry = {}) {
+        return normalizeHospitalNameForCompare(entry.hospital || entry.hospitalName || '');
+    }
+
+    function splitEntriesRepresentSameJob(existing = {}, entry = {}) {
+        const existingLocation = parseLocationParts(existing.location || '');
+        const entryLocation = parseLocationParts(entry.location || '');
+        const existingCity = existing.city || existingLocation.city || '';
+        const entryCity = entry.city || entryLocation.city || '';
+        const existingState = existing.state || existingLocation.state || '';
+        const entryState = entry.state || entryLocation.state || '';
+        const samePosition = normalizeSimpleText(getSplitEntryPositionKey(existing)) ===
+            normalizeSimpleText(getSplitEntryPositionKey(entry));
+        const sameCity = normalizeCityForCompare(existingCity) === normalizeCityForCompare(entryCity);
+        const sameState = normalizeSimpleText(getFullStateName(existingState)) ===
+            normalizeSimpleText(getFullStateName(entryState));
+        const existingHospital = getSplitEntryHospitalKey(existing);
+        const entryHospital = getSplitEntryHospitalKey(entry);
+        const sameOrIncompleteHospital = !existingHospital || !entryHospital || existingHospital === entryHospital;
+
+        return samePosition && sameCity && sameState && sameOrIncompleteHospital;
+    }
+
+    function mergeSplitEntry(existing, entry) {
+        if (!existing.title && entry.title) existing.title = entry.title;
+        if (!existing.city && entry.city) existing.city = entry.city;
+        if (!existing.state && entry.state) existing.state = entry.state;
+        if (!existing.location && entry.location) existing.location = entry.location;
+        if (!existing.streetAddress && entry.streetAddress) existing.streetAddress = entry.streetAddress;
+        if (!existing.zipCode && entry.zipCode) existing.zipCode = entry.zipCode;
+
+        const currentHospital = normalizeSimpleText(existing.hospital || '');
+        const nextHospital = normalizeSimpleText(entry.hospital || '');
+        if (!existing.hospital && entry.hospital) {
+            existing.hospital = entry.hospital;
+        } else if (entry.hospital && currentHospital && nextHospital && currentHospital !== nextHospital) {
+            existing.hospital = `${existing.hospital} / ${entry.hospital}`;
+        }
+    }
+
     function dedupeMultiLocationEntries(entries) {
         const unique = [];
-        const seen = new Set();
 
         for (const entry of entries) {
-            const key = [
-                normalizeSimpleText(entry.hospital),
-                normalizeSimpleText(entry.location),
-                normalizeSimpleText(entry.title)
-            ].join('|');
-            if (seen.has(key)) continue;
-            seen.add(key);
-            unique.push(entry);
+            const locationParts = parseLocationParts(entry.location || '');
+            const city = entry.city || locationParts.city || '';
+            const state = entry.state || locationParts.state || '';
+            const normalizedEntry = {
+                ...entry,
+                city: formatCityForStorage(city),
+                state: formatStateForStorage(state),
+                location: entry.location || [city, state].filter(Boolean).join(', ')
+            };
+
+            const existingEntry = unique.find(current => splitEntriesRepresentSameJob(current, normalizedEntry));
+            if (existingEntry) {
+                mergeSplitEntry(existingEntry, normalizedEntry);
+                continue;
+            }
+
+            unique.push(normalizedEntry);
         }
 
         return unique;
@@ -898,14 +1068,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function extractMultiLocationEntries(text, originalJob = {}) {
         const fallbackTitle = originalJob.title || '';
         const structuredEntries = extractStructuredLocationEntries(text, fallbackTitle);
-        const compoundHospitalEntries = structuredEntries.length > 1
-            ? []
-            : extractCompoundHospitalEntries(text, originalJob, fallbackTitle);
-        const entries = structuredEntries.length > 1
-            ? structuredEntries
-            : (compoundHospitalEntries.length > 1 ? compoundHospitalEntries : extractMetadataLocationEntries(text, fallbackTitle));
 
-        return dedupeMultiLocationEntries(entries).filter(entry => entry.city || entry.state || entry.hospital);
+        const dedupedEntries = dedupeMultiLocationEntries(structuredEntries)
+            .filter(hasMentionedSplitHospital);
+
+        return dedupedEntries.length > 1 ? dedupedEntries : [];
     }
 
     function buildSplitDescription(originalDescription, splitJob, baseJobId) {
@@ -927,6 +1094,10 @@ document.addEventListener('DOMContentLoaded', () => {
         if (splitJob.areaOfPractice) lines.push(`Area of Practice: ${splitJob.areaOfPractice}`);
         if (splitJob.salary) lines.push(`Salary: ${splitJob.salary}`);
         if (splitJob.experience) lines.push(`Experience: ${splitJob.experience}`);
+
+        if (originalDescription) {
+            lines.push('', '=== SOURCE JOB DESCRIPTION ===', originalDescription);
+        }
 
         return lines.filter(line => line !== null && line !== undefined).join('\n').trim();
     }
@@ -1333,6 +1504,14 @@ document.addEventListener('DOMContentLoaded', () => {
         return /\b(?:criticalist|ecc specialist|emergency\s*(?:&|and)\s*critical\s*care specialist|dacvecc)\b/i.test(openingRoleText);
     }
 
+    function isMedicalDirectorRole(title = '', description = '') {
+        if (/\bmedical director\b/i.test(title || '')) return true;
+
+        const text = description || '';
+        return /\bTitle:\s*[^\n]*\bmedical director\b/i.test(text) ||
+            /\bjoin\s+us\s+as\b[\s\S]{0,240}\bmedical director\b/i.test(text);
+    }
+
     function hasSpecialtyMedicalDirectorRequirement(title = '', description = '') {
         const roleText = `${title || ''} ${(description || '').slice(0, 1800)}`;
         if (!/\bmedical director\b/i.test(roleText)) return false;
@@ -1496,6 +1675,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (t.includes('specialist') && !t.includes('technician specialist')) return 'Specialty Care';
+        if (/\bspecialty\s+(?:veterinarian|vet|doctor|dvm)\b/.test(t)) return 'Specialty Care';
         if (t.match(/\bsurgeon\b/)) return 'Specialty Care';
 
         // Urgent Care — check before Emergency since "urgent care" is more specific
@@ -1721,6 +1901,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Check for specialist or surgeon keywords
             if (title.includes('specialist') && !title.includes('technician specialist')) return 'Specialty Care';
+            if (/\bspecialty\s+(?:veterinarian|vet|doctor|dvm)\b/.test(title)) return 'Specialty Care';
             if (title.match(/\bsurgeon\b/) && !title.includes('neurosurgeon')) return 'Specialty Care';
 
             // STEP 3: Check TITLE for Emergency Care
@@ -1827,7 +2008,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Determine Position
         function determinePosition(positionText, descriptionText, areaOfPractice) {
-            if (areaOfPractice === 'Specialty Care' && hasSpecialtyEccSignal(positionText, descriptionText)) {
+            if (areaOfPractice === 'Specialty Care' &&
+                !isMedicalDirectorRole(positionText, descriptionText) &&
+                hasSpecialtyEccSignal(positionText, descriptionText)) {
                 return 'ECC Specialist';
             }
 
@@ -2916,6 +3099,7 @@ document.addEventListener('DOMContentLoaded', () => {
         displayedJobs = jobs;
         tableBody.innerHTML = '';
         updateJobCount(jobs.length);
+        const splitParentJobIds = getSplitParentJobIds(allJobs);
 
         if (jobs.length === 0) {
             table.style.display = 'none';
@@ -2932,7 +3116,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const jobKey = getJobSelectionKey(job);
             const isSelected = selectedJobKeys.has(jobKey);
 
-            if (job.isMultiLocationSplit) {
+            if (isSplitChildOrParentJob(job, splitParentJobIds)) {
                 row.classList.add('multi-location-split-row');
                 row.style.backgroundColor = '#fee2e2';
                 row.style.borderLeft = '4px solid #dc2626';
@@ -3797,7 +3981,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     let finalPosition = getPositionFromTitle(rowTitle) || firstDetail.position || '';
-                    if (finalAOP === 'Specialty Care' && hasSpecialtyEccSignal(rowTitle, descText, rowHospital)) {
+                    if (finalAOP === 'Specialty Care' &&
+                        !isMedicalDirectorRole(rowTitle, descText) &&
+                        hasSpecialtyEccSignal(rowTitle, descText, rowHospital)) {
                         finalPosition = 'ECC Specialist';
                     }
                     if (finalPosition) {
