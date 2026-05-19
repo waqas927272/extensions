@@ -681,6 +681,86 @@
         function extractLocations(text) {
             const locations = [];
 
+            const STATE_KEYWORDS = [
+                { code: 'AL', names: ['AL', 'Alabama'] }, { code: 'AK', names: ['AK', 'Alaska'] },
+                { code: 'AZ', names: ['AZ', 'Arizona'] }, { code: 'AR', names: ['AR', 'Arkansas'] },
+                { code: 'CA', names: ['CA', 'California'] }, { code: 'CO', names: ['CO', 'Colorado'] },
+                { code: 'CT', names: ['CT', 'Connecticut'] }, { code: 'DE', names: ['DE', 'Delaware'] },
+                { code: 'FL', names: ['FL', 'Florida'] }, { code: 'GA', names: ['GA', 'Georgia'] },
+                { code: 'HI', names: ['HI', 'Hawaii'] }, { code: 'ID', names: ['ID', 'Idaho'] },
+                { code: 'IL', names: ['IL', 'Illinois'] }, { code: 'IN', names: ['IN', 'Indiana'] },
+                { code: 'IA', names: ['IA', 'Iowa'] }, { code: 'KS', names: ['KS', 'Kansas'] },
+                { code: 'KY', names: ['KY', 'Kentucky'] }, { code: 'LA', names: ['LA', 'Louisiana'] },
+                { code: 'ME', names: ['ME', 'Maine'] }, { code: 'MD', names: ['MD', 'Maryland'] },
+                { code: 'MA', names: ['MA', 'Massachusetts'] }, { code: 'MI', names: ['MI', 'Michigan'] },
+                { code: 'MN', names: ['MN', 'Minnesota'] }, { code: 'MS', names: ['MS', 'Mississippi'] },
+                { code: 'MO', names: ['MO', 'Missouri'] }, { code: 'MT', names: ['MT', 'Montana'] },
+                { code: 'NE', names: ['NE', 'Nebraska'] }, { code: 'NV', names: ['NV', 'Nevada'] },
+                { code: 'NH', names: ['NH', 'New Hampshire'] }, { code: 'NJ', names: ['NJ', 'New Jersey'] },
+                { code: 'NM', names: ['NM', 'New Mexico'] }, { code: 'NY', names: ['NY', 'New York'] },
+                { code: 'NC', names: ['NC', 'North Carolina'] }, { code: 'ND', names: ['ND', 'North Dakota'] },
+                { code: 'OH', names: ['OH', 'Ohio'] }, { code: 'OK', names: ['OK', 'Oklahoma'] },
+                { code: 'OR', names: ['OR', 'Oregon'] }, { code: 'PA', names: ['PA', 'Pennsylvania'] },
+                { code: 'RI', names: ['RI', 'Rhode Island'] }, { code: 'SC', names: ['SC', 'South Carolina'] },
+                { code: 'SD', names: ['SD', 'South Dakota'] }, { code: 'TN', names: ['TN', 'Tennessee'] },
+                { code: 'TX', names: ['TX', 'Texas'] }, { code: 'UT', names: ['UT', 'Utah'] },
+                { code: 'VT', names: ['VT', 'Vermont'] }, { code: 'VA', names: ['VA', 'Virginia'] },
+                { code: 'WA', names: ['WA', 'Washington'] }, { code: 'WV', names: ['WV', 'West Virginia'] },
+                { code: 'WI', names: ['WI', 'Wisconsin'] }, { code: 'WY', names: ['WY', 'Wyoming'] },
+                { code: 'DC', names: ['DC', 'D.C.', 'District of Columbia', 'Washington, D.C.'] }
+            ];
+
+            const CITY_KEYWORDS = [
+                'Atlanta', 'Mesa', 'Arlington', 'Centreville', 'Washington', 'Indianapolis', 'Annapolis',
+                'Belton', 'Bangor', 'Charleston', 'Richmond', 'Fenton', 'Dunedin', 'Blythewood',
+                'South Burlington', 'East Hampton', 'East Meadow', 'Manchester', 'Columbia', 'Bel Air',
+                'Hopewell Junction', 'Locust Grove', 'Warrenville', 'Wildwood', 'Los Angeles', 'Ventura',
+                'Hendersonville', 'Leesburg', 'Hudson', 'Knoxville', 'Franklin', 'Aurora', 'Redlands',
+                'Humble', 'Bradenton', 'Fairfax', 'Falls Church', 'Temple', 'New York'
+            ];
+
+            const isLikelyLocationCity = (value) => {
+                const city = (value || '').trim();
+                if (!city) return false;
+                if (city.length < 2 || city.length > 40) return false;
+                if (/\d/.test(city)) return false;
+                if (/\b(?:description|position|associate|veterinarian|veterinary|hospital|care|center|clinic|location|owner|opportunity|partnership|practice|director|internist)\b/i.test(city)) {
+                    return false;
+                }
+                return /^[A-Za-z .'-]+$/.test(city);
+            };
+
+            const findStateFromKeywords = (value) => {
+                const textValue = ` ${(value || '').toLowerCase()} `;
+                for (const state of STATE_KEYWORDS) {
+                    for (const name of state.names) {
+                        const escaped = name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                        const pattern = new RegExp(`\\b${escaped}\\b`, 'i');
+                        if (pattern.test(textValue)) return state.code;
+                    }
+                }
+                return '';
+            };
+
+            const findCityFromKeywords = (value) => {
+                const textValue = ` ${(value || '')} `;
+                const sortedCities = [...CITY_KEYWORDS].sort((a, b) => b.length - a.length);
+                for (const city of sortedCities) {
+                    const escaped = city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                    const pattern = new RegExp(`\\b${escaped}\\b`, 'i');
+                    if (pattern.test(textValue)) return city;
+                }
+                return '';
+            };
+
+            const extractLocationFromKeywordLine = (value) => {
+                const city = findCityFromKeywords(value);
+                const state = findStateFromKeywords(value);
+                if (!city || !state) return null;
+                if (!isLikelyLocationCity(city)) return null;
+                return { city, state, location: `${city}, ${state}` };
+            };
+
             // First try to extract from structured JSON-LD data in the text
             // Format from description-scraper: "  - City, ST, Country" or "  - City, State"
             const locationsSection = text.match(/Locations:\n((?:\s*-\s*[^\n]+\n?)+)/i);
@@ -701,7 +781,13 @@
                                 state = stateAbbrev[1];
                             }
                         }
-                        locations.push({ city, state, location: `${city}, ${state}` });
+                        if (isLikelyLocationCity(city)) {
+                            locations.push({ city, state, location: `${city}, ${state}` });
+                        }
+                    }
+                    const keywordLoc = extractLocationFromKeywordLine(trimmed);
+                    if (keywordLoc) {
+                        locations.push(keywordLoc);
                     }
                 }
             }
@@ -720,9 +806,17 @@
                     city = city.split('\n').map(part => part.trim()).filter(Boolean).pop() || city;
                     const state = match[2].trim();
 
-                    const invalidWords = ['description', 'position', 'associate', 'veterinarian', 'hospital', 'care', 'center', 'clinic', 'location'];
-                    if (!invalidWords.some(word => city.toLowerCase().includes(word)) && city.length > 1 && city.length < 50) {
+                    if (isLikelyLocationCity(city)) {
                         locations.push({ city, state, location: `${city}, ${state}` });
+                    }
+                }
+
+                // Keyword fallback: parse from "Location: ..." sentence blocks
+                const locationLine = text.match(/\bLocation\s*:\s*([^\n]+)/i);
+                if (locationLine && locationLine[1]) {
+                    const keywordLoc = extractLocationFromKeywordLine(locationLine[1]);
+                    if (keywordLoc) {
+                        locations.push(keywordLoc);
                     }
                 }
             }
@@ -762,6 +856,9 @@
                 vermont: 'VT', virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI',
                 wyoming: 'WY', 'district of columbia': 'DC', 'd.c.': 'DC', dc: 'DC'
             };
+            const stateNamePattern = '(?:Alabama|Alaska|Arizona|Arkansas|California|Colorado|Connecticut|Delaware|Florida|Georgia|Hawaii|Idaho|Illinois|Indiana|Iowa|Kansas|Kentucky|Louisiana|Maine|Maryland|Massachusetts|Michigan|Minnesota|Mississippi|Missouri|Montana|Nebraska|Nevada|New Hampshire|New Jersey|New Mexico|New York|North Carolina|North Dakota|Ohio|Oklahoma|Oregon|Pennsylvania|Rhode Island|South Carolina|South Dakota|Tennessee|Texas|Utah|Vermont|Virginia|Washington|West Virginia|Wisconsin|Wyoming|District of Columbia)';
+            const streetTokenRegex = /\b(?:st|street|ave|avenue|blvd|boulevard|rd|road|dr|drive|ln|lane|way|ct|court|pl|place|pkwy|parkway|hwy|highway|cir|circle|trl|trail|loop|pike|turnpike|route|broadway)\b/i;
+            const fillerWordRegex = /\b(?:schedule|insurance|benefits|opportunity|ownership|partnership|practice|veterinary|hospital|clinic|doctor|ratio|allowance|supports|operational)\b/i;
 
             function normalizeStateToken(rawState) {
                 const cleaned = (rawState || '')
@@ -776,136 +873,180 @@
             }
 
             function cleanAddressCandidate(value) {
-                return (value || '')
+                let cleaned = (value || '')
+                    .replace(/[\uE000-\uF8FF]/g, ' ')
+                    .replace(/^(?:location|locations|address)\s*:\s*/i, '')
+                    .replace(/^[^\d:]{2,80}:\s*(?=\d{1,6}\b)/, '')
                     .replace(/\s+/g, ' ')
                     .replace(/\s*[-–—]\s*(?:Tenleytown|Clarendon|Centreville)\b/gi, '')
                     .replace(/\bCaring Hands Animal Hospital.*$/i, '')
+                    .replace(/\b(?:area schedule that respects your time|schedule that respects your time|strong staff-to-doctor ratio|health, dental, and vision insurance|employer retirement plan contribution|generous pto|annual ce allowance|relocation assistance|ownership and partnership with vpp|veterinary practice partners supports)\b.*$/i, '')
                     .replace(/\s+(?:is hiring|is seeking|join\b|what to expect\b|requirements?:\b|about\b).*$/i, '')
                     .trim();
+
+                // Keep only address-like lead content when the ZIP follows a state, not a house number.
+                const tailZipCut = cleaned.match(new RegExp(`^(.*?(?:,\\s*|\\s+)(?:[A-Z]{2}|D\\.?\\s*C\\.?|${stateNamePattern})[,\\s]+\\d{5}(?:-\\d{4})?\\b)`, 'i'));
+                if (tailZipCut) cleaned = tailZipCut[1].trim();
+                return cleaned;
+            }
+
+            function isLikelyCityToken(value) {
+                const city = (value || '').trim();
+                if (!city) return false;
+                if (city.length > 40) return false;
+                if (/\d/.test(city)) return false;
+                if (streetTokenRegex.test(city)) return false;
+                if (fillerWordRegex.test(city)) return false;
+                return /^[A-Za-z .'-]+$/.test(city);
+            }
+
+            function sanitizeStreet(street) {
+                const value = (street || '').replace(/[\uE000-\uF8FF]/g, ' ').replace(/\s+/g, ' ').trim();
+                if (!value) return '';
+                if (value.length > 120) return '';
+                if (/^\d+$/.test(value)) return '';
+                if (fillerWordRegex.test(value)) return '';
+                const hasNumber = /\d/.test(value);
+                const hasStreetToken = streetTokenRegex.test(value);
+                const alphaWords = (value.match(/[A-Za-z]+/g) || []).length;
+                if (!hasStreetToken && (!hasNumber || alphaWords < 2)) return '';
+                return value.replace(/,\s*$/g, '');
+            }
+
+            function normalizeZip(zipCode) {
+                const z = (zipCode || '').trim();
+                if (!z) return '';
+                if (/^\d{5}(?:-\d{4})?$/.test(z)) return z;
+                return '';
+            }
+
+            function buildAddressResult(street, city, state, zipCode) {
+                const normalizedCity = (city || '').trim();
+                const normalizedState = normalizeStateToken(state || '');
+                const normalizedZip = normalizeZip(zipCode);
+                const normalizedStreet = sanitizeStreet(street);
+
+                if (!isLikelyCityToken(normalizedCity)) return {};
+                if (!/^[A-Z]{2}$/.test((normalizedState || '').toUpperCase())) return {};
+                if (!normalizedStreet) return {};
+
+                return {
+                    streetAddress: normalizedStreet,
+                    city: normalizedCity,
+                    state: normalizedState.toUpperCase(),
+                    zipCode: normalizedZip,
+                    location: `${normalizedCity}, ${normalizedState.toUpperCase()}`
+                };
             }
 
             function parseAddressCandidate(candidateRaw) {
                 const candidate = cleanAddressCandidate(candidateRaw);
                 if (!candidate) return {};
 
-                // "Street, City, ST 12345"
+                // Addresses with suite/unit commas: "Street, Suite 100, City, ST 12345"
+                const commaParts = candidate.split(',').map(part => part.trim()).filter(Boolean);
+                if (commaParts.length >= 3) {
+                    const stateZip = commaParts[commaParts.length - 1].match(/^([A-Z]{2}|D\.?\s*C\.?|[A-Za-z][A-Za-z\s.'-]+)\s+(\d{5}(?:-\d{4})?)\b/i);
+                    if (stateZip) {
+                        const result = buildAddressResult(
+                            commaParts.slice(0, -2).join(', '),
+                            commaParts[commaParts.length - 2],
+                            stateZip[1],
+                            stateZip[2]
+                        );
+                        if (result.streetAddress) return result;
+                    }
+                }
+
+                // Street, City, ST 12345
                 let match = candidate.match(/^(.+?),\s*([^,]+?),\s*([A-Z]{2}|D\.?\s*C\.?)\s*(\d{5}(?:-\d{4})?)\b/i);
                 if (match) {
-                    const city = match[2].trim();
-                    const state = normalizeStateToken(match[3]);
-                    return {
-                        streetAddress: match[1].trim(),
-                        city,
-                        state,
-                        zipCode: match[4].trim(),
-                        location: `${city}, ${state}`
-                    };
+                    const result = buildAddressResult(match[1], match[2], match[3], match[4]);
+                    if (result.streetAddress) return result;
                 }
 
-                // "Street, City ST 12345" (missing comma before state)
+                // Street, City ST 12345 (missing comma before state)
                 match = candidate.match(/^(.+?),\s*([A-Za-z][A-Za-z\s.'-]+?)\s+([A-Z]{2}|D\.?\s*C\.?)\s*(\d{5}(?:-\d{4})?)\b/i);
                 if (match) {
-                    const city = match[2].trim();
-                    const state = normalizeStateToken(match[3]);
-                    return {
-                        streetAddress: match[1].trim(),
-                        city,
-                        state,
-                        zipCode: match[4].trim(),
-                        location: `${city}, ${state}`
-                    };
+                    const result = buildAddressResult(match[1], match[2], match[3], match[4]);
+                    if (result.streetAddress) return result;
                 }
 
-                // "Street City, FullState, 12345"
-                match = candidate.match(/^(.+?)\s+([A-Za-z][A-Za-z\s.'-]+),\s*([A-Za-z][A-Za-z\s.'-]+),\s*(\d{5}(?:-\d{4})?)\b/i);
+                // Street, City, FullState 12345
+                match = candidate.match(new RegExp(`^(.+?),\\s*([^,]+?),\\s*(${stateNamePattern})\\s*(\\d{5}(?:-\\d{4})?)?\\b`, 'i'));
                 if (match) {
-                    const city = match[2].trim();
-                    const state = normalizeStateToken(match[3]);
-                    return {
-                        streetAddress: match[1].trim(),
-                        city,
-                        state,
-                        zipCode: match[4].trim(),
-                        location: `${city}, ${state}`
-                    };
+                    const result = buildAddressResult(match[1], match[2], match[3], match[4] || '');
+                    if (result.streetAddress) return result;
                 }
 
-                // "StreetSuffix City, FullState, 12345" (no comma between street and city)
-                match = candidate.match(/^(.+?\b(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop)\.?)\s+([A-Za-z][A-Za-z\s.'-]+),\s*([A-Za-z][A-Za-z\s.'-]+),\s*(\d{5}(?:-\d{4})?)\b/i);
+                // Street City, FullState, 12345
+                match = candidate.match(new RegExp(`^(.+?\\b(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Pike|Turnpike|Route|Broadway)\\.?(?:\\s+(?:N|S|E|W|NE|NW|SE|SW|N\\.W\\.|N\\.E\\.|S\\.W\\.|S\\.E\\.))?)\\s+([A-Za-z][A-Za-z\\s.'-]+),\\s*(${stateNamePattern}),\\s*(\\d{5}(?:-\\d{4})?)\\b`, 'i'));
                 if (match) {
-                    const city = match[2].trim();
-                    const state = normalizeStateToken(match[3]);
-                    return {
-                        streetAddress: match[1].trim(),
-                        city,
-                        state,
-                        zipCode: match[4].trim(),
-                        location: `${city}, ${state}`
-                    };
+                    const result = buildAddressResult(match[1], match[2], match[3], match[4]);
+                    if (result.streetAddress) return result;
                 }
 
-                // "StreetSuffix [Dir] City, ST" (no comma between street and city), no zip
-                match = candidate.match(/^(.+?\b(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop)\.?(?:\s+(?:N|S|E|W|NE|NW|SE|SW|N\.W\.|N\.E\.|S\.W\.|S\.E\.))?)\s+([A-Za-z][A-Za-z\s.'-]+),\s*([A-Z]{2}|D\.?\s*C\.?)\b/i);
+                // Street City, ST 12345 (no comma between street and city)
+                match = candidate.match(/^(.+?\b(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Pike|Turnpike|Route|Broadway)\.?(?:\s+(?:N|S|E|W|NE|NW|SE|SW|N\.W\.|N\.E\.|S\.W\.|S\.E\.))?)\s+([A-Za-z][A-Za-z\s.'-]+),\s*([A-Z]{2}|D\.?\s*C\.?)\s*(\d{5}(?:-\d{4})?)?\b/i);
                 if (match) {
-                    const city = match[2].trim();
-                    const state = normalizeStateToken(match[3]);
-                    return {
-                        streetAddress: match[1].trim(),
-                        city,
-                        state,
-                        zipCode: '',
-                        location: `${city}, ${state}`
-                    };
+                    const result = buildAddressResult(match[1], match[2], match[3], match[4] || '');
+                    if (result.streetAddress) return result;
                 }
 
-                // "Street, City, ST" or "Street, City ST" without zip
-                match = candidate.match(/^(.+?),\s*([^,]+?),\s*([A-Z]{2}|D\.?\s*C\.?)\b/i) ||
-                    candidate.match(/^(.+?),\s*([A-Za-z][A-Za-z\s.'-]+?)\s+([A-Z]{2}|D\.?\s*C\.?)\b/i);
+                // Street Washington, D.C. without zip
+                match = candidate.match(/^(.+?\b(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Pike|Turnpike|Route|Broadway)\.?(?:\s+(?:N|S|E|W|NE|NW|SE|SW|N\.W\.|N\.E\.|S\.W\.|S\.E\.))?)\s+(Washington),\s*(D\.?\s*C\.?)\b/i);
                 if (match) {
-                    const city = match[2].trim();
-                    const state = normalizeStateToken(match[3]);
-                    return {
-                        streetAddress: match[1].trim(),
-                        city,
-                        state,
-                        zipCode: '',
-                        location: `${city}, ${state}`
-                    };
+                    const result = buildAddressResult(match[1], match[2], match[3], '');
+                    if (result.streetAddress) return result;
                 }
 
-                // "Street City, ST" (no comma between street and city), no zip
-                match = candidate.match(/^(.+?)\s+([A-Za-z][A-Za-z\s.'-]+),\s*([A-Z]{2}|D\.?\s*C\.?)\b/i);
+                // Street, City, ST (zip missing)
+                match = candidate.match(/^(.+?),\s*([^,]+?),\s*([A-Z]{2}|D\.?\s*C\.?)\b/i);
                 if (match) {
-                    const city = match[2].trim();
-                    const state = normalizeStateToken(match[3]);
-                    return {
-                        streetAddress: match[1].trim(),
-                        city,
-                        state,
-                        zipCode: '',
-                        location: `${city}, ${state}`
-                    };
+                    const result = buildAddressResult(match[1], match[2], match[3], '');
+                    if (result.streetAddress) return result;
                 }
 
                 return {};
             }
 
             const candidates = [];
+            const lines = normalized.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+
             const locationLineMatch = normalized.match(/\bLocation\s*:\s*([^\n]+)/i);
-            if (locationLineMatch && locationLineMatch[1]) {
-                candidates.push(locationLineMatch[1].trim());
-            }
+            if (locationLineMatch && locationLineMatch[1]) candidates.push(locationLineMatch[1].trim());
+
+            const locationsLineMatch = normalized.match(/\bLocations\s*:\s*([^\n]+)/i);
+            if (locationsLineMatch && locationsLineMatch[1]) candidates.push(locationsLineMatch[1].trim());
 
             const pinMatch = normalized.match(/📍\s*([^\n]+)/i);
-            if (pinMatch && pinMatch[1]) {
-                candidates.push(pinMatch[1].trim());
+            if (pinMatch && pinMatch[1]) candidates.push(pinMatch[1].trim());
+
+            const addressSubstringPatterns = [
+                /\b\d{1,6}\s+[A-Za-z0-9 .'-]+?\b(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Pike|Turnpike|Route|Broadway)\.?(?:\s+(?:N|S|E|W|NE|NW|SE|SW|N\.W\.|N\.E\.|S\.W\.|S\.E\.))?(?:,\s*(?:Suite|Ste|Unit|Building|Bldg|#)\s*[A-Za-z0-9-]+)?\s*,\s*[A-Za-z][A-Za-z\s.'-]+,\s*(?:[A-Z]{2}|D\.?\s*C\.?)\s+\d{5}(?:-\d{4})?\b/gi,
+                new RegExp(`\\b\\d{1,6}\\s+[A-Za-z0-9 .'-]+?\\b(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Pike|Turnpike|Route|Broadway)\\.?(?:\\s+(?:N|S|E|W|NE|NW|SE|SW|N\\.W\\.|N\\.E\\.|S\\.W\\.|S\\.E\\.))?\\s+[A-Za-z][A-Za-z\\s.'-]+,\\s*${stateNamePattern},\\s*\\d{5}(?:-\\d{4})?\\b`, 'gi'),
+                /\b\d{1,6}\s+[A-Za-z0-9 .'-]+?\b(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Pike|Turnpike|Route|Broadway)\.?(?:\s+(?:N|S|E|W|NE|NW|SE|SW|N\.W\.|N\.E\.|S\.W\.|S\.E\.))?\s+[A-Za-z][A-Za-z\s.'-]+,\s*(?:[A-Z]{2}|D\.?\s*C\.?)\s+\d{5}(?:-\d{4})?\b/gi,
+                /\b\d{1,6}\s+[A-Za-z0-9 .'-]+?\b(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Pike|Turnpike|Route|Broadway)\.?(?:\s+(?:N|S|E|W|NE|NW|SE|SW|N\.W\.|N\.E\.|S\.W\.|S\.E\.))?\s+Washington,\s*D\.?\s*C\.?/gi
+            ];
+            for (const pattern of addressSubstringPatterns) {
+                for (const match of normalized.matchAll(pattern)) {
+                    candidates.push(match[0]);
+                }
+            }
+
+            for (const line of lines) {
+                if (/^(?:location|address)\s*:/i.test(line)) {
+                    candidates.push(line.replace(/^(?:location|address)\s*:\s*/i, '').trim());
+                } else if (/\b\d{5}(?:-\d{4})?\b/.test(line) && /\b(?:[A-Z]{2}|D\.?\s*C\.?|District of Columbia)\b/.test(line)) {
+                    candidates.push(line);
+                } else if (/\b\d{1,6}\s+[A-Za-z0-9 .'-]+\b(?:St|Street|Ave|Avenue|Blvd|Boulevard|Rd|Road|Dr|Drive|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Pike|Turnpike|Route|Broadway)\b/i.test(line)) {
+                    candidates.push(line);
+                }
             }
 
             for (const candidate of candidates) {
                 const parsed = parseAddressCandidate(candidate);
-                if (parsed.streetAddress || parsed.city || parsed.state || parsed.zipCode) {
-                    return parsed;
-                }
+                if (parsed.streetAddress) return parsed;
             }
 
             return {};
@@ -1089,10 +1230,15 @@
         const salary = extractSalary(descriptionText);
         const areaOfPractice = determineAreaOfPractice(positionTitle, descriptionText);
         const position = determinePosition(positionTitle, descriptionText, areaOfPractice);
-        const locations = extractLocations(descriptionText);
         const address = extractAddress(descriptionText);
-        if (address.city && address.state && locations.length === 0) {
+        const locations = [];
+        if (address.city && address.state) {
             locations.push({ city: address.city, state: address.state, location: address.location });
+        } else {
+            const extractedLocations = extractLocations(descriptionText);
+            if (extractedLocations.length > 0) {
+                locations.push(extractedLocations[0]);
+            }
         }
         const hospitalName = extractHospitalName(descriptionText);
         const jobType = extractJobType(descriptionText);
@@ -1262,12 +1408,23 @@
                                     }
 
                                     if (!zipCode) {
-                                        const stateZipMatches = [...fullAddress.matchAll(/,\s*[A-Z]{2}\s+(\d{5}(?:-\d{4})?)\b/gi)];
+                                        const stateZipMatches = [...fullAddress.matchAll(/(?:,\s*|\s+)(?:[A-Z]{2}|District of Columbia)\s+(\d{5}(?:-\d{4})?)\b/gi)];
                                         if (stateZipMatches.length > 0) zipCode = stateZipMatches[stateZipMatches.length - 1][1];
                                     }
                                     if (!zipCode) {
-                                        const allZipMatches = [...fullAddress.matchAll(/\b(\d{5}(?:-\d{4})?)\b/g)];
-                                        if (allZipMatches.length > 0) zipCode = allZipMatches[allZipMatches.length - 1][1];
+                                        const endZipMatch = fullAddress.match(/\b(\d{5}(?:-\d{4})?)\b(?:\s*,?\s*(?:USA|United States(?: of America)?)\.?)?\s*$/i);
+                                        if (endZipMatch) zipCode = endZipMatch[1];
+                                    }
+
+                                    if (!usMatch && fullAddress.includes(',')) {
+                                        const parts = fullAddress.split(',').map(part => cleanField(part)).filter(Boolean);
+                                        if (parts.length >= 3) {
+                                            const statePart = parts[parts.length - 1].match(/\b([A-Z]{2}|District of Columbia)\b/i);
+                                            const cityPart = parts[parts.length - 2];
+                                            if (cityPart) city = city || cityPart;
+                                            if (statePart) state = state || statePart[1].replace(/\./g, '').toUpperCase().replace('DISTRICT OF COLUMBIA', 'DC');
+                                            streetAddress = cleanField(parts.slice(0, parts.length - 2).join(', ')) || streetAddress;
+                                        }
                                     }
 
                                     return {
@@ -2076,36 +2233,22 @@
 
         if (positionTitle) {
             const extracted = extractDetailsFromDescription(positionTitle, description);
+            const primaryLocation = (extracted.locations && extracted.locations[0]) || {};
 
-            // Build detailsList with ALL locations for multi-location jobs
-            if (extracted.locations && extracted.locations.length > 0) {
-                detailsList = extracted.locations.map((loc, locIndex) => ({
-                    areaOfPractice: extracted.areaOfPractice,
-                    position: extracted.position,
-                    salary: extracted.salary,
-                    hospitalName: extracted.hospitalName,
-                    jobType: extracted.jobType,
-                    experience: extracted.experience,
-                    description: description,
-                    city: loc.city || '',
-                    state: loc.state || '',
-                    location: loc.location || ''
-                }));
-            } else {
-                // No locations found â€” still create one entry with details
-                detailsList = [{
-                    areaOfPractice: extracted.areaOfPractice,
-                    position: extracted.position,
-                    salary: extracted.salary,
-                    hospitalName: extracted.hospitalName,
-                    jobType: extracted.jobType,
-                    experience: extracted.experience,
-                    description: description,
-                    city: '',
-                    state: '',
-                    location: ''
-                }];
-            }
+            detailsList = [{
+                areaOfPractice: extracted.areaOfPractice,
+                position: extracted.position,
+                salary: extracted.salary,
+                hospitalName: extracted.hospitalName,
+                jobType: extracted.jobType,
+                experience: extracted.experience,
+                description: description,
+                city: primaryLocation.city || '',
+                state: primaryLocation.state || '',
+                location: primaryLocation.location || '',
+                streetAddress: extracted.streetAddress || '',
+                zipCode: extracted.zipCode || ''
+            }];
         }
 
         // Save extracted details to storage
@@ -2193,6 +2336,8 @@
                 if (firstDetail.city) originalJob.city = firstDetail.city;
                 if (firstDetail.state) originalJob.state = firstDetail.state;
                 if (firstDetail.location) originalJob.location = firstDetail.location;
+                if (firstDetail.streetAddress) originalJob.streetAddress = firstDetail.streetAddress;
+                if (firstDetail.zipCode) originalJob.zipCode = firstDetail.zipCode;
                 // Update description if we got a better one
                 if (firstDetail.description && firstDetail.description.length > (originalJob.description || '').length) {
                     originalJob.description = firstDetail.description;
@@ -2230,6 +2375,8 @@
                     if (!targetJob.city && firstDetail.city) targetJob.city = firstDetail.city;
                     if (!targetJob.state && firstDetail.state) targetJob.state = firstDetail.state;
                     if (!targetJob.location && firstDetail.location) targetJob.location = firstDetail.location;
+                    if (!targetJob.streetAddress && firstDetail.streetAddress) targetJob.streetAddress = firstDetail.streetAddress;
+                    if (!targetJob.zipCode && firstDetail.zipCode) targetJob.zipCode = firstDetail.zipCode;
                     if ((!targetJob.description || targetJob.description.length < descText.length) && descText) {
                         targetJob.description = descText;
                     }
@@ -2245,49 +2392,72 @@
                     if (sameLink || sameId) copyMissingDetails(candidate);
                 }
 
-                // Handle multi-location jobs
-                if (detailsList.length > 1) {
-                    const currentHospital = originalJob.hospital || '';
+                const dedupedJobs = dedupeJobsByIdentity(jobs);
 
-                    originalJob.isNewLocation = true;
-                    const newJobs = [];
-                    for (let i = 1; i < detailsList.length; i++) {
-                        const loc = detailsList[i];
-                        const baseJobId = originalJob.jobId || `VPP-${Date.now()}`;
-                        const locLocation = loc.location || `${loc.city || ''}, ${loc.state || ''}`.trim();
-                        const locKey = (locLocation || '').toLowerCase();
-                        const duplicateLocationExists = jobs.some((candidate, idx) => {
-                            if (idx === jobIndex) return false;
-                            const candidateSameJob = (originalJob.link && (candidate.link === originalJob.link || candidate.sourceLink === originalJob.link)) ||
-                                (originalJob.jobId && (candidate.jobId === originalJob.jobId || candidate.id === originalJob.jobId));
-                            const candidateLocation = (candidate.location || `${candidate.city || ''}, ${candidate.state || ''}`).toLowerCase();
-                            return candidateSameJob && locKey && candidateLocation === locKey;
-                        });
-                        if (duplicateLocationExists) continue;
-
-                        const newJob = {
-                            ...originalJob,
-                            jobId: baseJobId,
-                            id: baseJobId,
-                            hospital: currentHospital,
-                            city: loc.city || '',
-                            state: loc.state || '',
-                            location: locLocation,
-                            isNewLocation: true,
-                            sourceLink: originalJob.link || ''
-                        };
-                        newJobs.push(newJob);
-                    }
-                    jobs.splice(jobIndex + 1, 0, ...newJobs);
-                }
-
-                chrome.storage.local.set({ scrapedJobs: jobs }, () => {
-                    allJobs = jobs;
+                chrome.storage.local.set({ scrapedJobs: dedupedJobs }, () => {
+                    allJobs = dedupedJobs;
                     displayRecords(allJobs);
                     resolve();
                 });
             });
         });
+    }
+
+    function dedupeJobsByIdentity(jobs) {
+        const merged = [];
+        const seen = new Map();
+
+        function identityKey(job) {
+            return (job.jobId || job.id || job.link || job.sourceLink || '').trim();
+        }
+
+        function valueIsUseful(value) {
+            return !!(value && String(value).trim() && String(value).trim() !== '-');
+        }
+
+        function addressScore(job) {
+            return (valueIsUseful(job.streetAddress) ? 4 : 0) +
+                (valueIsUseful(job.zipCode) ? 4 : 0) +
+                (valueIsUseful(job.city) ? 1 : 0) +
+                (valueIsUseful(job.state) ? 1 : 0);
+        }
+
+        function mergeInto(target, source) {
+            for (const [key, value] of Object.entries(source)) {
+                if (!valueIsUseful(target[key]) && valueIsUseful(value)) {
+                    target[key] = value;
+                }
+            }
+            target.isNewLocation = false;
+        }
+
+        for (const job of jobs) {
+            const key = identityKey(job);
+            if (!key) {
+                merged.push({ ...job, isNewLocation: false });
+                continue;
+            }
+
+            if (!seen.has(key)) {
+                const copy = { ...job, isNewLocation: false };
+                seen.set(key, copy);
+                merged.push(copy);
+                continue;
+            }
+
+            const existing = seen.get(key);
+            if (addressScore(job) > addressScore(existing)) {
+                const replacement = { ...job, isNewLocation: false };
+                mergeInto(replacement, existing);
+                const existingIndex = merged.indexOf(existing);
+                if (existingIndex !== -1) merged[existingIndex] = replacement;
+                seen.set(key, replacement);
+            } else {
+                mergeInto(existing, job);
+            }
+        }
+
+        return merged;
     }
 
     function finishDetailsFetching() {
@@ -2363,14 +2533,14 @@
         const text = (addressText || '').trim();
         if (!text) return '';
 
-        const stateZipMatches = [...text.matchAll(/,\s*[A-Z]{2}\s+(\d{5}(?:-\d{4})?)\b/gi)];
+        const stateZipMatches = [...text.matchAll(/(?:,\s*|\s+)(?:[A-Z]{2}|District of Columbia)\s+(\d{5}(?:-\d{4})?)\b/gi)];
         if (stateZipMatches.length > 0) {
             return stateZipMatches[stateZipMatches.length - 1][1];
         }
 
-        const allZipMatches = [...text.matchAll(/\b(\d{5}(?:-\d{4})?)\b/g)];
-        if (allZipMatches.length > 0) {
-            return allZipMatches[allZipMatches.length - 1][1];
+        const endZipMatch = text.match(/\b(\d{5}(?:-\d{4})?)\b(?:\s*,?\s*(?:USA|United States(?: of America)?)\.?)?\s*$/i);
+        if (endZipMatch) {
+            return endZipMatch[1];
         }
 
         return '';
@@ -2386,6 +2556,18 @@
             return false;
         }
         return true;
+    }
+
+    function isLikelyValidStreetAddress(value) {
+        const street = (value || '').trim();
+        if (!street) return false;
+        if (street.length > 120) return false;
+        if (/\b(?:schedule|insurance|benefits|opportunity|ownership|partnership|practice|veterinary|hospital|clinic|doctor|ratio|allowance|supports|operational)\b/i.test(street)) {
+            return false;
+        }
+        const hasNumber = /\d/.test(street);
+        const hasStreetToken = /\b(?:st|street|ave|avenue|blvd|boulevard|rd|road|dr|drive|ln|lane|way|ct|court|pl|place|pkwy|parkway|hwy|highway|cir|circle|trl|trail|loop)\b/i.test(street);
+        return hasNumber || hasStreetToken;
     }
 
     function extractCityStateFromAddressText(addressText) {
@@ -2405,6 +2587,10 @@
         }
 
         return { city: '', state: '' };
+    }
+
+    function hasSavedValue(value) {
+        return !!(value && String(value).trim() && String(value).trim() !== '-');
     }
 
     function jobLocationMismatch(job) {
@@ -2462,9 +2648,17 @@
         const jobsNeedingAddresses = jobs.map((job, index) => ({ job, index }))
             .filter(item => {
                 const jobLocation = getJobSearchLocation(item.job);
-                const needsAddress = !item.job.streetAddress || !item.job.zipCode || (jobLocation ? jobLocationMismatch(item.job) : true);
-                const needsPhone = !item.job.phone;
-                return item.job.hospital && (needsAddress || needsPhone);
+                const needsCity = !hasSavedValue(item.job.city);
+                const needsState = !hasSavedValue(item.job.state);
+                const needsStreet = !hasSavedValue(item.job.streetAddress);
+                const needsZip = !hasSavedValue(item.job.zipCode);
+                const needsPhone = !hasSavedValue(item.job.phone);
+                const needsAddress = needsCity || needsState || needsStreet || needsZip;
+                return item.job.hospital && (
+                    needsAddress ||
+                    needsPhone ||
+                    (!needsCity && !needsState && jobLocation ? jobLocationMismatch(item.job) : false)
+                );
             });
 
         if (jobsNeedingAddresses.length === 0) {
@@ -2543,10 +2737,7 @@
             const searchLocation = [searchCity, searchState].filter(Boolean).join(', ');
             const cacheKeys = getAddressCacheKeys(searchHospital, searchLocation, job.hospital || '');
             let addressData = getRememberedAddress(cacheKeys);
-            const needsPhone = !job.phone;
-            const needsWebsite = !job.website;
-            const cachedMissingRequestedContact = addressData && ((needsPhone && !addressData.phone) || (needsWebsite && !addressData.website));
-            if (cachedMissingRequestedContact) {
+            if (addressData && !hasSavedValue(job.phone) && !hasSavedValue(addressData.phone)) {
                 addressData = null;
             }
             if (addressData) {
@@ -2566,10 +2757,10 @@
             const jobs = data.scrapedJobs || [];
 
             if (jobs[index]) {
-                if (addressData.streetAddress) {
+                if (!hasSavedValue(jobs[index].streetAddress) && addressData.streetAddress) {
                     jobs[index].streetAddress = addressData.streetAddress;
                 }
-                if (addressData.zipCode) {
+                if (!hasSavedValue(jobs[index].zipCode) && addressData.zipCode) {
                     jobs[index].zipCode = addressData.zipCode;
                 }
 
@@ -2584,22 +2775,26 @@
                         : (isLikelyValidCity(parsedFromFull.city)
                             ? parsedFromFull.city
                             : (isLikelyValidCity(existingCity) ? existingCity : '')));
-                jobs[index].city = preferredCity;
+                if (!hasSavedValue(jobs[index].city)) {
+                    jobs[index].city = preferredCity;
+                }
 
                 const preferredStateRaw = searchState || addressData.state || parsedFromFull.state || existingState || '';
-                jobs[index].state = getFullStateName(preferredStateRaw);
+                if (!hasSavedValue(jobs[index].state)) {
+                    jobs[index].state = getFullStateName(preferredStateRaw);
+                }
 
                 // Try to extract zip from fullAddress if parsing missed it
-                if (!jobs[index].zipCode && addressData.fullAddress) {
+                if (!hasSavedValue(jobs[index].zipCode) && addressData.fullAddress) {
                     const zipFromFull = extractZipFromAddressText(addressData.fullAddress);
                     if (zipFromFull) jobs[index].zipCode = zipFromFull;
                 }
 
                 // Website and phone from Google Maps
-                if (addressData.website) {
+                if (!hasSavedValue(jobs[index].website) && addressData.website) {
                     jobs[index].website = addressData.website;
                 }
-                if (addressData.phone) {
+                if (!hasSavedValue(jobs[index].phone) && addressData.phone) {
                     jobs[index].phone = addressData.phone;
                 }
 
