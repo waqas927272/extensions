@@ -1,6 +1,33 @@
 (() => {
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+    function getAbsoluteHref(rawHref) {
+        const href = (rawHref || '').trim();
+        if (!href || href === '#' || /^javascript:/i.test(href)) return '';
+
+        try {
+            return new URL(href, window.location.href).href;
+        } catch (e) {
+            return href;
+        }
+    }
+
+    function getTextWithLinks(element) {
+        if (!element) return '';
+
+        const cloned = element.cloneNode(true);
+        cloned.querySelectorAll('script, style, noscript').forEach(node => node.remove());
+        cloned.querySelectorAll('a[href]').forEach(link => {
+            const href = getAbsoluteHref(link.getAttribute('href'));
+            if (!href) return;
+
+            const label = (link.innerText || link.textContent || '').replace(/\s+/g, ' ').trim();
+            link.textContent = label && !label.includes(href) ? `${label} (${href})` : href;
+        });
+
+        return (cloned.innerText || cloned.textContent || '').trim();
+    }
+
     function parseHospitalLocation(rawLocation) {
         const value = (rawLocation || '').trim();
         if (!value) return { hospitalName: '', city: '', state: '' };
@@ -91,7 +118,7 @@
         let best = '';
 
         for (const el of candidates) {
-            const text = (el.innerText || '').replace(/\s+/g, ' ').trim();
+            const text = getTextWithLinks(el).replace(/\s+/g, ' ').trim();
             if (text.length < 120) continue;
             if (/^close$/i.test(text)) continue;
             if (/no description/i.test(text)) continue;

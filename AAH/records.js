@@ -2934,7 +2934,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!jobs[index]) return;
 
             jobs[index].streetAddress = 'Not Available (TBD)';
-            jobs[index].zipCode = '';
+            jobs[index].zipCode = '00000';
             jobs[index].cityMismatchFlag = false;
             jobs[index].hospitalNameUpdated = false;
 

@@ -88,8 +88,11 @@
             '[data-attrid*="kc:/location"]',
             '[data-attrid*="address"]',
             '[data-local-attribute]',
+            '[aria-label*="Address"]',
             '.lu_map_section',
-            '.LrzXr'
+            '.LrzXr',
+            '.wDYxhc',
+            '.Z1hOCe'
         ];
 
         const chunks = [];
@@ -296,10 +299,15 @@
 
     function extractAddress(text, panel) {
         const source = cleanText(text || '');
+        const attrAddress = extractAddressFromAttributes(panel);
+        if (attrAddress) return normalizeAddress(attrAddress);
         if (!source) return '';
 
         const labelled = source.match(/(?:Address|Located in)\s*[:\n]\s*([^\n]+?\b[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i);
         if (labelled) return normalizeAddress(labelled[1]);
+
+        const inlineLabelled = source.match(/(?:Address|Located in)\s+(.+?\b[A-Z]{2}\s+\d{5}(?:-\d{4})?)(?:\s+(?:Phone|Hours|Website|Directions|Suggest an edit)\b|$)/i);
+        if (inlineLabelled) return normalizeAddress(inlineLabelled[1]);
 
         const patterns = [
             /(\d{1,6}\s+[\w\s.'#&/-]+?(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|NE|NW|SE|SW)\b[\w\s.,#&/-]*?,\s*[\w\s.'-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i,
@@ -311,8 +319,7 @@
             if (match) return normalizeAddress(match[1]);
         }
 
-        const attrAddress = extractAddressFromAttributes(panel);
-        return attrAddress ? normalizeAddress(attrAddress) : '';
+        return '';
     }
 
     function extractAddressFromAttributes(panel) {
@@ -320,13 +327,22 @@
         const selectors = [
             '[data-attrid*="address"]',
             '[aria-label^="Address"]',
+            '[aria-label*="Address:"]',
+            '[data-attrid*="kc:/location/location:address"]',
             '[data-local-attribute="d3adr"]',
-            '.LrzXr'
+            '[data-local-attribute*="address"]',
+            '.LrzXr',
+            '.wDYxhc',
+            '.Z1hOCe'
         ];
 
         for (const selector of selectors) {
             for (const element of panel.querySelectorAll(selector)) {
-                const text = cleanText(element.innerText || element.textContent || element.getAttribute('aria-label') || '');
+                const text = cleanText([
+                    element.getAttribute('aria-label') || '',
+                    element.innerText || '',
+                    element.textContent || ''
+                ].filter(Boolean).join('\n'));
                 if (/\d/.test(text) && /\b[A-Z]{2}\s+\d{5}/.test(text)) return text.replace(/^Address\s*[:\n]\s*/i, '');
             }
         }

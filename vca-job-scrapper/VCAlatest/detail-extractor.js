@@ -274,7 +274,7 @@
             'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
             'Radiologist', 'Surgeon'
         ],
-        'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
+        'Urgent Care': ['Associate Veterinarian', 'Medical Director', 'Partner Veterinarian']
     };
     const NON_CLINICAL_TITLE_PATTERN = /\b(?:analyst|accountant|coordinator|marketing|tax|data scientist|vice president|acquisition diligence)\b/i;
     const URGENT_CARE_SIGNAL_PATTERN = /\burgent care\b|after hours urgent care|veterinary urgent care center/i;
@@ -309,13 +309,46 @@
         return NON_CLINICAL_TITLE_PATTERN.test(title || '');
     }
 
+    function hasExplicitEmergencyTitle(title = '') {
+        return /\bemergency\s+(?:veterinarian|vet|dvm)\b|\ber\s+(?:veterinarian|vet|dvm)\b/i.test(title || '');
+    }
+
     function hasUrgentCareSignal(title, hospitalName = '', extraText = '') {
-        return URGENT_CARE_SIGNAL_PATTERN.test(`${title || ''} ${hospitalName || ''} ${extraText || ''}`);
+        const titleText = title || '';
+        if (hasExplicitEmergencyTitle(titleText) && !URGENT_CARE_SIGNAL_PATTERN.test(titleText)) {
+            return false;
+        }
+        return URGENT_CARE_SIGNAL_PATTERN.test(`${titleText} ${hospitalName || ''} ${extraText || ''}`);
     }
 
     function hasEmergencySignal(title, hospitalName = '', extraText = '') {
         if (hasUrgentCareSignal(title, hospitalName, extraText)) return false;
         return EMERGENCY_SIGNAL_PATTERN.test(`${title || ''} ${hospitalName || ''} ${extraText || ''}`);
+    }
+
+    function hasSpecialtyEccSignal(title = '', description = '', hospitalName = '') {
+        if (!hasSpecialtyTrainingSignal(description)) return false;
+
+        const titleText = title || '';
+        if (/\b(?:criticalist|ecc specialist|emergency medicine|dacvecc)\b/i.test(titleText)) return true;
+        if (hasExplicitEmergencyTitle(titleText) && /\b(?:emergency\s*(?:&|and)\s*critical\s*care|critical\s*care|dacvecc|ecc)\b/i.test(description || '')) {
+            return true;
+        }
+
+        const openingRoleText = ((description || '').match(/\bjoin\s+us\s+as[\s\S]{0,300}/i) || [''])[0];
+        return /\b(?:criticalist|ecc specialist|emergency\s*(?:&|and)\s*critical\s*care specialist|dacvecc)\b/i.test(openingRoleText);
+    }
+
+    function hasSpecialtyMedicalDirectorRequirement(title = '', description = '') {
+        const roleText = `${title || ''} ${(description || '').slice(0, 1800)}`;
+        if (!/\bmedical director\b/i.test(roleText)) return false;
+        if (/\bspecialty\s+medical\s+director\b/i.test(roleText)) return true;
+        if (hasSpecialtyTrainingSignal(description)) return true;
+
+        const requiredSpecialtyPattern = /\b(?:board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|dacv(?:ecc|im|r|s|d|o|aa)?|dacvr[-\s]?ro|davdc|dabvp)\b/i;
+        const optionalPattern = /\b(?:open to|preferred|a plus|plus but not required|not required|interested in|welcome|consider|considering|ideal|bonus)\b/i;
+        const mdNearRequirement = /\bmedical director\b[\s\S]{0,240}\b(?:board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|dacv(?:ecc|im|r|s|d|o|aa)?|dacvr[-\s]?ro|davdc|dabvp)\b|\b(?:board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|dacv(?:ecc|im|r|s|d|o|aa)?|dacvr[-\s]?ro|davdc|dabvp)\b[\s\S]{0,240}\bmedical director\b/i;
+        return requiredSpecialtyPattern.test(roleText) && mdNearRequirement.test(roleText) && !optionalPattern.test(roleText);
     }
 
     function getAOPParts(aop) {
@@ -403,6 +436,7 @@
     function determineAreaOfPractice(title, category, descriptionText, hospitalName = '') {
         const titleLower = title.toLowerCase();
         if (isNonClinicalJobTitle(titleLower)) return '';
+        if (hasSpecialtyMedicalDirectorRequirement(title, descriptionText)) return 'Specialty Care';
         if (hasUrgentCareSignal(titleLower, hospitalName)) return 'Urgent Care';
         if (/\b(?:oncologist|cardiologist|neurologist|neurosurgeon|dermatologist|ophthalmologist|anesthesiologist|theriogenologist|radiologist|internist|criticalist|ecc specialist|oncology|cardiology|neurology|dermatology|ophthalmology|anesthesia|theriogenology|radiology)\b/i.test(titleLower)) return 'Specialty Care';
         if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
@@ -517,6 +551,7 @@
         if (t.includes('internist') || t.includes('internal medicine')) return 'Internal Medicine Specialist';
         if (t.includes('criticalist') || t.match(/\becc\b/) || t.includes('emergency medicine')) return 'ECC Specialist';
         if (t.includes('dabvp')) return 'DABVP Specialist';
+        if (/\b(?:avian|exotics?|zoo med|zoological medicine)\b/.test(t)) return 'DABVP Specialist';
         if ((t.includes('dental') || t.includes('dentist') || t.includes('dentistry')) && !t.includes('assistant')) return 'Dental Specialist';
         // For surgeon, be more specific - check it's not part of neurosurgeon (which we already handled)
         if ((t.includes('surgeon') || t.includes('surgery')) && !t.includes('neurosurgeon') && !t.includes('neurology') && !t.includes('dental') && !t.includes('dentistry')) return 'Surgeon';
@@ -547,6 +582,10 @@
     //     Neurologist & Neurosurgeon, Ophthalmologist, Radiation Oncologist, Radiologist, Surgeon
     //   Urgent Care: Associate Veterinarian, Partner Veterinarian
     function determinePosition(title, areaOfPractice, descriptionText) {
+        if (areaOfPractice === 'Specialty Care' && hasSpecialtyEccSignal(title, descriptionText)) {
+            return 'ECC Specialist';
+        }
+
         // 1. Try to match from title
         let position = matchPositionFromTitle(title);
 
@@ -581,7 +620,7 @@
                 'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
                 'Radiologist', 'Surgeon'
             ],
-            'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian'],
+            'Urgent Care': ['Associate Veterinarian', 'Medical Director', 'Partner Veterinarian'],
         };
 
         // For compound AOPs like "General Practice Care / Emergency Care / Urgent Care",
@@ -607,18 +646,17 @@
     function formatSalary(raw) {
         if (!raw) return '';
 
-        // Check if it's hourly
-        const isHourly = /(?:per\s+)?(?:hour|hr|\/hr)/i.test(raw);
+        const isHourly = /\b(?:per\s+(?:hour|hr)|hourly|hour|hr)\b|\/hr\b/i.test(raw);
+        const isShift = /\b(?:per\s+shift|shift)\b|\/shift\b/i.test(raw);
 
-        // Extract all dollar amounts from the string
         const amounts = [];
-        const amountRegex = /\$?([\d,]+(?:\.\d{2})?)\s*k?\b/gi;
+        let hasThousandsSuffix = false;
+        const amountRegex = /\$?\s*([\d,]+(?:\.\d{2})?)\s*(?:\/?\s*k)?\b/gi;
         let match;
         while ((match = amountRegex.exec(raw)) !== null) {
             let num = parseFloat(match[1].replace(/,/g, ''));
-            // If "k" follows the number, multiply by 1000
-            const afterMatch = raw.substring(match.index + match[0].length - 1, match.index + match[0].length + 1);
-            if (/k/i.test(match[0]) || /k/i.test(afterMatch)) {
+            if (/\/?\s*k\b/i.test(match[0])) {
+                hasThousandsSuffix = true;
                 num = num * 1000;
             }
             if (num > 0) amounts.push(num);
@@ -626,13 +664,28 @@
 
         if (amounts.length === 0) return raw;
 
-        // Format number with commas, no decimals for whole numbers
+        if (hasThousandsSuffix) {
+            for (let i = 0; i < amounts.length; i++) {
+                if (amounts[i] < 1000) amounts[i] = amounts[i] * 1000;
+            }
+        }
+        if (amounts.length >= 2 && amounts.some(amount => amount >= 1000)) {
+            for (let i = 0; i < amounts.length; i++) {
+                if (amounts[i] < 1000) amounts[i] = amounts[i] * 1000;
+            }
+        }
+        if (!isHourly && !isShift && amounts.length >= 2 && amounts.every(amount => amount >= 50 && amount < 1000)) {
+            for (let i = 0; i < amounts.length; i++) {
+                amounts[i] = amounts[i] * 1000;
+            }
+        }
+
         const fmt = (n) => {
             if (Number.isInteger(n)) return '$' + n.toLocaleString('en-US');
             return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         };
 
-        const unit = isHourly ? 'per hour' : 'per year';
+        const unit = isHourly ? 'per hour' : (isShift ? 'per shift' : 'per year');
 
         if (amounts.length >= 2) {
             const min = Math.min(amounts[0], amounts[1]);
@@ -654,8 +707,13 @@
             if (minVal && maxVal) {
                 const unit = s.unitText || 'per year';
                 const isHourly = /hour/i.test(unit);
-                const min = parseFloat(minVal.replace(/,/g, ''));
-                const max = parseFloat(maxVal.replace(/,/g, ''));
+                const isShift = /shift/i.test(unit);
+                let min = parseFloat(minVal.replace(/,/g, ''));
+                let max = parseFloat(maxVal.replace(/,/g, ''));
+                if (!isHourly && !isShift && min >= 50 && max < 1000) {
+                    min = min * 1000;
+                    max = max * 1000;
+                }
                 const fmt = (n) => {
                     if (Number.isInteger(n)) return '$' + n.toLocaleString('en-US');
                     return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -676,6 +734,8 @@
         const text = descriptionText;
 
         const salaryPatterns = [
+            /(?:salary|compensation|pay)\s+ranges?\s+from\s+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:to|[-\u2013\u2014])\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:\/shift|per\s+shift|per\s+year|annually|per\s+hour|\/hr))?/i,
+            /(?:annual\s+)?(?:salary|compensation|pay)\s+(?:range\s+)?(?:for\s+this\s+position\s+)?(?:is|starts?\s+at|starting\s+at|from)\s+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:to|[-\u2013\u2014])\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:\/shift|per\s+shift|per\s+year|annually|per\s+hour|\/hr))?/i,
             // "Base salary ranges: $150k - $171k" or "base salary range of $140,000 – 160,000"
             /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
             /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,

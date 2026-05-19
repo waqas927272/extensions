@@ -1,5 +1,32 @@
 (() => {
     // This script is injected into a Greenhouse job page (embed format).
+    function getAbsoluteHref(rawHref) {
+        const href = (rawHref || '').trim();
+        if (!href || href === '#' || /^javascript:/i.test(href)) return '';
+
+        try {
+            return new URL(href, window.location.href).href;
+        } catch (e) {
+            return href;
+        }
+    }
+
+    function getTextWithLinks(element) {
+        if (!element) return '';
+
+        const cloned = element.cloneNode(true);
+        cloned.querySelectorAll('script, style, noscript').forEach(node => node.remove());
+        cloned.querySelectorAll('a[href]').forEach(link => {
+            const href = getAbsoluteHref(link.getAttribute('href'));
+            if (!href) return;
+
+            const label = (link.innerText || link.textContent || '').replace(/\s+/g, ' ').trim();
+            link.textContent = label && !label.includes(href) ? `${label} (${href})` : href;
+        });
+
+        return (cloned.innerText || cloned.textContent || '').trim();
+    }
+
     try {
         let structuredText = '';
         let bodyText = '';
@@ -43,12 +70,12 @@
                     if (data.description && data.description.length > 50) {
                         const temp = document.createElement('div');
                         temp.innerHTML = data.description;
-                        bodyText = temp.innerText.trim();
+                        bodyText = getTextWithLinks(temp);
                     }
                 } else if (data.description && data.description.length > 50) {
                     const temp = document.createElement('div');
                     temp.innerHTML = data.description;
-                    bodyText = temp.innerText.trim();
+                    bodyText = getTextWithLinks(temp);
                 }
                 }
             } catch (e) {}
@@ -68,7 +95,7 @@
             if (el && el.innerText.trim().length > 50) {
                 const cloned = el.cloneNode(true);
                 cloned.querySelectorAll('.social-media-links, form, #job-app, nav, header, footer, .apply-button, [data-ui="apply-button"]').forEach(node => node.remove());
-                const text = cloned.innerText.trim();
+                const text = getTextWithLinks(cloned);
                 if (text.length > 50) {
                     bodyText = text;
                     break;

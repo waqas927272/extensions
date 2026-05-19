@@ -1,5 +1,6 @@
 Emergency Care:	
 Associate Veterinarian
+Medical Director
 
 General Practice Care:	
 Associate Veterinarian
@@ -25,4 +26,5 @@ Surgeon
 
 Urgent Care:
 Associate Veterinarian
+Medical Director
 Partner Veterinarian

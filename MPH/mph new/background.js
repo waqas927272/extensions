@@ -96,48 +96,125 @@ async function fetchDetailsAsync(url) {
 }
 
 function handleScrapeDescription(request) {
-    const { tabId, jobIndex } = request;
+    const { tabId, jobIndex, queueIndex } = request;
+    let finished = false;
+    let extractionStarted = false;
+    let listener = null;
+    let timeoutId = null;
 
-    chrome.tabs.onUpdated.addListener(function listener(updatedTabId, info) {
-        if (updatedTabId !== tabId || info.status !== 'complete') return;
+    const finish = (payload = {}) => {
+        if (finished) return;
+        finished = true;
 
-        chrome.tabs.onUpdated.removeListener(listener);
-        chrome.scripting.executeScript({
-            target: { tabId },
-            files: ['description-scraper.js']
-        }).then((results) => {
-            const description = results?.[0]?.result || '';
-            chrome.storage.local.get(['scrapedJobs'], (result) => {
-                const jobs = result.scrapedJobs || [];
+        if (timeoutId) {
+            clearTimeout(timeoutId);
+        }
 
-                if (jobs[jobIndex]) {
-                    jobs[jobIndex].description = description;
-                    chrome.storage.local.set({ scrapedJobs: jobs }, () => {
-                        chrome.tabs.remove(tabId).catch(() => {});
-                        chrome.runtime.sendMessage({
-                            action: 'descriptionSaved',
-                            jobIndex,
-                            success: true
-                        }).catch(() => {});
+        if (listener) {
+            chrome.tabs.onUpdated.removeListener(listener);
+            listener = null;
+        }
+
+        chrome.tabs.remove(tabId).catch(() => {});
+        chrome.runtime.sendMessage({
+            action: 'descriptionSaved',
+            jobIndex,
+            queueIndex,
+            success: false,
+            ...payload
+        }).catch(() => {});
+    };
+
+    const runExtraction = () => {
+        if (finished || extractionStarted) return;
+        extractionStarted = true;
+
+        setTimeout(() => {
+            chrome.scripting.executeScript({
+                target: { tabId },
+                files: ['description-scraper.js']
+            }).then((results) => {
+                const description = (results?.[0]?.result || '').trim();
+
+                if (!description) {
+                    finish({
+                        success: false,
+                        error: 'No description text found after the job page finished loading.'
                     });
                     return;
                 }
 
-                chrome.tabs.remove(tabId).catch(() => {});
-                chrome.runtime.sendMessage({
-                    action: 'descriptionSaved',
-                    jobIndex,
-                    success: false
-                }).catch(() => {});
+                chrome.storage.local.get(['scrapedJobs'], (result) => {
+                    const getError = chrome.runtime.lastError?.message;
+                    if (getError) {
+                        finish({ success: false, error: `Could not read saved jobs: ${getError}` });
+                        return;
+                    }
+
+                    const jobs = result.scrapedJobs || [];
+
+                    if (!jobs[jobIndex]) {
+                        finish({ success: false, error: 'Job was not found in saved records.' });
+                        return;
+                    }
+
+                    jobs[jobIndex].description = description;
+                    chrome.storage.local.set({ scrapedJobs: jobs }, () => {
+                        const saveError = chrome.runtime.lastError?.message;
+                        if (saveError) {
+                            finish({
+                                success: false,
+                                error: `Could not save description: ${saveError}`
+                            });
+                            return;
+                        }
+
+                        finish({
+                            success: true,
+                            length: description.length
+                        });
+                    });
+                });
+            }).catch((error) => {
+                finish({
+                    success: false,
+                    error: error?.message || 'Could not inject description scraper.'
+                });
             });
-        }).catch(() => {
-            chrome.tabs.remove(tabId).catch(() => {});
-            chrome.runtime.sendMessage({
-                action: 'descriptionSaved',
-                jobIndex,
-                success: false
-            }).catch(() => {});
+        }, 1000);
+    };
+
+    timeoutId = setTimeout(() => {
+        finish({
+            success: false,
+            error: 'Timed out waiting for the job detail page to load.'
         });
+    }, 45000);
+
+    listener = (updatedTabId, info) => {
+        if (updatedTabId !== tabId || info.status !== 'complete') return;
+        chrome.tabs.onUpdated.removeListener(listener);
+        listener = null;
+        runExtraction();
+    };
+
+    chrome.tabs.onUpdated.addListener(listener);
+    chrome.tabs.get(tabId, (tab) => {
+        if (chrome.runtime.lastError) {
+            finish({
+                success: false,
+                error: chrome.runtime.lastError.message
+            });
+            return;
+        }
+
+        if (tab?.status === 'complete') {
+            if (listener) {
+                chrome.tabs.onUpdated.removeListener(listener);
+                listener = null;
+            }
+            runExtraction();
+        }
     });
 }
 
