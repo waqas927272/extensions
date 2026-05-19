@@ -1268,7 +1268,7 @@ document.addEventListener('DOMContentLoaded', () => {
             'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
             'Radiologist', 'Surgeon'
         ],
-        'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
+        'Urgent Care': ['Associate Veterinarian', 'Medical Director', 'Partner Veterinarian']
     };
     const NON_CLINICAL_TITLE_PATTERN = /\b(?:analyst|accountant|coordinator|marketing|tax|data scientist|vice president|acquisition diligence)\b/i;
     const URGENT_CARE_SIGNAL_PATTERN = /\burgent care\b|after hours urgent care|veterinary urgent care center/i;
@@ -1303,13 +1303,46 @@ document.addEventListener('DOMContentLoaded', () => {
         return NON_CLINICAL_TITLE_PATTERN.test(title || '');
     }
 
+    function hasExplicitEmergencyTitle(title = '') {
+        return /\bemergency\s+(?:veterinarian|vet|dvm)\b|\ber\s+(?:veterinarian|vet|dvm)\b/i.test(title || '');
+    }
+
     function hasUrgentCareSignal(title, hospitalName = '', extraText = '') {
-        return URGENT_CARE_SIGNAL_PATTERN.test(`${title || ''} ${hospitalName || ''} ${extraText || ''}`);
+        const titleText = title || '';
+        if (hasExplicitEmergencyTitle(titleText) && !URGENT_CARE_SIGNAL_PATTERN.test(titleText)) {
+            return false;
+        }
+        return URGENT_CARE_SIGNAL_PATTERN.test(`${titleText} ${hospitalName || ''} ${extraText || ''}`);
     }
 
     function hasEmergencySignal(title, hospitalName = '', extraText = '') {
         if (hasUrgentCareSignal(title, hospitalName, extraText)) return false;
         return EMERGENCY_SIGNAL_PATTERN.test(`${title || ''} ${hospitalName || ''} ${extraText || ''}`);
+    }
+
+    function hasSpecialtyEccSignal(title = '', description = '', hospitalName = '') {
+        if (!hasSpecialtyTrainingSignal(description)) return false;
+
+        const titleText = title || '';
+        if (/\b(?:criticalist|ecc specialist|emergency medicine|dacvecc)\b/i.test(titleText)) return true;
+        if (hasExplicitEmergencyTitle(titleText) && /\b(?:emergency\s*(?:&|and)\s*critical\s*care|critical\s*care|dacvecc|ecc)\b/i.test(description || '')) {
+            return true;
+        }
+
+        const openingRoleText = ((description || '').match(/\bjoin\s+us\s+as[\s\S]{0,300}/i) || [''])[0];
+        return /\b(?:criticalist|ecc specialist|emergency\s*(?:&|and)\s*critical\s*care specialist|dacvecc)\b/i.test(openingRoleText);
+    }
+
+    function hasSpecialtyMedicalDirectorRequirement(title = '', description = '') {
+        const roleText = `${title || ''} ${(description || '').slice(0, 1800)}`;
+        if (!/\bmedical director\b/i.test(roleText)) return false;
+        if (/\bspecialty\s+medical\s+director\b/i.test(roleText)) return true;
+        if (hasSpecialtyTrainingSignal(description)) return true;
+
+        const requiredSpecialtyPattern = /\b(?:board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|dacv(?:ecc|im|r|s|d|o|aa)?|dacvr[-\s]?ro|davdc|dabvp)\b/i;
+        const optionalPattern = /\b(?:open to|preferred|a plus|plus but not required|not required|interested in|welcome|consider|considering|ideal|bonus)\b/i;
+        const mdNearRequirement = /\bmedical director\b[\s\S]{0,240}\b(?:board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|dacv(?:ecc|im|r|s|d|o|aa)?|dacvr[-\s]?ro|davdc|dabvp)\b|\b(?:board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|dacv(?:ecc|im|r|s|d|o|aa)?|dacvr[-\s]?ro|davdc|dabvp)\b[\s\S]{0,240}\bmedical director\b/i;
+        return requiredSpecialtyPattern.test(roleText) && mdNearRequirement.test(roleText) && !optionalPattern.test(roleText);
     }
 
     function matchApprovedPositionFromText(text) {
@@ -1502,8 +1535,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Format salary to standard "$X–$Y per year" or "$X per hour"
         function formatSalary(raw) {
             if (!raw) return '';
-            const isHourly = /\b(?:per\s+(?:hour|hr)|hourly)\b|\/hr\b/i.test(raw);
-            const isShift = /\bper\s+shift\b|\/shift\b/i.test(raw);
+            const isHourly = /\b(?:per\s+(?:hour|hr)|hourly|hour|hr)\b|\/hr\b/i.test(raw);
+            const isShift = /\b(?:per\s+shift|shift)\b|\/shift\b/i.test(raw);
             const amounts = [];
             let hasThousandsSuffix = false;
             const amountRegex = /\$?\s*([\d,]+(?:\.\d{2})?)\s*(?:\/?\s*k)?\b/gi;
@@ -1525,6 +1558,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (amounts.length >= 2 && amounts.some(amount => amount >= 1000)) {
                 for (let i = 0; i < amounts.length; i++) {
                     if (amounts[i] < 1000) amounts[i] = amounts[i] * 1000;
+                }
+            }
+            if (!isHourly && !isShift && amounts.length >= 2 && amounts.every(amount => amount >= 50 && amount < 1000)) {
+                for (let i = 0; i < amounts.length; i++) {
+                    amounts[i] = amounts[i] * 1000;
                 }
             }
             const fmt = (n) => {
@@ -1633,8 +1671,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const department = getMetadataField(descriptionText, ['Department', 'Division', 'Team']).toLowerCase();
 
             if (isNonClinicalJobTitle(title)) return '';
+            if (hasSpecialtyMedicalDirectorRequirement(positionText, descriptionText)) return 'Specialty Care';
             if (hasUrgentCareSignal(title, hospitalName, department)) return 'Urgent Care';
             if (/\b(?:oncologist|cardiologist|neurologist|neurosurgeon|dermatologist|ophthalmologist|anesthesiologist|theriogenologist|radiologist|internist|criticalist|ecc specialist|oncology|cardiology|neurology|dermatology|ophthalmology|anesthesia|theriogenology|radiology)\b/i.test(title)) return 'Specialty Care';
+            if (hasSpecialtyEccSignal(title, descriptionText, hospitalName)) return 'Specialty Care';
             if (hasEmergencySignal(title, hospitalName, department)) return 'Emergency Care';
             if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
             if (/\b(?:founding partner|medical lead|lead veterinarian|lead vet|medical director|regional medical director)\b/i.test(title)) return 'General Practice Care';
@@ -1763,7 +1803,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
                     'Radiologist', 'Surgeon'
                 ],
-                'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian'],
+                'Urgent Care': ['Associate Veterinarian', 'Medical Director', 'Partner Veterinarian'],
             };
 
             // For compound AOPs like "General Practice Care / Emergency Care / Urgent Care",
@@ -1787,6 +1827,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Determine Position
         function determinePosition(positionText, descriptionText, areaOfPractice) {
+            if (areaOfPractice === 'Specialty Care' && hasSpecialtyEccSignal(positionText, descriptionText)) {
+                return 'ECC Specialist';
+            }
+
             let position = matchPositionFromTitle(positionText);
             if (!position) {
                 position = matchPositionFromQualifications(descriptionText);
@@ -3737,17 +3781,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     let finalAOP = '';
                     if (!isNonClinicalJobTitle(rowTitle)) {
                         const titleAOP = getAOPFromTitle(rowTitle);
-                        finalAOP = (hasUrgentCareSignal(rowTitle, rowHospital, descText) ? 'Urgent Care' : '') ||
+                        const isSpecialtyEcc = hasSpecialtyEccSignal(rowTitle, descText, rowHospital);
+                        const isSpecialtyMedicalDirector = hasSpecialtyMedicalDirectorRequirement(rowTitle, descText);
+                        finalAOP = (isSpecialtyMedicalDirector ? 'Specialty Care' : '') ||
+                            (hasUrgentCareSignal(rowTitle, rowHospital) ? 'Urgent Care' : '') ||
+                            (isSpecialtyEcc ? 'Specialty Care' : '') ||
                             (titleAOP === 'Specialty Care' ? 'Specialty Care' : '') ||
                             (/\bspecialty\s+medical\s+director\b/i.test(`${rowTitle || ''} ${descText || ''}`) ? 'Specialty Care' : '') ||
-                            (hasSpecialtyTrainingSignal(descText) ? 'Specialty Care' : '') ||
                             (hasEmergencySignal(rowTitle, rowHospital) ? 'Emergency Care' : '') ||
+                            (titleAOP === 'Emergency Care' ? 'Emergency Care' : '') ||
+                            (hasSpecialtyTrainingSignal(descText) ? 'Specialty Care' : '') ||
                             firstDetail.areaOfPractice ||
                             titleAOP ||
                             'General Practice Care';
                     }
 
                     let finalPosition = getPositionFromTitle(rowTitle) || firstDetail.position || '';
+                    if (finalAOP === 'Specialty Care' && hasSpecialtyEccSignal(rowTitle, descText, rowHospital)) {
+                        finalPosition = 'ECC Specialist';
+                    }
                     if (finalPosition) {
                         finalPosition = getValidatedPosition(finalPosition, finalAOP);
                     }

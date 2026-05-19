@@ -13,7 +13,7 @@
 
     body {
       font-family: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: linear-gradient(135deg, #f8fbff 0%, #e8f2fb 50%, #f5f8fc 100%);
+      background: linear-gradient(135deg, #f8faf9 0%, #eef5f1 50%, #f7fbf8 100%);
       min-height: 100vh;
       color: #1e293b;
     }
@@ -27,22 +27,22 @@
       right: 0;
       bottom: 0;
       background:
-        radial-gradient(circle at 20% 80%, rgba(79, 100, 136, 0.08) 0%, transparent 50%),
-        radial-gradient(circle at 80% 20%, rgba(254, 196, 50, 0.06) 0%, transparent 50%),
-        radial-gradient(circle at 40% 40%, rgba(79, 100, 136, 0.05) 0%, transparent 40%);
+        radial-gradient(circle at 20% 80%, rgba(44, 97, 79, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(72, 199, 142, 0.06) 0%, transparent 50%),
+        radial-gradient(circle at 40% 40%, rgba(61, 139, 110, 0.05) 0%, transparent 40%);
       pointer-events: none;
       z-index: 0;
     }
 
     .header {
-      background: linear-gradient(135deg, #4f6488 0%, #fec432 40%, #4277b8 100%);
+      background: linear-gradient(135deg, #2c614f 0%, #1a3a2a 40%, #1e4a3b 100%);
       padding: 12px 20px;
       color: white;
       position: relative;
       overflow: hidden;
       box-shadow:
-        0 4px 30px rgba(79, 100, 136, 0.3),
-        0 10px 60px rgba(254, 196, 50, 0.2);
+        0 4px 30px rgba(44, 97, 79, 0.3),
+        0 10px 60px rgba(26, 58, 42, 0.2);
     }
 
     /* Decorative header elements */
@@ -196,7 +196,7 @@
       display: flex;
       flex-direction: column;
       gap: 8px;
-      border: 1px solid rgba(79, 100, 136, 0.1);
+      border: 1px solid rgba(44, 97, 79, 0.1);
       transition: all 0.3s ease;
     }
 
@@ -241,8 +241,8 @@
     }
 
     .webhook-input-group input:focus {
-      border-color: #4f6488;
-      box-shadow: 0 0 0 4px rgba(79, 100, 136, 0.12);
+      border-color: #2c614f;
+      box-shadow: 0 0 0 4px rgba(44, 97, 79, 0.12);
       background: white;
     }
 
@@ -268,8 +268,8 @@
     }
 
     .search-box:focus-within {
-      border-color: #4f6488;
-      box-shadow: 0 0 0 4px rgba(79, 100, 136, 0.12), 0 4px 20px rgba(79, 100, 136, 0.1);
+      border-color: #2c614f;
+      box-shadow: 0 0 0 4px rgba(44, 97, 79, 0.12), 0 4px 20px rgba(44, 97, 79, 0.1);
     }
 
     .search-box svg {
@@ -281,7 +281,7 @@
     }
 
     .search-box:focus-within svg {
-      fill: #4f6488;
+      fill: #2c614f;
     }
 
     .search-box input {
@@ -350,21 +350,21 @@
     }
 
     .btn-primary {
-      background: linear-gradient(135deg, #4f6488 0%, #fec432 50%, #4277b8 100%);
+      background: linear-gradient(135deg, #2c614f 0%, #1a3a2a 100%);
       color: white;
     }
 
     .btn-primary:hover {
-      box-shadow: 0 8px 32px rgba(79, 100, 136, 0.45);
+      box-shadow: 0 8px 32px rgba(44, 97, 79, 0.45);
     }
 
     .btn-webhook {
-      background: linear-gradient(135deg, #4f6488 0%, #fec432 50%, #4277b8 100%);
+      background: linear-gradient(135deg, #2c614f 0%, #1a3a2a 100%);
       color: white;
     }
 
     .btn-webhook:hover {
-      box-shadow: 0 8px 32px rgba(79, 100, 136, 0.45);
+      box-shadow: 0 8px 32px rgba(44, 97, 79, 0.45);
     }
 
     .btn-danger {
@@ -393,7 +393,7 @@
       box-shadow:
         0 4px 24px rgba(0, 0, 0, 0.06),
         0 1px 2px rgba(0, 0, 0, 0.04);
-      border: 1px solid rgba(79, 100, 136, 0.1);
+      border: 1px solid rgba(44, 97, 79, 0.1);
     }
 
     /* Wrapper handles horizontal scroll â€” sticky bottom keeps scrollbar visible on screen */
@@ -412,12 +412,12 @@
       border-radius: 7px;
     }
     .table-scroll-wrapper::-webkit-scrollbar-thumb {
-      background: linear-gradient(135deg, #4f6488 0%, #fec432 100%);
+      background: linear-gradient(135deg, #2c614f 0%, #1a3a2a 100%);
       border-radius: 7px;
       border: 2px solid #f1f5f9;
     }
     .table-scroll-wrapper::-webkit-scrollbar-thumb:hover {
-      background: #fec432;
+      background: #1a3a2a;
     }
 
     table {
@@ -446,7 +446,7 @@
     th:nth-child(17), td:nth-child(17) { width: 310px; }
 
     thead {
-      background: linear-gradient(135deg, #4f6488 0%, #fec432 100%);
+      background: linear-gradient(135deg, #2c614f 0%, #1a3a2a 100%);
     }
 
     th {
@@ -512,7 +512,7 @@
     }
 
     tbody tr:hover {
-      background-color: #e8f2fb;
+      background-color: #eef5f1;
     }
 
     tbody tr:last-child td {
@@ -530,7 +530,7 @@
     }
 
     td a {
-      color: #4f6488;
+      color: #2c614f;
       text-decoration: none;
       font-weight: 600;
       transition: color 0.2s ease;
@@ -539,7 +539,7 @@
     }
 
     td a:hover {
-      color: #4277b8;
+      color: #1e4a3b;
       text-decoration: underline;
     }
 
@@ -557,20 +557,20 @@
     .empty-state-icon {
       width: 120px;
       height: 120px;
-      background: linear-gradient(135deg, #e8f2fb 0%, #f8fbff 100%);
+      background: linear-gradient(135deg, #eef5f1 0%, #f8faf9 100%);
       border-radius: 32px;
       display: flex;
       align-items: center;
       justify-content: center;
       margin: 0 auto 32px;
-      border: 2px solid #fcd34d;
-      box-shadow: 0 8px 32px rgba(79, 100, 136, 0.15);
+      border: 2px solid #48c78e;
+      box-shadow: 0 8px 32px rgba(44, 97, 79, 0.15);
     }
 
     .empty-state svg {
       width: 56px;
       height: 56px;
-      fill: #4f6488;
+      fill: #2c614f;
     }
 
     .empty-state h2 {
@@ -597,7 +597,7 @@
       padding: 8px 10px;
       margin-bottom: 8px;
       box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-      border: 1px solid rgba(79, 100, 136, 0.1);
+      border: 1px solid rgba(44, 97, 79, 0.1);
     }
 
     .progress-info {
@@ -616,7 +616,7 @@
     .progress-text {
       font-size: 11px;
       font-weight: 700;
-      color: #4f6488;
+      color: #2c614f;
     }
 
     .progress-bar-container {
@@ -629,7 +629,7 @@
 
     .progress-bar {
       height: 100%;
-      background: linear-gradient(90deg, #4f6488, #fec432);
+      background: linear-gradient(90deg, #2c614f, #1a3a2a);
       border-radius: 3px;
       transition: width 0.3s ease;
       width: 0%;
@@ -685,7 +685,7 @@
     }
 
     .toast.success {
-      background: linear-gradient(135deg, #4f6488 0%, #fec432 100%);
+      background: linear-gradient(135deg, #2c614f 0%, #1a3a2a 100%);
       color: white;
     }
 
@@ -712,17 +712,17 @@
     }
 
     ::-webkit-scrollbar-track {
-      background: #e8f2fb;
+      background: #eef5f1;
       border-radius: 8px;
     }
 
     ::-webkit-scrollbar-thumb {
-      background: linear-gradient(135deg, #fcd34d 0%, #4f6488 100%);
+      background: linear-gradient(135deg, #48c78e 0%, #2c614f 100%);
       border-radius: 8px;
     }
 
     ::-webkit-scrollbar-thumb:hover {
-      background: linear-gradient(135deg, #4f6488 0%, #fec432 100%);
+      background: linear-gradient(135deg, #2c614f 0%, #1a3a2a 100%);
     }
 
     @media (max-width: 1024px) {

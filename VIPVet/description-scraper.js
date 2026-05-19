@@ -1,4 +1,31 @@
 (() => {
+    function getAbsoluteHref(rawHref) {
+        const href = (rawHref || '').trim();
+        if (!href || href === '#' || /^javascript:/i.test(href)) return '';
+
+        try {
+            return new URL(href, window.location.href).href;
+        } catch (e) {
+            return href;
+        }
+    }
+
+    function getTextWithLinks(element) {
+        if (!element) return '';
+
+        const cloned = element.cloneNode(true);
+        cloned.querySelectorAll('script, style, noscript').forEach(node => node.remove());
+        cloned.querySelectorAll('a[href]').forEach(link => {
+            const href = getAbsoluteHref(link.getAttribute('href'));
+            if (!href) return;
+
+            const label = (link.innerText || link.textContent || '').replace(/\s+/g, ' ').trim();
+            link.textContent = label && !label.includes(href) ? `${label} (${href})` : href;
+        });
+
+        return (cloned.innerText || cloned.textContent || '').trim();
+    }
+
     try {
         let completeData = '';
 
@@ -46,7 +73,7 @@
                         const temp = document.createElement('div');
                         temp.innerHTML = data.description;
                         jsonLdData += `\n=== FULL JOB DESCRIPTION ===\n`;
-                        jsonLdData += temp.innerText.trim() + '\n';
+                        jsonLdData += getTextWithLinks(temp) + '\n';
                     }
                 }
             } catch (e) {
@@ -58,7 +85,7 @@
         const wrapperElement = document.querySelector('.jv-wrapper');
         let wrapperText = '';
         if (wrapperElement) {
-            wrapperText = wrapperElement.innerText.trim();
+            wrapperText = getTextWithLinks(wrapperElement);
         }
 
         // 3. Combine both sources - prioritize JSON-LD data, then add wrapper text for any additional info
@@ -82,7 +109,7 @@
             for (const selector of selectors) {
                 const el = document.querySelector(selector);
                 if (el && el.innerText.trim().length > 100) {
-                    completeData = el.innerText.trim();
+                    completeData = getTextWithLinks(el);
                     break;
                 }
             }

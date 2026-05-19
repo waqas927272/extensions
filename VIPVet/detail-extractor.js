@@ -114,6 +114,33 @@
         return result;
     }
 
+    function getAbsoluteHref(rawHref) {
+        const href = (rawHref || '').trim();
+        if (!href || href === '#' || /^javascript:/i.test(href)) return '';
+
+        try {
+            return new URL(href, window.location.href).href;
+        } catch (e) {
+            return href;
+        }
+    }
+
+    function getTextWithLinks(element) {
+        if (!element) return '';
+
+        const cloned = element.cloneNode(true);
+        cloned.querySelectorAll('script, style, noscript').forEach(node => node.remove());
+        cloned.querySelectorAll('a[href]').forEach(link => {
+            const href = getAbsoluteHref(link.getAttribute('href'));
+            if (!href) return;
+
+            const label = (link.innerText || link.textContent || '').replace(/\s+/g, ' ').trim();
+            link.textContent = label && !label.includes(href) ? `${label} (${href})` : href;
+        });
+
+        return (cloned.innerText || cloned.textContent || '').trim();
+    }
+
     // ===== Get full description text =====
     function getFullDescription() {
         let completeData = '';
@@ -149,7 +176,7 @@
                 const temp = document.createElement('div');
                 temp.innerHTML = jsonLd.description;
                 jsonLdText += `\n=== FULL JOB DESCRIPTION ===\n`;
-                jsonLdText += temp.innerText.trim() + '\n';
+                jsonLdText += getTextWithLinks(temp) + '\n';
             }
             completeData = jsonLdText;
         }
@@ -157,7 +184,7 @@
         // Add DOM text
         const descEl = document.querySelector('.jv-job-detail-description');
         if (descEl) {
-            const descText = descEl.innerText.trim();
+            const descText = getTextWithLinks(descEl);
             if (descText.length > 100) {
                 completeData += `\n\n=== ADDITIONAL PAGE CONTENT ===\n${descText}`;
             }
@@ -165,11 +192,11 @@
 
         if (!completeData || completeData.length < 100) {
             const wrapper = document.querySelector('.jv-wrapper');
-            if (wrapper) completeData = wrapper.innerText.trim();
+            if (wrapper) completeData = getTextWithLinks(wrapper);
         }
 
         if (!completeData || completeData.length < 100) {
-            completeData = document.body.innerText.trim();
+            completeData = getTextWithLinks(document.body);
         }
 
         completeData = completeData.replace(/\n{3,}/g, '\n\n').replace(/\t+/g, ' ');
