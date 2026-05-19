@@ -234,6 +234,15 @@ tr.multi-location-split-row:hover {
   background: #fecaca !important;
 }
 
+tr.hospital-name-updated-row {
+  background: #d1fae5 !important;
+  border-left: 4px solid #10b981;
+}
+
+tr.hospital-name-updated-row:hover {
+  background: #a7f3d0 !important;
+}
+
 /* Column widths */
 th:nth-child(1), td:nth-child(1) { width: 35px; }
 th:nth-child(2), td:nth-child(2) { width: 80px; }

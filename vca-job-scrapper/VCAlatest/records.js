@@ -580,7 +580,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function canFetchAddressForHospital(hospitalName, location = '', city = '', state = '') {
         if (!hospitalName || !location) return false;
         if (/multi-site|;/i.test(hospitalName)) return false;
-        if (isFallbackHospitalName(hospitalName)) return false;
+        if (isFallbackHospitalName(hospitalName)) {
+            const locationParts = parseLocationParts(location);
+            return !!(city || locationParts.city) && !!(state || locationParts.state);
+        }
         if (isLocationOnlyHospitalName(hospitalName, location, city, state)) return false;
         if (isGenericOrganizationHospitalName(hospitalName)) return false;
         return true;
@@ -1216,6 +1219,47 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const matches = expectedWords.filter(word => actual.includes(word)).length;
         return matches / expectedWords.length >= 0.5;
+    }
+
+    function getMeaningfulHospitalNameWords(value) {
+        const weakWords = new Set([
+            'vca', 'the', 'and', 'animal', 'animals', 'pet', 'pets', 'veterinary',
+            'veterinarian', 'veterinarians', 'hospital', 'hospitals', 'clinic',
+            'center', 'centre', 'care', 'emergency', 'specialty', 'specialists',
+            'medical', 'referral', 'services', 'service', 'california', 'arizona',
+            'texas', 'florida', 'nevada', 'washington', 'oregon', 'new', 'york',
+            'north', 'south', 'carolina', 'virginia', 'pennsylvania', 'georgia'
+        ]);
+
+        return normalizeSimpleText(value)
+            .split(' ')
+            .filter(word => word.length > 2 && !weakWords.has(word));
+    }
+
+    function getHospitalNameUpdateScore(currentHospital, candidateHospital, location = '') {
+        const current = cleanExtractedHospitalName(currentHospital || '');
+        const candidate = cleanHospitalNameFromAddressLookup(candidateHospital);
+        if (!current || !candidate) return 0;
+
+        const candidateWords = new Set(getMeaningfulHospitalNameWords(candidate));
+        if (candidateWords.size === 0) return 0;
+
+        let expectedWords = getMeaningfulHospitalNameWords(current);
+        if (isFallbackHospitalName(currentHospital)) {
+            const locationParts = parseLocationParts(location || '');
+            const cityWords = getMeaningfulHospitalNameWords(locationParts.city || '');
+            if (cityWords.length > 0) expectedWords = cityWords;
+        }
+
+        if (expectedWords.length === 0) return 0;
+        if (/^vca\b/i.test(currentHospital || '') && !/^vca\b/i.test(candidateHospital || '')) return 0;
+
+        const matchedWords = expectedWords.filter(word => candidateWords.has(word)).length;
+        return Math.round((matchedWords / expectedWords.length) * 100);
+    }
+
+    function getAddressHospitalNameCandidate(addressData = {}) {
+        return cleanHospitalNameFromAddressLookup(addressData.businessName || addressData.hospitalName || '');
     }
 
     function getLivewellFallbackAddress() {
@@ -2373,6 +2417,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 names.push(base, withoutLocationSuffix, withoutParens, expandedParens, plain);
 
                 if (city) {
+                    if (isFallbackHospitalName(base) && /^vca\b/i.test(base)) {
+                        names.push(
+                            `VCA ${city} Animal Hospital`,
+                            `VCA ${city} Veterinary Hospital`,
+                            `VCA Animal Hospital ${city}`,
+                            `VCA Veterinary Hospital ${city}`
+                        );
+                    }
+
                     for (const candidate of [withoutLocationSuffix, withoutParens, plain]) {
                         if (candidate && !candidate.toLowerCase().includes(city.toLowerCase())) {
                             names.push(`${candidate} ${city}`);
@@ -3116,7 +3169,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const jobKey = getJobSelectionKey(job);
             const isSelected = selectedJobKeys.has(jobKey);
 
-            if (isSplitChildOrParentJob(job, splitParentJobIds)) {
+            if (job.hospitalNameUpdated) {
+                row.classList.add('hospital-name-updated-row');
+                row.style.backgroundColor = '#d1fae5';
+                row.style.borderLeft = '4px solid #10b981';
+            } else if (isSplitChildOrParentJob(job, splitParentJobIds)) {
                 row.classList.add('multi-location-split-row');
                 row.style.backgroundColor = '#fee2e2';
                 row.style.borderLeft = '4px solid #dc2626';
@@ -4244,6 +4301,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (savedAddressStateMismatch(job)) continue;
             if (savedAddressBrandMismatch(job)) continue;
             const cached = {
+                businessName: job.hospital || '',
                 streetAddress: job.streetAddress || '',
                 zipCode: job.zipCode || '',
                 city: job.city || '',
@@ -4294,7 +4352,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (hasLivewellFallbackAddress(item.job)) return false;
                 // Jobs missing any core location/contact field
                 return canLookupAddressForJob(item.job) &&
-                    (!item.job.streetAddress || !item.job.zipCode || jobLocationMismatch(item.job) || savedAddressStateMismatch(item.job) || savedAddressBrandMismatch(item.job) || isMissionPetHealthHospital(item.job.hospital));
+                    (!item.job.streetAddress ||
+                        !item.job.zipCode ||
+                        jobLocationMismatch(item.job) ||
+                        savedAddressStateMismatch(item.job) ||
+                        savedAddressBrandMismatch(item.job) ||
+                        isFallbackHospitalName(item.job.hospital) ||
+                        isMissionPetHealthHospital(item.job.hospital));
             });
 
         if (jobsNeedingAddresses.length === 0) {
@@ -4456,6 +4520,21 @@ document.addEventListener('DOMContentLoaded', () => {
             index = findJobIndexByKey(jobs, queueItem.key, job);
 
             if (index !== -1) {
+                const currentHospitalName = jobs[index].hospital || jobs[index].hospitalName || '';
+                const addressHospitalName = getAddressHospitalNameCandidate(addressData);
+                const hospitalNameScore = getHospitalNameUpdateScore(currentHospitalName, addressHospitalName, searchLocation || jobs[index].location || '');
+                if (
+                    addressHospitalName &&
+                    hospitalNameScore >= 80 &&
+                    normalizeHospitalNameForCompare(addressHospitalName) !== normalizeHospitalNameForCompare(currentHospitalName)
+                ) {
+                    jobs[index].previousHospitalName = currentHospitalName;
+                    jobs[index].hospital = addressHospitalName;
+                    jobs[index].hospitalName = addressHospitalName;
+                    jobs[index].hospitalNameUpdated = true;
+                    jobs[index].hospitalNameUpdateScore = hospitalNameScore;
+                }
+
                 if (addressData.streetAddress) {
                     jobs[index].streetAddress = addressData.streetAddress;
                 } else {
