@@ -57,8 +57,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function normalizeAgencyGreenhouseJobs(jobs) {
     return (jobs || []).map((job, index) => {
-      const reqId = job.reqId || job.jobId || job.id || `VIP-${index + 1}`;
-      const hospitalName = job.hospitalName || job.hospital || '';
+      const reqId = (job.reqId || job.jobId || job.id || `VPP-${index + 1}`).replace(/^VIP-/i, 'VPP-');
+      const hospitalName = job.originalHospitalName || job.hospitalName || job.hospital || '';
       const fullState = getFullStateName(job.state || '');
       return {
         ...job,
@@ -68,6 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
         title: job.title || job.jobTitle || '',
         hospitalName,
         hospital: hospitalName,
+        originalHospitalName: hospitalName,
         city: job.city || '',
         state: fullState,
         location: job.location ? formatLocation((job.location.split(',')[0] || '').trim(), fullState || (job.location.split(',')[1] || '').trim()) : formatLocation(job.city || '', fullState),
@@ -423,7 +424,7 @@ document.addEventListener('DOMContentLoaded', () => {
                   const jobMatch = link.match(/jobs\/(\d+)/);
                   if (jobMatch) rawReqId = jobMatch[1];
                 }
-                const reqId = rawReqId ? 'VIP-' + rawReqId : '';
+                const reqId = rawReqId ? 'VPP-' + rawReqId : '';
 
                 // Parse location from title and hospital name
                 const { city, state } = parseLocation(title, hospitalName);
@@ -432,6 +433,8 @@ document.addEventListener('DOMContentLoaded', () => {
                   title,
                   reqId,
                   hospitalName,
+                  hospital: hospitalName,
+                  originalHospitalName: hospitalName,
                   streetAddress: '',
                   city,
                   state,

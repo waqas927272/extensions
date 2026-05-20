@@ -355,8 +355,8 @@
             return { streetAddress: beforeState, city: '', state, zipCode: '' };
         }
 
-        // ---- Fallback: return the raw address as street ----
-        return { streetAddress: addr, city: '', state: '', zipCode: '' };
+        // If the text does not parse as a US city/state/ZIP address, ignore it.
+        return { streetAddress: '', city: '', state: '', zipCode: '' };
     }
 
 })();

@@ -141,6 +141,27 @@
         return (cloned.innerText || cloned.textContent || '').trim();
     }
 
+    function isGenericParentHospitalName(name) {
+        return /\b(?:veterinary\s+(?:practice|innovative)\s+partners|vpp|vip\s+vet)\b/i.test(name || '');
+    }
+
+    function extractHospitalNameFromDescription(text) {
+        const value = text || '';
+        const patterns = [
+            /([A-Z][\w&'().\/\-\s]{2,}?(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?|Medical\s+Group)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)|The\s+[A-Z][\w\s]+Service)(?:\s*[-–—]\s*[A-Za-z0-9 .'-]+)?)(?:\s+(?:in|at)\s+[A-Za-z0-9 .'-]+)?\s+is hiring\b/i,
+            /Position at\s+((?:[\w'.&()-]+\s+){1,8}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)|The\s+[A-Z][\w\s]+Service))/i,
+            /at\s+((?:[\w'.&()-]+\s+){1,6}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)|The\s+[A-Z][\w\s]+Service))\b/i
+        ];
+
+        for (const pattern of patterns) {
+            const match = value.match(pattern);
+            const candidate = (match?.[1] || '').replace(/\s+/g, ' ').trim();
+            if (candidate && !isGenericParentHospitalName(candidate)) return candidate;
+        }
+
+        return '';
+    }
+
     // ===== Get full description text =====
     function getFullDescription() {
         let completeData = '';
@@ -238,7 +259,7 @@
     };
 
     function hasSpecialtyTrainingSignal(text) {
-        return /\bboard certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b/i.test(text || '');
+        return /\bboard certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b/i.test(extractRoleSignalText(text || ''));
     }
 
     function getAOPParts(aop) {
@@ -394,7 +415,7 @@
         if (!text) return '';
 
         const rolePattern = /\b(?:medical director|lead veterinarian|lead vet|board certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
-        const blockedPattern = /\b(?:our services|services include|specialties include|benefits|medical(?:,\s*|\s+)dental|dental insurance|our hospital|our team has|state[-\s]?of[-\s]?the[-\s]?art|we offer|years of experience in specialty and emergency services)\b/i;
+        const blockedPattern = /\b(?:our services|services include|specialties include|benefits|medical(?:,\s*|\s+)dental|dental insurance|our hospital|the hospital offers|hospital offers|our team has|state[-\s]?of[-\s]?the[-\s]?art|we offer|available on[-\s]?site|advanced cases|years of experience in specialty and emergency services)\b/i;
         const qualificationsSection = extractQualificationsSection(text);
         const collected = [];
         const seen = new Set();
@@ -763,15 +784,21 @@
     // Get category (priority: DOM > preloaded > JSON-LD)
     const category = domData.category || preloaded.jobCategoryName || jsonLd?.industry || '';
 
-    // Get hospital name (priority: DOM > JSON-LD)
+    // Get hospital name (priority: DOM > description > JSON-LD)
     let hospitalName = domData.hospitalName || '';
-    if (!hospitalName && jsonLd?.hiringOrganization?.name) {
+    if (isGenericParentHospitalName(hospitalName)) hospitalName = '';
+
+    const descriptionHospitalName = extractHospitalNameFromDescription(fullDescription);
+    if (!hospitalName && descriptionHospitalName) {
+        hospitalName = descriptionHospitalName;
+    }
+
+    if (!hospitalName && jsonLd?.hiringOrganization?.name && !isGenericParentHospitalName(jsonLd.hiringOrganization.name)) {
         hospitalName = jsonLd.hiringOrganization.name;
     }
     // If generic UVC name, try to find specific hospital in description
     if (hospitalName.toLowerCase().includes('united veterinary care')) {
-        const hospitalMatch = fullDescription.match(/at\s+((?:[\w'.&-]+\s+){1,5}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)))\b/i);
-        if (hospitalMatch) hospitalName = hospitalMatch[1].trim();
+        hospitalName = descriptionHospitalName || '';
     }
 
     // Determine AOP and Position

@@ -64,7 +64,7 @@ function scrapeJobs() {
         const jobMatch = link.match(/jobs\/(\d+)/);
         if (jobMatch) rawReqId = jobMatch[1];
       }
-      const reqId = rawReqId ? 'VIP-' + rawReqId : '';
+      const reqId = rawReqId ? 'VPP-' + rawReqId : '';
 
       // Parse location from title
       const { city, state } = parseLocationFromTitle(title);
@@ -73,6 +73,8 @@ function scrapeJobs() {
         title,
         reqId,
         hospitalName,
+        hospital: hospitalName,
+        originalHospitalName: hospitalName,
         streetAddress: '',
         city,
         state,
@@ -132,7 +134,7 @@ function scrapeJobs() {
           const jobMatch = link.match(/jobs\/(\d+)/);
           if (jobMatch) rawReqId = jobMatch[1];
         }
-        const reqId = rawReqId ? 'VIP-' + rawReqId : '';
+        const reqId = rawReqId ? 'VPP-' + rawReqId : '';
 
         // Skip duplicates
         if (jobs.some(j => j.reqId === reqId)) return;
@@ -143,6 +145,8 @@ function scrapeJobs() {
           title,
           reqId,
           hospitalName,
+          hospital: hospitalName,
+          originalHospitalName: hospitalName,
           streetAddress: '',
           city,
           state,
