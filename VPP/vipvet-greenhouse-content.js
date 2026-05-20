@@ -1,27 +1,83 @@
 (() => {
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
+    function getAbsoluteHref(rawHref) {
+        const href = (rawHref || '').trim();
+        if (!href || href === '#' || /^javascript:/i.test(href)) return '';
+
+        try {
+            return new URL(href, window.location.href).href;
+        } catch (e) {
+            return href;
+        }
+    }
+
+    function normalizeExtractedText(text) {
+        return (text || '')
+            .replace(/\u00a0/g, ' ')
+            .replace(/\r/g, '\n')
+            .replace(/[ \t]+/g, ' ')
+            .replace(/\n[ \t]+/g, '\n')
+            .replace(/[ \t]+\n/g, '\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+
+    function getTextWithLinks(element) {
+        if (!element) return '';
+
+        const cloned = element.cloneNode(true);
+        cloned.querySelectorAll('script, style, noscript, svg').forEach(node => node.remove());
+        cloned.querySelectorAll('button').forEach(button => {
+            const text = (button.innerText || button.textContent || '').trim();
+            const ariaLabel = (button.getAttribute('aria-label') || '').trim();
+            if (/^close$/i.test(text) || /close/i.test(ariaLabel)) {
+                button.remove();
+            }
+        });
+
+        cloned.querySelectorAll('a[href]').forEach(link => {
+            const href = getAbsoluteHref(link.getAttribute('href'));
+            if (!href) return;
+
+            const label = (link.innerText || link.textContent || '').replace(/\s+/g, ' ').trim();
+            link.textContent = label && !label.includes(href) ? `${label} (${href})` : href;
+        });
+
+        cloned.querySelectorAll('br').forEach(br => {
+            br.replaceWith(document.createTextNode('\n'));
+        });
+
+        cloned.querySelectorAll('li').forEach(item => {
+            item.insertBefore(document.createTextNode('- '), item.firstChild);
+            item.appendChild(document.createTextNode('\n'));
+        });
+
+        cloned.querySelectorAll('p, div, section, article, header, footer, h1, h2, h3, h4, h5, h6, ul, ol').forEach(block => {
+            block.appendChild(document.createTextNode('\n'));
+        });
+
+        return normalizeExtractedText(cloned.textContent || '');
+    }
+
     function parseHospitalLocation(rawLocation) {
         const value = (rawLocation || '').trim();
-        if (!value) {
-            return { hospital: '', city: 'N/A', state: 'N/A' };
-        }
+        if (!value) return { hospitalName: '', city: '', state: '' };
 
         const parts = value.split(',').map(part => part.trim()).filter(Boolean);
         if (parts.length >= 2) {
             const stateCandidate = parts[parts.length - 1];
             const cityCandidate = parts[parts.length - 2];
-            const looksLikeState = /^[A-Z]{2}$/.test(stateCandidate) || stateCandidate.length > 2;
-            if (looksLikeState) {
+            if (/^[A-Z]{2}$/.test(stateCandidate) || stateCandidate.length > 2) {
                 return {
-                    hospital: '',
-                    city: cityCandidate || 'N/A',
-                    state: stateCandidate || 'N/A'
+                    hospitalName: '',
+                    city: cityCandidate || '',
+                    state: stateCandidate || ''
                 };
             }
         }
 
-        return { hospital: value, city: 'N/A', state: 'N/A' };
+        return { hospitalName: value, city: '', state: '' };
     }
 
     function buildStableIdFromRow(row) {
@@ -31,7 +87,7 @@
         if (match) {
             return {
                 raw: match[1],
-                formatted: `VPP-${match[1]}`,
+                reqId: `VIP-${match[1]}`,
                 link: href.startsWith('http') ? href : `${window.location.origin}${href}`
             };
         }
@@ -44,21 +100,19 @@
             .slice(0, 80) || 'job';
         return {
             raw: slug,
-            formatted: `VPP-${slug}`,
+            reqId: `VIP-${slug}`,
             link: window.location.href
         };
     }
 
     async function loadAllRows() {
         let previousCount = 0;
-        for (let i = 0; i < 25; i++) {
+        for (let i = 0; i < 30; i++) {
             const rows = document.querySelectorAll('#jobs tbody tr');
             const showMoreButton = Array.from(document.querySelectorAll('button')).find(btn => /show more/i.test(btn.textContent || ''));
             if (!showMoreButton) break;
 
-            if (rows.length <= previousCount && i > 0) {
-                break;
-            }
+            if (rows.length <= previousCount && i > 0) break;
             previousCount = rows.length;
 
             showMoreButton.scrollIntoView({ block: 'center' });
@@ -83,9 +137,7 @@
             const dialog = document.querySelector('[role="dialog"]');
             if (dialog) {
                 const text = (dialog.innerText || '').trim();
-                if (!titleText || text.includes(titleText)) {
-                    return dialog;
-                }
+                if (!titleText || text.includes(titleText)) return dialog;
             }
             await wait(200);
         }
@@ -94,11 +146,14 @@
 
     function extractDescriptionFromDialog(dialog) {
         if (!dialog) return '';
-        const candidates = Array.from(dialog.querySelectorAll('div, section, article, p'));
+        const candidates = [
+            ...Array.from(dialog.querySelectorAll('section, article, [role="document"], [data-testid*="description"], [class*="description"], [class*="body"]')),
+            dialog
+        ];
         let best = '';
 
         for (const el of candidates) {
-            const text = (el.innerText || '').replace(/\s+/g, ' ').trim();
+            const text = getTextWithLinks(el);
             if (text.length < 120) continue;
             if (/^close$/i.test(text)) continue;
             if (/no description/i.test(text)) continue;
@@ -132,18 +187,21 @@
             const rowTitle = row.querySelector('[data-provides="job-name"]')?.innerText?.trim() || '';
             if (rowTitle === (snapshot?.title || '')) return row;
         }
+
         return null;
     }
 
     async function scrapeDescriptionFromRow(snapshot) {
         const row = findRowBySnapshot(snapshot);
         if (!row) return { description: '', link: '' };
+
         const titleCell = row.querySelector('[data-provides="job-name"]');
         const openButton = titleCell?.querySelector('button') || titleCell;
         if (!openButton) return { description: '', link: '' };
 
         const title = snapshot?.title || '';
         openButton.click();
+
         const dialog = await waitForModal(title);
         if (!dialog) return { description: '', link: '' };
 
@@ -173,29 +231,32 @@
 
         for (const snapshot of rowSnapshots) {
             const title = snapshot.title;
-            if (!title) {
-                continue;
-            }
+            if (!title) continue;
 
             const rawLocation = snapshot.rawLocation;
             const parsed = parseHospitalLocation(rawLocation);
             const stableId = snapshot.stableId;
             const { description, link: modalLink } = await scrapeDescriptionFromRow(snapshot);
-
             const finalLink = modalLink || stableId.link || window.location.href;
 
             jobs.push({
-                id: stableId.formatted,
-                jobId: stableId.formatted,
-                jobTitle: title,
+                id: stableId.reqId,
+                reqId: stableId.reqId,
+                jobId: stableId.reqId,
                 title,
-                location: rawLocation || parsed.hospital || 'N/A',
-                hospital: parsed.hospital || rawLocation || '',
-                city: parsed.city || 'N/A',
-                state: parsed.state || 'N/A',
+                hospitalName: parsed.hospitalName || rawLocation || '',
+                hospital: parsed.hospitalName || rawLocation || '',
+                city: parsed.city || '',
+                state: parsed.state || '',
+                country: 'USA',
+                category: '',
+                jobType: '',
                 link: finalLink,
                 description: description || '',
-                source: 'Veterinary Practice Partners'
+                streetAddress: '',
+                postalCode: '',
+                zipCode: '',
+                source: 'VPP'
             });
         }
 
@@ -204,3 +265,4 @@
 
     return run();
 })();
+

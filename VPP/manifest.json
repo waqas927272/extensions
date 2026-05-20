@@ -1,17 +1,15 @@
-{
+﻿{
   "manifest_version": 3,
   "name": "VPP Job Scraper",
   "version": "1.0",
-  "description": "Scrape job listings and enrich records for VPP",
+  "description": "Scrapes job data from VPP careers page.",
+  "permissions": ["activeTab", "storage", "scripting", "tabs"],
   "host_permissions": [
-    "http://*/*",
-    "https://*/*"
-  ],
-  "permissions": [
-    "activeTab",
-    "scripting",
-    "storage",
-    "tabs"
+    "https://vip-vet.com/*",
+    "https://www.vip-vet.com/*",
+    "https://boards.greenhouse.io/*",
+    "https://job-boards.greenhouse.io/*",
+    "<all_urls>"
   ],
   "action": {
     "default_popup": "popup.html"
@@ -21,22 +19,21 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.vetpracticepartners.com/current-openings/*"],
-      "js": ["vpp-content.js"]
+      "matches": [
+        "https://vip-vet.com/*",
+        "https://www.vip-vet.com/*",
+        "https://job-boards.greenhouse.io/*",
+        "https://boards.greenhouse.io/*"
+      ],
+      "js": ["content.js"],
+      "all_frames": true
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": [
-        "vpp-content.js",
-        "vpp-greenhouse-content.js",
-        "description-scraper.js",
-        "greenhouse-description-scraper.js",
-        "detail-extractor.js",
-        "google-maps-scraper.js",
-        "google-search-scraper.js"
-      ],
+      "resources": ["description-scraper.js", "greenhouse-description-scraper.js", "detail-extractor.js", "google-maps-scraper.js", "google-search-scraper.js", "vipvet-greenhouse-content.js"],
       "matches": ["<all_urls>"]
     }
   ]
 }
+

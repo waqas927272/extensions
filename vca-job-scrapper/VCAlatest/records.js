@@ -3495,13 +3495,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Website column — show as clickable link if available
             const websiteCell = row.insertCell(11);
-            if (job.website) {
+            if (job.website && job.website !== 'TBD') {
                 const websiteLink = document.createElement('a');
                 websiteLink.href = job.website;
                 websiteLink.textContent = 'Visit';
                 websiteLink.target = '_blank';
                 websiteLink.style.color = '#2563eb';
                 websiteCell.appendChild(websiteLink);
+            } else if (job.website === 'TBD') {
+                websiteCell.textContent = 'TBD';
             } else {
                 websiteCell.textContent = '-';
             }
@@ -3577,8 +3579,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return null;
     }
 
-    function escapeExcelHtml(value) {
+    function escapeExcelXml(value) {
         return String(value ?? '')
+            .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
             .replace(/&/g, '&amp;')
             .replace(/</g, '&lt;')
             .replace(/>/g, '&gt;')
@@ -3586,11 +3589,14 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/'/g, '&#39;');
     }
 
-    function buildExcelCell(value, rowStyle, isFirstCell = false) {
-        const baseStyle = 'border:1px solid #d9e2ec;padding:6px;vertical-align:top;white-space:pre-wrap;mso-number-format:"\\@";';
-        const colorStyle = rowStyle ? `background-color:${rowStyle.background};` : '';
-        const borderStyle = rowStyle && isFirstCell ? `border-left:4px solid ${rowStyle.border};` : '';
-        return `<td style="${baseStyle}${colorStyle}${borderStyle}">${escapeExcelHtml(value)}</td>`;
+    function getExcelStyleId(rowStyle, isFirstCell = false) {
+        if (!rowStyle) return 'DefaultCell';
+        if (rowStyle.background === '#fee2e2') return isFirstCell ? 'RedFirstCell' : 'RedCell';
+        return isFirstCell ? 'GreenFirstCell' : 'GreenCell';
+    }
+
+    function buildExcelXmlCell(value, styleId) {
+        return `<Cell ss:StyleID="${styleId}"><Data ss:Type="String">${escapeExcelXml(value)}</Data></Cell>`;
     }
 
     function exportToCSV() {
@@ -3601,7 +3607,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Aggregator', 'Street Address', 'City', 'State', 'Zip Code', 'Phone', 'Website', 'Location', 'Area of Practice', 'Position', 'Salary', 'Job Type', 'Experience', 'Link', 'Description'];
         const splitParentJobIds = getSplitParentJobIds(allJobs);
-        const headerStyle = 'border:1px solid #174c6f;padding:7px;background-color:#1f5f83;color:#ffffff;font-weight:bold;white-space:nowrap;';
         const rows = allJobs.map((job, index) => {
             const rowStyle = getExportRowStyle(job, splitParentJobIds);
             const values = [
@@ -3626,29 +3631,88 @@ document.addEventListener('DOMContentLoaded', () => {
                 job.description || ''
             ];
 
-            return `<tr>${values.map((value, cellIndex) => buildExcelCell(value, rowStyle, cellIndex === 0)).join('')}</tr>`;
+            return `<Row>${values.map((value, cellIndex) => buildExcelXmlCell(value, getExcelStyleId(rowStyle, cellIndex === 0))).join('')}</Row>`;
         }).join('');
-        const headerRow = `<tr>${headers.map(header => `<th style="${headerStyle}">${escapeExcelHtml(header)}</th>`).join('')}</tr>`;
-        const legend = [
-            '<p><strong>Row color legend:</strong> Green = hospital name updated or new location, Red = parent/child rows created from split job logic.</p>'
-        ].join('');
-        const excelContent = `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="UTF-8">
-<style>
-body { font-family: Arial, sans-serif; font-size: 12px; }
-table { border-collapse: collapse; }
-</style>
-</head>
-<body>
-${legend}
-<table>
-${headerRow}
-${rows}
-</table>
-</body>
-</html>`;
+        const headerRow = `<Row>${headers.map(header => buildExcelXmlCell(header, 'Header')).join('')}</Row>`;
+        const columnWidths = [45, 190, 100, 260, 230, 180, 120, 120, 90, 130, 240, 170, 160, 170, 150, 100, 120, 330, 520];
+        const columns = columnWidths.map(width => `<Column ss:Width="${width}"/>`).join('');
+        const rowCount = allJobs.length + 1;
+        const excelContent = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ <DocumentProperties xmlns="urn:schemas-microsoft-com:office:office">
+  <Author>VCA Job Scraper</Author>
+ </DocumentProperties>
+ <Styles>
+  <Style ss:ID="Default" ss:Name="Normal">
+   <Alignment ss:Vertical="Top"/>
+   <Font ss:FontName="Arial" ss:Size="10"/>
+  </Style>
+  <Style ss:ID="DefaultCell">
+   <Alignment ss:Vertical="Top" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D9E2EC"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D9E2EC"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D9E2EC"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D9E2EC"/>
+   </Borders>
+   <Font ss:FontName="Arial" ss:Size="10"/>
+   <NumberFormat ss:Format="@"/>
+  </Style>
+  <Style ss:ID="Header">
+   <Alignment ss:Vertical="Center" ss:WrapText="1"/>
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#174C6F"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#174C6F"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#174C6F"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#174C6F"/>
+   </Borders>
+   <Font ss:FontName="Arial" ss:Size="10" ss:Bold="1" ss:Color="#FFFFFF"/>
+   <Interior ss:Color="#1F5F83" ss:Pattern="Solid"/>
+   <NumberFormat ss:Format="@"/>
+  </Style>
+  <Style ss:ID="GreenCell" ss:Parent="DefaultCell">
+   <Interior ss:Color="#D1FAE5" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="GreenFirstCell" ss:Parent="GreenCell">
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D9E2EC"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="3" ss:Color="#10B981"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D9E2EC"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D9E2EC"/>
+   </Borders>
+  </Style>
+  <Style ss:ID="RedCell" ss:Parent="DefaultCell">
+   <Interior ss:Color="#FEE2E2" ss:Pattern="Solid"/>
+  </Style>
+  <Style ss:ID="RedFirstCell" ss:Parent="RedCell">
+   <Borders>
+    <Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D9E2EC"/>
+    <Border ss:Position="Left" ss:LineStyle="Continuous" ss:Weight="3" ss:Color="#DC2626"/>
+    <Border ss:Position="Right" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D9E2EC"/>
+    <Border ss:Position="Top" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#D9E2EC"/>
+   </Borders>
+  </Style>
+ </Styles>
+ <Worksheet ss:Name="VCA Jobs">
+  <Table ss:ExpandedColumnCount="${headers.length}" ss:ExpandedRowCount="${rowCount}" x:FullColumns="1" x:FullRows="1">
+   ${columns}
+   ${headerRow}
+   ${rows}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <FreezePanes/>
+   <FrozenNoSplit/>
+   <SplitHorizontal>1</SplitHorizontal>
+   <TopRowBottomPane>1</TopRowBottomPane>
+   <ActivePane>2</ActivePane>
+  </WorksheetOptions>
+ </Worksheet>
+</Workbook>`;
 
         const blob = new Blob(['\ufeff', excelContent], { type: 'application/vnd.ms-excel;charset=utf-8;' });
         const link = document.createElement('a');
@@ -4541,6 +4605,19 @@ ${rows}
         return !!(data && data.streetAddress && data.zipCode && data.streetAddress !== 'TBD' && data.zipCode !== '00000');
     }
 
+    function isBlankContactValue(value) {
+        return !String(value || '').trim();
+    }
+
+    function needsContactLookup(job) {
+        return isBlankContactValue(job.phone) && isBlankContactValue(job.website);
+    }
+
+    function contactValueOrTbd(value) {
+        const contactValue = String(value || '').trim();
+        return contactValue || 'TBD';
+    }
+
     function parseLocationParts(location) {
         const parts = (location || '').split(',').map(part => part.trim()).filter(Boolean);
         if (parts.length === 1 && isStateValue(parts[0])) {
@@ -4690,7 +4767,7 @@ ${rows}
                 return canLookupAddressForJob(item.job) &&
                     (!item.job.streetAddress ||
                         !item.job.zipCode ||
-                        (!item.job.phone && !item.job.website) ||
+                        needsContactLookup(item.job) ||
                         item.job.streetAddress === 'TBD' ||
                         item.job.zipCode === '00000' ||
                         jobLocationMismatch(item.job) ||
@@ -4762,8 +4839,8 @@ ${rows}
                 if (index !== -1) {
                     jobs[index].streetAddress = 'TBD';
                     jobs[index].zipCode = '00000';
-                    jobs[index].website = '';
-                    jobs[index].phone = '';
+                    jobs[index].website = 'TBD';
+                    jobs[index].phone = 'TBD';
                     await chrome.storage.local.set({ jobs: jobs });
                     allJobs = jobs;
                     renderCurrentView();
@@ -4824,7 +4901,7 @@ ${rows}
 
             const cacheKeys = getAddressCacheKeys(searchHospital, searchLocation, job.hospital || '');
             let addressData = null;
-            const shouldSkipCache = !!lookupTarget.directResult || isMissionPetHealthHospital(job.hospital);
+            const shouldSkipCache = !!lookupTarget.directResult || isMissionPetHealthHospital(job.hospital) || needsContactLookup(job);
             if (!shouldSkipCache) addressData = getRememberedAddress(cacheKeys);
 
             if (lookupTarget.directResult) {
@@ -4909,16 +4986,8 @@ ${rows}
                 }
 
                 // Website and phone from Google Maps
-                if (addressData.website) {
-                    jobs[index].website = addressData.website;
-                } else {
-                    jobs[index].website = '';
-                }
-                if (addressData.phone) {
-                    jobs[index].phone = addressData.phone;
-                } else {
-                    jobs[index].phone = '';
-                }
+                jobs[index].website = contactValueOrTbd(addressData.website);
+                jobs[index].phone = contactValueOrTbd(addressData.phone);
 
                 await chrome.storage.local.set({ jobs: jobs });
 
@@ -4935,6 +5004,8 @@ ${rows}
                 if (index !== -1) {
                     jobs[index].streetAddress = 'TBD';
                     jobs[index].zipCode = '00000';
+                    jobs[index].website = 'TBD';
+                    jobs[index].phone = 'TBD';
                     await chrome.storage.local.set({ jobs: jobs });
                     allJobs = jobs;
                     renderCurrentView();

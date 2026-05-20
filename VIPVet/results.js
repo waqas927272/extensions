@@ -728,10 +728,39 @@
             function addLocation(city, state) {
                 const normalizedCity = (city || '').replace(/\s+/g, ' ').trim();
                 const normalizedState = normalizeState(state || '');
-                if (!isLikelyCity(normalizedCity)) return;
-                if (!/^[A-Z]{2}$/.test(normalizedState)) return;
+                if (!isLikelyCity(normalizedCity)) return false;
+                if (!/^[A-Z]{2}$/.test(normalizedState)) return false;
                 const fullState = getFullStateName(normalizedState);
                 locations.push({ city: normalizedCity, state: fullState, location: formatLocation(normalizedCity, fullState) });
+                return true;
+            }
+
+            function addLocationFromCandidate(cityCandidate, state) {
+                const cleaned = (cityCandidate || '')
+                    .replace(/\s+/g, ' ')
+                    .replace(/^(?:location|clinic location|hospital location|practice location)\s*:?\s*/i, '')
+                    .trim();
+
+                if (addLocation(cleaned, state)) return true;
+
+                const chunks = cleaned
+                    .split(/\s*(?:\||[-–—:]|\bat\b|\bin\b)\s*/i)
+                    .map(part => part.trim())
+                    .filter(Boolean);
+                const tail = (chunks[chunks.length - 1] || cleaned)
+                    .replace(/\b([A-Za-z]+)\s+\1\b/gi, '$1')
+                    .replace(/^(?:of|near|around)\s+/i, '')
+                    .trim();
+                if (addLocation(tail, state)) return true;
+
+                const words = tail.split(/\s+/).filter(Boolean);
+                for (let count = Math.min(3, words.length); count >= 1; count--) {
+                    const city = words.slice(-count).join(' ').replace(/^(?:of|near|around)\s+/i, '').trim();
+                    if (!city || /^(?:of|in|at|near|around)$/i.test(city.split(/\s+/)[0])) continue;
+                    if (addLocation(city, state)) return true;
+                }
+
+                return false;
             }
 
             const stateNamePattern = '(?:Alabama|Alaska|Arizona|Arkansas|California|Colorado|Connecticut|Delaware|Florida|Georgia|Hawaii|Idaho|Illinois|Indiana|Iowa|Kansas|Kentucky|Louisiana|Maine|Maryland|Massachusetts|Michigan|Minnesota|Mississippi|Missouri|Montana|Nebraska|Nevada|New Hampshire|New Jersey|New Mexico|New York|North Carolina|North Dakota|Ohio|Oklahoma|Oregon|Pennsylvania|Rhode Island|South Carolina|South Dakota|Tennessee|Texas|Utah|Vermont|Virginia|Washington|West Virginia|Wisconsin|Wyoming|District of Columbia)';
@@ -763,20 +792,20 @@
 
             const combinedText = `${titleText || ''} ${text || ''}`.replace(/\s+/g, ' ').trim();
             const directPatterns = [
-                new RegExp(`\\bLocation\\s*:\\s*([A-Za-z][A-Za-z .'-]+?),\\s*([A-Z]{2}|${stateNamePattern})\\b`, 'i'),
-                new RegExp(`\\blocated\\s+in\\s+([A-Za-z][A-Za-z .'-]+?),\\s*([A-Z]{2}|${stateNamePattern})\\b`, 'i'),
-                new RegExp(`\\b(?:Clinic|Hospital)\\s+Location\\s+([A-Za-z][A-Za-z .'-]+?),\\s*([A-Z]{2}|${stateNamePattern})\\b`, 'i'),
-                new RegExp(`\\|\\s*([A-Za-z][A-Za-z .'-]+?),\\s*([A-Z]{2}|${stateNamePattern})\\b`, 'i'),
-                new RegExp(`-\\s*([A-Za-z][A-Za-z .'-]+?),\\s*([A-Z]{2}|${stateNamePattern})\\b`, 'i'),
-                new RegExp(`\\b([A-Za-z][A-Za-z .'-]+?),\\s*(${stateNamePattern})\\b`, 'i')
+                new RegExp(`\\bLocation\\s*:\\s*([A-Za-z][A-Za-z .'-]+?),\\s*([A-Z]{2}|${stateNamePattern})\\b`, 'gi'),
+                new RegExp(`\\blocated\\s+in\\s+([A-Za-z][A-Za-z .'-]+?),\\s*([A-Z]{2}|${stateNamePattern})\\b`, 'gi'),
+                new RegExp(`\\b(?:Clinic|Hospital|Practice)\\s+Location\\s*:?\\s*([A-Za-z][A-Za-z .'-]+?),\\s*([A-Z]{2}|${stateNamePattern})\\b`, 'gi'),
+                new RegExp(`\\|\\s*([A-Za-z][A-Za-z .'-]+?),\\s*([A-Z]{2}|${stateNamePattern})\\b`, 'gi'),
+                new RegExp(`[-–—]\\s*([A-Za-z][A-Za-z .'-]+?),\\s*([A-Z]{2}|${stateNamePattern})\\b`, 'gi'),
+                new RegExp(`\\b([A-Za-z][A-Za-z .'-]+?),\\s*([A-Z]{2})\\b(?=\\s*(?:\\||[-–—]|/|$|Full-Time|Part-Time))`, 'gi'),
+                new RegExp(`\\b([A-Za-z][A-Za-z .'-]+?),\\s*(${stateNamePattern})\\b`, 'gi')
             ];
 
             for (const pattern of directPatterns) {
-                const match = combinedText.match(pattern);
-                if (match) {
-                    addLocation(match[1], match[2]);
-                    if (locations.length > 0) break;
+                for (const match of combinedText.matchAll(pattern)) {
+                    if (addLocationFromCandidate(match[1], match[2])) break;
                 }
+                if (locations.length > 0) break;
             }
 
             if (locations.length === 0) {
@@ -811,9 +840,8 @@
                     city = city.split('\n').map(part => part.trim()).filter(Boolean).pop() || city;
                     const state = match[2].trim();
 
-                    const invalidWords = ['description', 'position', 'associate', 'veterinarian', 'hospital', 'care', 'center', 'clinic', 'location'];
-                    if (!invalidWords.some(word => city.toLowerCase().includes(word)) && city.length > 1 && city.length < 50) {
-                        addLocation(city, state);
+                    if (city.length > 1 && city.length < 100) {
+                        addLocationFromCandidate(city, state);
                     }
                 }
             }
@@ -2436,7 +2464,10 @@
                     !item.job.experience ||
                     !item.job.salary ||
                     !item.job.jobType ||
-                    !item.job.website;
+                    !item.job.website ||
+                    !item.job.city ||
+                    !item.job.state ||
+                    !item.job.location;
                 const needsLinkedLocationDetails = hasLocationLink && (
                     !item.job.streetAddress ||
                     !item.job.city ||
@@ -2883,6 +2914,12 @@
                 hospitalInfo = await fetchHospitalInfoFromLocationUrl(locationUrl);
             }
 
+            const detailCity = hospitalInfo.city || primaryLocation.city || '';
+            const detailState = getFullStateName(hospitalInfo.state || primaryLocation.state || '');
+            const detailLocation = primaryLocation.location
+                ? expandStateInLocation(primaryLocation.location)
+                : formatLocation(detailCity, detailState);
+
             detailsList = [{
                 areaOfPractice: extracted.areaOfPractice,
                 position: extracted.position,
@@ -2892,13 +2929,9 @@
                 experience: extracted.experience,
                 website: descriptionWebsite || extracted.website || hospitalInfo.website || '',
                 description: description,
-                city: locationUrl ? (hospitalInfo.city || primaryLocation.city || '') : '',
-                state: locationUrl ? getFullStateName(hospitalInfo.state || primaryLocation.state || '') : '',
-                location: locationUrl
-                    ? (primaryLocation.location
-                        ? expandStateInLocation(primaryLocation.location)
-                        : formatLocation(hospitalInfo.city, hospitalInfo.state))
-                    : '',
+                city: detailCity,
+                state: detailState,
+                location: detailLocation,
                 streetAddress: locationUrl ? (hospitalInfo.streetAddress || extracted.streetAddress || '') : '',
                 zipCode: locationUrl ? (hospitalInfo.zipCode || extracted.zipCode || '') : '',
                 phone: locationUrl ? (hospitalInfo.phone || '') : ''

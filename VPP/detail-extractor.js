@@ -114,6 +114,33 @@
         return result;
     }
 
+    function getAbsoluteHref(rawHref) {
+        const href = (rawHref || '').trim();
+        if (!href || href === '#' || /^javascript:/i.test(href)) return '';
+
+        try {
+            return new URL(href, window.location.href).href;
+        } catch (e) {
+            return href;
+        }
+    }
+
+    function getTextWithLinks(element) {
+        if (!element) return '';
+
+        const cloned = element.cloneNode(true);
+        cloned.querySelectorAll('script, style, noscript').forEach(node => node.remove());
+        cloned.querySelectorAll('a[href]').forEach(link => {
+            const href = getAbsoluteHref(link.getAttribute('href'));
+            if (!href) return;
+
+            const label = (link.innerText || link.textContent || '').replace(/\s+/g, ' ').trim();
+            link.textContent = label && !label.includes(href) ? `${label} (${href})` : href;
+        });
+
+        return (cloned.innerText || cloned.textContent || '').trim();
+    }
+
     // ===== Get full description text =====
     function getFullDescription() {
         let completeData = '';
@@ -149,7 +176,7 @@
                 const temp = document.createElement('div');
                 temp.innerHTML = jsonLd.description;
                 jsonLdText += `\n=== FULL JOB DESCRIPTION ===\n`;
-                jsonLdText += temp.innerText.trim() + '\n';
+                jsonLdText += getTextWithLinks(temp) + '\n';
             }
             completeData = jsonLdText;
         }
@@ -157,7 +184,7 @@
         // Add DOM text
         const descEl = document.querySelector('.jv-job-detail-description');
         if (descEl) {
-            const descText = descEl.innerText.trim();
+            const descText = getTextWithLinks(descEl);
             if (descText.length > 100) {
                 completeData += `\n\n=== ADDITIONAL PAGE CONTENT ===\n${descText}`;
             }
@@ -165,11 +192,11 @@
 
         if (!completeData || completeData.length < 100) {
             const wrapper = document.querySelector('.jv-wrapper');
-            if (wrapper) completeData = wrapper.innerText.trim();
+            if (wrapper) completeData = getTextWithLinks(wrapper);
         }
 
         if (!completeData || completeData.length < 100) {
-            completeData = document.body.innerText.trim();
+            completeData = getTextWithLinks(document.body);
         }
 
         completeData = completeData.replace(/\n{3,}/g, '\n\n').replace(/\t+/g, ' ');
@@ -211,7 +238,7 @@
     };
 
     function hasSpecialtyTrainingSignal(text) {
-        return /\bboard[-\s]+certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b/i.test(text || '');
+        return /\bboard certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b/i.test(text || '');
     }
 
     function getAOPParts(aop) {
@@ -235,14 +262,12 @@
     function getDefaultPositionForAOP(aop, title = '') {
         const aopParts = getAOPParts(aop);
         const t = (title || '').toLowerCase();
-        const isVetRoleTitle = /\b(veterinarian|vet|dvm)\b/.test(t) &&
-            !/\b(?:technician|assistant|instructor|swim|manager|reception|client|coordinator|attendant|kennel)\b/.test(t);
 
         if (aopParts.includes('Urgent Care') && (t.includes('partner veterinarian') || t.includes('partner vet'))) {
             return 'Partner Veterinarian';
         }
 
-        if (isVetRoleTitle && aopParts.some(part => ['General Practice Care', 'Emergency Care', 'Urgent Care'].includes(part))) {
+        if (aopParts.some(part => ['General Practice Care', 'Emergency Care', 'Urgent Care'].includes(part))) {
             return 'Associate Veterinarian';
         }
 
@@ -297,35 +322,12 @@
 
     // ===== Determine Area of Practice =====
     function determineAreaOfPractice(title, category, descriptionText) {
-        const titleLower = title.toLowerCase();
-        if (/\bmedical director\b/i.test(title)) {
-            return categoryToAOP(category) === 'Specialty Care' ||
-                /\b(?:oncology|oncologist|internal medicine|internist|cardiology|cardiologist|neurology|neurologist|dermatology|dermatologist|ophthalmology|ophthalmologist|radiology|radiologist|surgery|surgeon|criticalist|specialty)\b/i.test(title)
-                ? 'Specialty Care'
-                : 'General Practice Care';
-        }
-        const titleLooksGeneralVet = /\b(veterinarian|vet|dvm)\b/.test(titleLower) &&
-            !/\b(?:oncologist|oncology|cardiologist|cardiology|neurologist|neurology|neurosurgeon|dermatologist|dermatology|ophthalmologist|ophthalmology|anesthesiologist|anesthesia|theriogenologist|theriogenology|radiologist|radiology|internist|internal medicine|criticalist|specialist|surgeon|diplomate|dacvecc|dacvim|dacvr|dacvs|dacvd|dacvo|dacvaa|davdc|dabvp|board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained)\b/.test(titleLower);
-
-        if (titleLower.includes('urgent care')) return 'Urgent Care';
-        if (titleLower.includes('emergency') || titleLower.match(/\ber\b/) ||
-            titleLower.includes('er vet') || titleLower.includes('er dvm')) {
-            return 'Emergency Care';
-        }
-        if (!titleLooksGeneralVet && hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
-        if (titleLooksGeneralVet) {
-            const earlyText = (descriptionText || '')
-                .split(/\n\s*Create a Job Alert\s*\n/i)[0]
-                .substring(0, 2500)
-                .toLowerCase();
-            if (earlyText.includes('urgent care')) return 'Urgent Care';
-            if (/\bemergency\b|\ber\/urgent care\b/.test(earlyText)) return 'Emergency Care';
-            if (earlyText.includes('general practice')) return 'General Practice Care';
-        }
+        if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
         // STEP 1: Use category from page (most reliable — directly from jobvite)
         const aopFromCategory = categoryToAOP(category);
-        if (titleLooksGeneralVet && aopFromCategory === 'Specialty Care') return 'General Practice Care';
         if (aopFromCategory) return aopFromCategory;
+
+        const titleLower = title.toLowerCase();
 
         // STEP 2: Check title for clear specialty position names
         const specialtyNames = ['oncologist', 'cardiologist', 'neurologist', 'neurosurgeon',
@@ -522,17 +524,16 @@
         return 'Associate Veterinarian';
     }
 
-    // ===== Format salary to standard "$X-$Y per year" or "$X-$Y per Hour" =====
+    // ===== Format salary to standard "$X–$Y per year" or "$X per hour" =====
     function formatSalary(raw) {
         if (!raw) return '';
-        raw = raw.replace(/\b\d+(?:\.\d+)?\s*%/g, '');
 
         // Check if it's hourly
-        const isHourly = /(?:per\s*)?(?:hour|hr)\b|\/(?:hour|hr)\b/i.test(raw);
+        const isHourly = /(?:per\s+)?(?:hour|hr|\/hr)/i.test(raw);
 
         // Extract all dollar amounts from the string
         const amounts = [];
-        const amountRegex = /\$([\d,]+(?:\.\d{2})?)\s*k?\b/gi;
+        const amountRegex = /\$?([\d,]+(?:\.\d{2})?)\s*k?\b/gi;
         let match;
         while ((match = amountRegex.exec(raw)) !== null) {
             let num = parseFloat(match[1].replace(/,/g, ''));
@@ -552,12 +553,12 @@
             return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         };
 
-        const unit = isHourly ? 'per Hour' : 'per year';
+        const unit = isHourly ? 'per hour' : 'per year';
 
         if (amounts.length >= 2) {
             const min = Math.min(amounts[0], amounts[1]);
             const max = Math.max(amounts[0], amounts[1]);
-            return `${fmt(min)}-${fmt(max)} ${unit}`;
+            return `${fmt(min)}–${fmt(max)} ${unit}`;
         }
 
         // Single amount
@@ -573,36 +574,29 @@
             const maxVal = s.maxValue ? String(s.maxValue).trim() : '';
             if (minVal && maxVal) {
                 const unit = s.unitText || 'per year';
-                const isHourly = /hour|hr/i.test(unit);
+                const isHourly = /hour/i.test(unit);
                 const min = parseFloat(minVal.replace(/,/g, ''));
                 const max = parseFloat(maxVal.replace(/,/g, ''));
                 const fmt = (n) => {
                     if (Number.isInteger(n)) return '$' + n.toLocaleString('en-US');
                     return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 };
-                return `${fmt(min)}-${fmt(max)} ${isHourly ? 'per Hour' : 'per year'}`;
+                return `${fmt(min)}–${fmt(max)} ${isHourly ? 'per hour' : 'per year'}`;
             } else if (minVal) {
-                const unit = s.unitText || 'per year';
-                const isHourly = /hour|hr/i.test(unit);
                 const min = parseFloat(minVal.replace(/,/g, ''));
                 const fmt = (n) => {
                     if (Number.isInteger(n)) return '$' + n.toLocaleString('en-US');
                     return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 };
-                return `${fmt(min)}+ ${isHourly ? 'per Hour' : 'per year'}`;
+                return `${fmt(min)}+ per year`;
             }
         }
 
         // 2. Extract from description text
         if (!descriptionText) return '';
-        const text = descriptionText
-            .replace(/\u00a0/g, ' ')
-            .replace(/[\u2013\u2014]/g, '-')
-            .replace(/â€“|â€”/g, '-');
+        const text = descriptionText;
 
         const salaryPatterns = [
-            /(?:salary|compensation|pay|base\s+salary)[^\n]{0,140}?\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\+?\s*(?:-|to|and)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\+?(?:[^\n]{0,80})?/i,
-            /(?:salary|compensation|pay|base\s+salary)\s*[:\-]?\s*[^\n]{0,60}?\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\+?(?:[^\n]{0,80})?/i,
             // "Base salary ranges: $150k - $171k" or "base salary range of $140,000 – 160,000"
             /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
             /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
@@ -612,8 +606,6 @@
             // "Salary: $130,000-$200,000" or "Compensation: $110,000 to $180,000"
             /(?:salary|compensation|pay)[:\s]+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual))?/i,
             /(?:salary|compensation|pay)[:\s]+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual))?/i,
-            // "$125 to $185/hour" or "$12-$16 per hour"
-            /\$[\d,]+(?:\.\d{2})?\s*(?:-|to)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/hour|\/hr|per\s+hour|hr)\+?/i,
             // "$130,000-$200,000" or "$130,000 to $200,000"
             /\$[\d,]+(?:\.\d{2})?\s*[-–—]\s*\$[\d,]+(?:\.\d{2})?/i,
             /\$[\d,]+(?:\.\d{2})?\s+to\s+\$[\d,]+(?:\.\d{2})?/i,
@@ -625,15 +617,11 @@
             // "$250,000 annually" or "$250,000 per year"
             /\$[\d,]+(?:\.\d{2})?\s*(?:annually|per\s*year|per\s*annum)/i,
             // "$95 per hour" or "$95/hr"
-            /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hour|hr|\/hour|\/hr)/i,
+            /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hour|hr|\/hr)/i,
         ];
         for (const pattern of salaryPatterns) {
             const m = text.match(pattern);
-            if (m) {
-                const salaryText = m[0].trim();
-                if (!/\$[\d,]+/.test(salaryText)) continue;
-                return formatSalary(salaryText);
-            }
+            if (m) return formatSalary(m[0].trim());
         }
         return '';
     }
@@ -641,30 +629,22 @@
     function extractExperience(descriptionText) {
         if (!descriptionText) return '';
 
-        const analysisText = descriptionText
-            .replace(/\u00a0/g, ' ')
-            .replace(/[\u2013\u2014]/g, '-')
-            .replace(/â€“|â€”/g, '-')
-            .split(/\n\s*Create a Job Alert\s*\n/i)[0];
         const yearToken = '(?:years?|yrs?\\.?)';
-        const qualificationsSection = extractQualificationsSection(analysisText);
+        const qualificationsSection = extractQualificationsSection(descriptionText);
         const candidateLines = [];
 
         if (qualificationsSection) {
             candidateLines.push(...qualificationsSection.split('\n'));
         }
-        candidateLines.push(...analysisText.split('\n'));
+        candidateLines.push(...descriptionText.split('\n'));
 
         const prioritizedLines = candidateLines
             .map(line => line.trim())
             .filter(Boolean)
-            .filter(line => /\b(?:experience|experienced|minimum|min\.?|at least|required|requirements?|qualifications?|practice setting|years in practice|new grads?|new graduates?|new graduate|recent graduates?|recent graduate|new doctors?|mentorship)\b/i.test(line))
+            .filter(line => /\b(?:experience|experienced|minimum|min\.?|at least|required|requirements?|qualifications?|practice setting|years in practice)\b/i.test(line))
             .filter(line => !/\b(?:our team has|over\s+\d+\s+years of experience|years of experience in specialty and emergency services|serving\s+the\s+community|we offer|benefits|medical(?:,\s*|\s+)dental)\b/i.test(line));
 
         const patterns = [
-            new RegExp(`\\bexperienced\\s*\\(?\\s*(\\d+)\\+?\\s*${yearToken}\\s*\\)?`, 'i'),
-            new RegExp(`\\bwith\\s+minimum\\s+of\\s+(\\d+)\\+?\\s*${yearToken}\\s+post[-\\s]+internship\\s+experience\\b`, 'i'),
-            new RegExp(`\\b(?:minimum\\s+of\\s*)?(\\d+)\\+?\\s*${yearToken}\\s+(?:of\\s+)?(?:small\\s+animal\\s+|post[-\\s]+internship\\s+|clinical\\s+|veterinary\\s+)?experience\\b`, 'i'),
             new RegExp(`\\b(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
             new RegExp(`\\b(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
             new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
@@ -674,19 +654,6 @@
             new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
             new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
             new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:in\\s+(?:practice|a\\s+practice\\s+setting)|practice\\s+setting)\\b`, 'i')
-        ];
-        const descriptiveExperiencePatterns = [
-            [/\bexperience\s+or\s+strong\s+interest\s+in\s+urgent\s+care\s+or\s+emergency\s+medicine\b/i, 'Urgent care/emergency experience or strong interest'],
-            [/\b(?:er|urgent care|emergency)(?:\/urgent care)?\s+experience\b/i, 'ER/urgent care experience'],
-            [/\binternship\s+training[^\n]*preferred\b/i, 'Internship training preferred'],
-            [/\bnew graduate or experienced dvm\b/i, 'New graduate or experienced DVM'],
-            [/\bnew grads?\??\s*no problem\b/i, 'New graduates welcome'],
-            [/\bnew graduates?\s+(?:are\s+)?(?:welcome|encouraged|supported|considered)\b/i, 'New graduates welcome'],
-            [/\bnew or recent graduates?\b/i, 'New graduates welcome'],
-            [/\brecent graduates?\b/i, 'New graduates welcome'],
-            [/\bmentorship\s+for\s+new\s+doctors\b/i, 'New graduates welcome'],
-            [/\ball experience levels\b/i, 'All experience levels'],
-            [/\bexperienced (?:clinician|veterinarian|dvm|doctor)(?:s)?\b/i, 'Experienced DVM preferred']
         ];
 
         function formatExperience(match) {
@@ -707,28 +674,9 @@
         }
 
         for (const source of prioritizedLines) {
-            for (const [pattern, value] of descriptiveExperiencePatterns) {
-                if (pattern.test(source)) return value;
-            }
-        }
-
-        for (const source of prioritizedLines) {
             for (const pattern of patterns) {
                 const match = source.match(pattern);
                 if (match) return formatExperience(match);
-            }
-        }
-
-        const flexibleExperiencePatterns = [
-            /\bprior [^\n]{0,80} experience [^\n]{0,80}(?:welcome|preferred|plus|not required)\b/i,
-            /\bexperience [^\n]{0,80}(?:welcome|preferred|plus|not required)\b/i,
-            /\bexperienced clinician or recent graduate\b/i,
-            /\brecent graduate or experienced clinician\b/i
-        ];
-        for (const source of prioritizedLines) {
-            for (const pattern of flexibleExperiencePatterns) {
-                const match = source.match(pattern);
-                if (match) return match[0].replace(/\s+/g, ' ').trim();
             }
         }
 
@@ -854,4 +802,3 @@
         location: loc.location
     }));
 })();
-

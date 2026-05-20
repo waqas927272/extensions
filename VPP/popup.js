@@ -1,228 +1,592 @@
+// VPP Job Scraper - Popup Script
+
 document.addEventListener('DOMContentLoaded', () => {
-    const scrapeBtn = document.getElementById('scrapeBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const status = document.getElementById('status');
-    const results = document.getElementById('results');
+  const scrapeBtn = document.getElementById('scrape-btn');
+  const stopBtn = document.getElementById('stop-btn');
+  const viewBtn = document.getElementById('view-btn');
+  const clearBtn = document.getElementById('clear-btn');
 
-    // Update stats card
-    updateStatsCard();
+  const jobsCount = document.getElementById('jobs-count');
+  const currentPage = document.getElementById('current-page');
+  const totalPages = document.getElementById('total-pages');
+  const totalJobs = document.getElementById('total-jobs');
 
-    // Restore button/status state on popup open
-    chrome.storage.local.get(['scraping', 'scrapingStatus', 'scrapingComplete', 'scrapedJobs'], (data) => {
-        if (data.scraping) {
-            scrapeBtn.disabled = true;
-            scrapeBtn.innerHTML = `
-                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                </svg>
-                Scraping...
-            `;
-            stopBtn.style.display = 'block';
-            status.className = 'status-message info';
-            status.textContent = data.scrapingStatus || 'Scraping is in progress...';
-            checkScrapingStatus(); // Start polling
-        } else if (data.scrapingComplete) {
-            status.className = 'status-message success';
-            status.textContent = data.scrapingStatus || `Successfully scraped ${data.scrapedJobs.length} jobs!`;
-        }
+  const progressSection = document.getElementById('progress-section');
+  const errorSection = document.getElementById('error-section');
+  const resultsSummary = document.getElementById('results-summary');
+
+  const progressLabel = document.getElementById('progress-label');
+  const progressDetail = document.getElementById('progress-detail');
+  const progressFill = document.getElementById('progress-fill');
+  const errorMessage = document.getElementById('error-message');
+  const summaryText = document.getElementById('summary-text');
+
+  let isScraping = false;
+  let stopRequested = false;
+  let scrapedJobs = [];
+  let currentTabId = null;
+
+  const isGreenhouseAgencyPage = (url) => /https:\/\/app\.greenhouse\.io\/agency\/jobs\//i.test(url || '');
+  const isVipVetJobsPage = (url) => /vip-vet\.com/i.test(url || '');
+
+  const stateAbbreviations = {
+    AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California',
+    CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', FL: 'Florida', GA: 'Georgia',
+    HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa',
+    KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland',
+    MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi', MO: 'Missouri',
+    MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire', NJ: 'New Jersey',
+    NM: 'New Mexico', NY: 'New York', NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio',
+    OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina',
+    SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont',
+    VA: 'Virginia', WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming',
+    DC: 'District of Columbia', PR: 'Puerto Rico'
+  };
+
+  function getFullStateName(state) {
+    const value = (state || '').replace(/\./g, '').replace(/\s+/g, ' ').trim();
+    if (!value) return '';
+    if (/^[A-Z]{2}$/i.test(value)) return stateAbbreviations[value.toUpperCase()] || value.toUpperCase();
+    const canonical = Object.values(stateAbbreviations).find(fullName => fullName.toLowerCase() === value.toLowerCase());
+    return canonical || value;
+  }
+
+  function formatLocation(city, state) {
+    return [city || '', getFullStateName(state)].filter(Boolean).join(', ');
+  }
+
+  function normalizeAgencyGreenhouseJobs(jobs) {
+    return (jobs || []).map((job, index) => {
+      const reqId = job.reqId || job.jobId || job.id || `VIP-${index + 1}`;
+      const hospitalName = job.hospitalName || job.hospital || '';
+      const fullState = getFullStateName(job.state || '');
+      return {
+        ...job,
+        id: reqId,
+        reqId,
+        jobId: reqId,
+        title: job.title || job.jobTitle || '',
+        hospitalName,
+        hospital: hospitalName,
+        city: job.city || '',
+        state: fullState,
+        location: job.location ? formatLocation((job.location.split(',')[0] || '').trim(), fullState || (job.location.split(',')[1] || '').trim()) : formatLocation(job.city || '', fullState),
+        country: job.country || 'USA',
+        category: job.category || '',
+        jobType: job.jobType || '',
+        link: job.link || '',
+        description: job.description || '',
+        streetAddress: job.streetAddress || '',
+        postalCode: job.postalCode || job.zipCode || '',
+        zipCode: job.zipCode || job.postalCode || '',
+        source: job.source || 'VPP'
+      };
     });
+  }
 
-    scrapeBtn.addEventListener('click', async () => {
+  // Initialize
+  init();
+
+  async function init() {
+    const stored = await chrome.storage.local.get('vipvetJobs');
+    if (stored.vipvetJobs && stored.vipvetJobs.length > 0) {
+      scrapedJobs = stored.vipvetJobs;
+      showSummary(scrapedJobs.length);
+    }
+    getStats();
+  }
+
+  async function getStats() {
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+
+      if (!tab || !tab.url || (!isVipVetJobsPage(tab.url) && !isGreenhouseAgencyPage(tab.url))) {
+        showError('Please navigate to vip-vet.com careers page or app.greenhouse.io/agency/jobs page.');
         scrapeBtn.disabled = true;
-        scrapeBtn.innerHTML = `
-            <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-            </svg>
-            Scraping...
-        `;
-        stopBtn.style.display = 'block';
-        status.className = 'status-message info';
-        status.textContent = 'Initializing scraper...';
-        results.innerHTML = '';
+        return;
+      }
 
-        try {
-            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      currentTabId = tab.id;
 
-            await chrome.storage.local.set({
-                scraping: true,
-                scrapingComplete: false,
-                scrapedJobs: [],
-                scrapedJobIds: [], // Not strictly needed for single-page scrape but kept for consistency
-                scrapingStatus: 'Starting scraper...'
-            });
+      if (isGreenhouseAgencyPage(tab.url)) {
+        const [response] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            const rows = document.querySelectorAll('#jobs tbody tr');
+            const pageText = document.body?.innerText || '';
+            const showingMatch = pageText.match(/Showing\s+(\d+)\s+of\s+(\d+)\s+jobs/i);
+            return {
+              jobsOnPage: rows.length,
+              totalJobs: showingMatch ? parseInt(showingMatch[2], 10) : rows.length,
+              totalPages: 1,
+              currentPage: 1
+            };
+          }
+        });
 
-            const tabUrl = tab?.url || '';
-            const isGreenhouseAgencyPage = /https:\/\/app\.greenhouse\.io\/agency\/jobs\//i.test(tabUrl);
-            const scraperFile = isGreenhouseAgencyPage ? 'vpp-greenhouse-content.js' : 'vpp-content.js';
+        const stats = response?.result || { jobsOnPage: 0, totalJobs: 0, totalPages: 1, currentPage: 1 };
+        jobsCount.textContent = stats.jobsOnPage || 0;
+        currentPage.textContent = stats.currentPage || 1;
+        totalPages.textContent = stats.totalPages || 1;
+        totalJobs.textContent = stats.totalJobs || stats.jobsOnPage || 0;
+        scrapeBtn.disabled = false;
+        return;
+      }
 
-            status.textContent = isGreenhouseAgencyPage
-                ? 'Scraping jobs from Greenhouse dashboard...'
-                : 'Scraping jobs from current page...';
-            const [result] = await chrome.scripting.executeScript({
-                target: { tabId: tab.id },
-                files: [scraperFile],
-            });
+      // Wait for page to be ready
+      await new Promise(resolve => setTimeout(resolve, 500));
 
-            if (result && result.result) {
-                const scrapedJobs = normalizeJobsForRecordsPage(result.result);
-                await chrome.storage.local.set({
-                    scrapedJobs: scrapedJobs,
-                    scraping: false, // Done in one go
-                    scrapingComplete: true,
-                    scrapingStatus: `Successfully scraped ${scrapedJobs.length} jobs from ${isGreenhouseAgencyPage ? 'Greenhouse' : 'VetPracticePartners'}!`
-                });
-            } else {
-                throw new Error('No jobs returned from scraper or script failed.');
+      // Get stats from frames
+      let stats = null;
+      try {
+        const responses = await chrome.scripting.executeScript({
+          target: { tabId: tab.id, allFrames: true },
+          func: () => {
+            const jobPosts = document.querySelectorAll('tr.job-post');
+            const isGreenhouse = window.location.href.includes('greenhouse.io');
+
+            // Get total job count from header
+            let totalJobsCount = jobPosts.length;
+            const headers = document.querySelectorAll('h2, .section-header, [data-testid="job-count-header"]');
+            for (const el of headers) {
+              const match = el.innerText.match(/(\d+)\s*jobs?/i);
+              if (match) {
+                totalJobsCount = parseInt(match[1], 10);
+                break;
+              }
             }
 
-            checkScrapingStatus();
+            // Count pagination pages
+            const paginationLinks = document.querySelectorAll('.pagination__link');
+            const totalPagesCount = paginationLinks.length || 1;
 
-        } catch (error) {
-            status.className = 'status-message error';
-            status.textContent = `Error: ${error.message}`;
-            console.error('Scraping error:', error);
-            scrapeBtn.disabled = false;
-            scrapeBtn.innerHTML = `
-                <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                </svg>
-                Scrape Jobs
-            `;
-            stopBtn.style.display = 'none';
-        }
-    });
+            // Get current page
+            const activePage = document.querySelector('.pagination__link--active');
+            const currentPageNum = activePage ? parseInt(activePage.innerText, 10) : 1;
 
-    stopBtn.addEventListener('click', async () => {
-        const data = await chrome.storage.local.get(['scrapedJobs']);
-        const jobCount = data.scrapedJobs ? data.scrapedJobs.length : 0;
-
-        await chrome.storage.local.set({
-            scraping: false,
-            scrapingComplete: true,
-            scrapingStatus: `Scraping stopped by user. Found ${jobCount} jobs.`
+            return {
+              jobsOnPage: jobPosts.length,
+              totalJobs: totalJobsCount,
+              totalPages: totalPagesCount,
+              currentPage: currentPageNum,
+              isGreenhouse: isGreenhouse,
+              url: window.location.href
+            };
+          }
         });
-    });
-});
 
-function normalizeJobsForRecordsPage(jobs) {
-    return (jobs || []).map((job, index) => {
-        const city = job.city && job.city !== 'N/A' ? job.city : '';
-        const state = job.state && job.state !== 'N/A' ? job.state : '';
-        const location = [city, state].filter(Boolean).join(', ');
-        const hospital = job.hospital || (job.location && job.location !== 'N/A' ? job.location : '');
-        const jobIdFromLink = getVppJobIdFromLink(job.link);
-        const jobId = jobIdFromLink || job.jobId || job.id || `VPP-${index + 1}`;
+        // Find the Greenhouse frame response
+        for (const response of responses) {
+          if (response.result && response.result.isGreenhouse && response.result.jobsOnPage > 0) {
+            stats = response.result;
+            break;
+          }
+        }
 
-        return {
-            ...job,
-            id: job.id || jobId,
-            jobId,
-            title: job.title || job.jobTitle || '',
-            hospital,
-            location,
-            city,
-            state,
-            source: job.source || 'Veterinary Practice Partners'
-        };
-    });
-}
+        if (!stats) {
+          for (const response of responses) {
+            if (response.result && response.result.jobsOnPage > 0) {
+              stats = response.result;
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error getting stats:', e);
+      }
 
-function getVppJobIdFromLink(link) {
-    if (!link) return '';
-    try {
-        const url = new URL(link);
-        const greenhouseId = url.searchParams.get('gh_jid');
-        if (greenhouseId) return `VPP-${greenhouseId}`;
+      if (stats) {
+        jobsCount.textContent = stats.jobsOnPage || 0;
+        currentPage.textContent = stats.currentPage || 1;
+        totalPages.textContent = stats.totalPages || 1;
+        totalJobs.textContent = stats.totalJobs || 'Unknown';
+        scrapeBtn.disabled = false;
+      } else {
+        jobsCount.textContent = '0';
+        currentPage.textContent = '-';
+        totalPages.textContent = '-';
+        totalJobs.textContent = '-';
+        scrapeBtn.disabled = false;
+      }
     } catch (error) {
-        // Fall back to regex parsing below.
+      console.error('Error getting stats:', error);
+      showError('Unable to connect to page. Try refreshing.');
+      scrapeBtn.disabled = true;
+    }
+  }
+
+  // Scrape button click
+  scrapeBtn.addEventListener('click', async () => {
+    if (isScraping) return;
+
+    isScraping = true;
+    stopRequested = false;
+    scrapedJobs = [];
+    scrapeBtn.classList.add('hidden');
+    stopBtn.classList.remove('hidden');
+    errorSection.classList.add('hidden');
+    resultsSummary.classList.add('hidden');
+    progressSection.classList.remove('hidden');
+
+    updateProgress('Starting...', '', 0);
+
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      currentTabId = tab.id;
+
+      if (isGreenhouseAgencyPage(tab?.url || '')) {
+        updateProgress('Scraping...', 'Greenhouse dashboard jobs', 15);
+        const [result] = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          files: ['vipvet-greenhouse-content.js']
+        });
+
+        if (!result || !Array.isArray(result.result)) {
+          throw new Error('No jobs returned from Greenhouse dashboard scraper.');
+        }
+
+        scrapedJobs = normalizeAgencyGreenhouseJobs(result.result);
+        await chrome.storage.local.set({ vipvetJobs: scrapedJobs });
+        updateProgress('Complete!', `${scrapedJobs.length} jobs found`, 100);
+        showSummary(scrapedJobs.length);
+        isScraping = false;
+        scrapeBtn.classList.remove('hidden');
+        stopBtn.classList.add('hidden');
+        progressSection.classList.add('hidden');
+        return;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // First, click page 1 to ensure we start from the beginning
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id, allFrames: true },
+        func: () => {
+          const isGreenhouse = window.location.href.includes('greenhouse.io');
+          if (!isGreenhouse) return false;
+
+          const pageButtons = document.querySelectorAll('.pagination__link');
+          for (const btn of pageButtons) {
+            if (btn.innerText.trim() === '1') {
+              btn.click();
+              return true;
+            }
+          }
+          return false;
+        }
+      });
+
+      // Wait for page 1 to load
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      // Get pagination info
+      const paginationInfo = await chrome.scripting.executeScript({
+        target: { tabId: tab.id, allFrames: true },
+        func: () => {
+          const paginationLinks = document.querySelectorAll('.pagination__link');
+          const isGreenhouse = window.location.href.includes('greenhouse.io');
+
+          // Get max page number from pagination links
+          let maxPage = 1;
+          paginationLinks.forEach(link => {
+            const num = parseInt(link.innerText.trim(), 10);
+            if (!isNaN(num) && num > maxPage) {
+              maxPage = num;
+            }
+          });
+
+          return {
+            totalPages: maxPage,
+            isGreenhouse: isGreenhouse,
+            paginationCount: paginationLinks.length
+          };
+        }
+      });
+
+      let totalPagesCount = 1;
+      for (const resp of paginationInfo) {
+        if (resp.result && resp.result.isGreenhouse && resp.result.totalPages > 1) {
+          totalPagesCount = resp.result.totalPages;
+          console.log('Greenhouse frame found, total pages:', totalPagesCount);
+          break;
+        }
+      }
+
+      console.log('Total pages to scrape:', totalPagesCount);
+
+      // Scrape each page
+      let currentPageNum = 1;
+      while (currentPageNum <= totalPagesCount && !stopRequested) {
+        updateProgress('Scraping...', `Page ${currentPageNum} of ${totalPagesCount} (${scrapedJobs.length} jobs)`, Math.round((currentPageNum / totalPagesCount) * 100));
+
+        // Scrape current page
+        const responses = await chrome.scripting.executeScript({
+          target: { tabId: tab.id, allFrames: true },
+          func: () => {
+            // Function to parse location from title and hospital name
+            function parseLocation(title, hospitalName) {
+              let city = '';
+              let state = '';
+
+              // Combined text to search
+              const fullText = title + ' ' + hospitalName;
+
+              // Pattern 1: "- City, ST" or "- City ST" at end of title
+              let match = title.match(/[-–]\s*([A-Za-z\s\.]+),?\s*([A-Z]{2})\s*$/);
+              if (match) {
+                city = match[1].trim();
+                state = match[2];
+                return { city, state };
+              }
+
+              // Pattern 2: Just "- ST" at end (2-letter state code)
+              match = title.match(/[-–]\s*([A-Z]{2})\s*$/);
+              if (match) {
+                state = match[1];
+                // Try to get city from earlier in title
+                const cityMatch = title.match(/[-–]\s*([A-Za-z\s\.]+)\s*[-–]\s*[A-Z]{2}\s*$/);
+                if (cityMatch) {
+                  city = cityMatch[1].trim();
+                }
+                return { city, state };
+              }
+
+              // Pattern 3: "City, State" anywhere in title (e.g., "Franklin, TN")
+              match = fullText.match(/([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?),\s*([A-Z]{2})(?:\s|$|-)/);
+              if (match) {
+                city = match[1].trim();
+                state = match[2];
+                return { city, state };
+              }
+
+              // Pattern 4: Known city names with state
+              const cityStatePatterns = [
+                /Knoxville.*?(TN)/i,
+                /Franklin.*?(TN)/i,
+                /El Paso.*?(TX)/i,
+                /New York.*?(NY)/i,
+                /Aurora.*?(CO)/i,
+                /Redlands.*?(CA)/i,
+                /Humble.*?(TX)/i,
+                /Bradenton.*?(FL)/i,
+                /Fairfax.*?(VA)/i,
+                /Falls Church.*?(VA)/i
+              ];
+
+              for (const pattern of cityStatePatterns) {
+                match = fullText.match(pattern);
+                if (match) {
+                  state = match[1].toUpperCase();
+                  const cityExtract = fullText.match(new RegExp('(' + pattern.source.split('.*?')[0] + ')', 'i'));
+                  if (cityExtract) city = cityExtract[1];
+                  return { city, state };
+                }
+              }
+
+              // Pattern 5: State abbreviation anywhere in title after a dash
+              match = title.match(/[-–]\s*[^-–]*\b([A-Z]{2})\b/);
+              if (match) {
+                const possibleState = match[1];
+                const validStates = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
+                if (validStates.includes(possibleState)) {
+                  state = possibleState;
+                }
+              }
+
+              return { city, state };
+            }
+
+            const jobs = [];
+            const jobPosts = document.querySelectorAll('tr.job-post');
+
+            jobPosts.forEach((post) => {
+              try {
+                const cell = post.querySelector('td.cell');
+                if (!cell) return;
+
+                const linkEl = cell.querySelector('a');
+                if (!linkEl) return;
+
+                const link = linkEl.href;
+                const titleEl = linkEl.querySelector('p.body--medium, p.body.body--medium');
+                const title = titleEl ? titleEl.innerText.trim() : linkEl.innerText.trim().split('\n')[0];
+                const hospitalEl = linkEl.querySelector('p.body__secondary, p.body.body__secondary');
+                const hospitalName = hospitalEl ? hospitalEl.innerText.trim() : '';
+
+                if (!title || !link) return;
+
+                // Extract job ID
+                let rawReqId = '';
+                const ghMatch = link.match(/gh_jid=(\d+)/);
+                if (ghMatch) rawReqId = ghMatch[1];
+                else {
+                  const jobMatch = link.match(/jobs\/(\d+)/);
+                  if (jobMatch) rawReqId = jobMatch[1];
+                }
+                const reqId = rawReqId ? 'VIP-' + rawReqId : '';
+
+                // Parse location from title and hospital name
+                const { city, state } = parseLocation(title, hospitalName);
+
+                jobs.push({
+                  title,
+                  reqId,
+                  hospitalName,
+                  streetAddress: '',
+                  city,
+                  state,
+                  country: 'USA',
+                  category: '',
+                  jobType: '',
+                  link,
+                  description: '',
+                  postalCode: ''
+                });
+              } catch (e) {
+                console.error('Error:', e);
+              }
+            });
+
+            return {
+              jobs,
+              isGreenhouse: window.location.href.includes('greenhouse.io'),
+              url: window.location.href
+            };
+          }
+        });
+
+        // Collect jobs from Greenhouse frame
+        for (const response of responses) {
+          if (response.result && response.result.jobs && response.result.jobs.length > 0 && response.result.isGreenhouse) {
+            console.log(`Page ${currentPageNum}: Found ${response.result.jobs.length} jobs`);
+            scrapedJobs.push(...response.result.jobs);
+            break; // Only take from Greenhouse frame
+          }
+        }
+
+        // If there are more pages, click next
+        if (currentPageNum < totalPagesCount && !stopRequested) {
+          const clickResult = await chrome.scripting.executeScript({
+            target: { tabId: tab.id, allFrames: true },
+            func: () => {
+              const isGreenhouse = window.location.href.includes('greenhouse.io');
+              if (!isGreenhouse) return { clicked: false };
+
+              // Try clicking the next page number
+              const activeLink = document.querySelector('.pagination__link--active');
+              if (activeLink) {
+                const nextSibling = activeLink.parentElement?.nextElementSibling?.querySelector('.pagination__link');
+                if (nextSibling) {
+                  nextSibling.click();
+                  return { clicked: true, method: 'next-number' };
+                }
+              }
+
+              // Try clicking the Next button
+              const nextBtn = document.querySelector('.pagination__next:not([aria-disabled="true"]):not(.pagination__next--inactive)');
+              if (nextBtn) {
+                nextBtn.click();
+                return { clicked: true, method: 'next-button' };
+              }
+
+              return { clicked: false };
+            }
+          });
+
+          let clicked = false;
+          for (const resp of clickResult) {
+            if (resp.result && resp.result.clicked) {
+              clicked = true;
+              console.log('Clicked next using:', resp.result.method);
+              break;
+            }
+          }
+
+          if (clicked) {
+            // Wait for page content to update
+            await new Promise(resolve => setTimeout(resolve, 2500));
+          } else {
+            console.log('Could not click next, stopping pagination');
+            break;
+          }
+        }
+
+        currentPageNum++;
+      }
+
+      // Remove duplicates by reqId
+      const uniqueJobs = [];
+      const seenIds = new Set();
+      for (const job of scrapedJobs) {
+        if (job.reqId && !seenIds.has(job.reqId)) {
+          seenIds.add(job.reqId);
+          uniqueJobs.push(job);
+        } else if (!job.reqId) {
+          uniqueJobs.push(job);
+        }
+      }
+      scrapedJobs = uniqueJobs;
+
+      updateProgress('Complete!', `${scrapedJobs.length} jobs found`, 100);
+
+      // Save scraped jobs
+      await chrome.storage.local.set({ vipvetJobs: scrapedJobs });
+      showSummary(scrapedJobs.length);
+
+    } catch (error) {
+      console.error('Scraping error:', error);
+      showError('Error during scraping: ' + error.message);
     }
 
-    const match = String(link).match(/(?:jobs\/|gh_jid=)(\d+)/);
-    return match ? `VPP-${match[1]}` : '';
-}
+    isScraping = false;
+    scrapeBtn.classList.remove('hidden');
+    stopBtn.classList.add('hidden');
+    progressSection.classList.add('hidden');
+  });
 
-function checkScrapingStatus() {
-    const scrapeBtn = document.getElementById('scrapeBtn');
-    const stopBtn = document.getElementById('stopBtn');
-    const status = document.getElementById('status');
-    // results div is not used for single-page immediate updates in this context.
+  // Stop button click
+  stopBtn.addEventListener('click', async () => {
+    stopRequested = true;
+    isScraping = false;
 
-    const interval = setInterval(() => {
-        chrome.storage.local.get(['scrapingStatus', 'scrapedJobs', 'scrapingComplete', 'scraping'], (data) => {
-            if (data.scraping) {
-                if (data.scrapingStatus) {
-                    status.className = 'status-message info';
-                    status.textContent = data.scrapingStatus;
-                }
-            }
+    if (scrapedJobs.length > 0) {
+      await chrome.storage.local.set({ vipvetJobs: scrapedJobs });
+      showSummary(scrapedJobs.length);
+    }
 
-            if (data.scrapingComplete) {
-                clearInterval(interval);
+    scrapeBtn.classList.remove('hidden');
+    stopBtn.classList.add('hidden');
+    progressSection.classList.add('hidden');
+  });
 
-                status.className = 'status-message success';
-                const finalStatus = data.scrapingStatus || `Successfully scraped ${data.scrapedJobs.length} jobs!`;
-                status.textContent = finalStatus;
+  // View button click
+  viewBtn.addEventListener('click', () => {
+    chrome.tabs.create({ url: chrome.runtime.getURL('results.html') });
+  });
 
-                scrapeBtn.disabled = false;
-                scrapeBtn.innerHTML = `
-                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                    </svg>
-                    Scrape Jobs
-                `;
-                stopBtn.style.display = 'none';
+  // Clear button click
+  clearBtn.addEventListener('click', async () => {
+    if (confirm('Are you sure you want to clear all scraped data?')) {
+      await chrome.storage.local.remove('vipvetJobs');
+      scrapedJobs = [];
+      resultsSummary.classList.add('hidden');
+    }
+  });
 
-                // Update stats card after scraping
-                updateStatsCard();
+  function updateProgress(label, detail, percent) {
+    progressLabel.textContent = label;
+    progressDetail.textContent = detail;
+    progressFill.style.width = `${percent}%`;
+  }
 
-                // Don't clean up scrapedJobs so results page works
-                chrome.storage.local.remove(['scraping', 'scrapedJobIds']);
-                // We keep scrapingStatus to show the final message. And scrapingComplete for the popup open logic.
+  function showError(message) {
+    errorMessage.textContent = message;
+    errorSection.classList.remove('hidden');
+  }
 
-            } else if (data.scraping === false && !data.scrapingComplete) {
-                // Handle error case
-                clearInterval(interval);
-                status.className = 'status-message error';
-                status.textContent = data.scrapingStatus || 'Scraping failed for an unknown reason.';
-                scrapeBtn.disabled = false;
-                scrapeBtn.innerHTML = `
-                    <svg class="btn-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                    </svg>
-                    Scrape Jobs
-                `;
-                stopBtn.style.display = 'none';
-            }
-        });
-    }, 1000);
+  function showSummary(count) {
+    summaryText.textContent = `${count} jobs scraped`;
+    resultsSummary.classList.remove('hidden');
+  }
+});
 
-    // Timeout after 10 minutes (kept for general robustness, though less critical for single-page scrape)
-    setTimeout(() => {
-        chrome.storage.local.get(['scraping'], (data) => {
-            if (data.scraping) { // if still running
-                clearInterval(interval);
-                chrome.storage.local.set({
-                    scraping: false,
-                    scrapingComplete: true,
-                    scrapingStatus: 'Scraping timed out after 10 minutes.'
-                });
-            }
-        });
-    }, 600000);
-}
-
-function updateStatsCard() {
-    chrome.storage.local.get(['scrapedJobs'], (data) => {
-        const jobs = data.scrapedJobs || [];
-        const statsCard = document.getElementById('statsCard');
-
-        if (jobs.length > 0) {
-            const withDescriptions = jobs.filter(job => job.description).length;
-            document.getElementById('totalJobs').textContent = jobs.length;
-            document.getElementById('withDescriptions').textContent = withDescriptions;
-            statsCard.style.display = 'flex';
-        } else {
-            statsCard.style.display = 'none';
-        }
-    });
-}
