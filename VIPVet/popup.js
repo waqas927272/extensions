@@ -29,10 +29,37 @@ document.addEventListener('DOMContentLoaded', () => {
   const isGreenhouseAgencyPage = (url) => /https:\/\/app\.greenhouse\.io\/agency\/jobs\//i.test(url || '');
   const isVipVetJobsPage = (url) => /vip-vet\.com/i.test(url || '');
 
+  const stateAbbreviations = {
+    AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California',
+    CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', FL: 'Florida', GA: 'Georgia',
+    HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa',
+    KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland',
+    MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi', MO: 'Missouri',
+    MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire', NJ: 'New Jersey',
+    NM: 'New Mexico', NY: 'New York', NC: 'North Carolina', ND: 'North Dakota', OH: 'Ohio',
+    OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania', RI: 'Rhode Island', SC: 'South Carolina',
+    SD: 'South Dakota', TN: 'Tennessee', TX: 'Texas', UT: 'Utah', VT: 'Vermont',
+    VA: 'Virginia', WA: 'Washington', WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming',
+    DC: 'District of Columbia', PR: 'Puerto Rico'
+  };
+
+  function getFullStateName(state) {
+    const value = (state || '').replace(/\./g, '').replace(/\s+/g, ' ').trim();
+    if (!value) return '';
+    if (/^[A-Z]{2}$/i.test(value)) return stateAbbreviations[value.toUpperCase()] || value.toUpperCase();
+    const canonical = Object.values(stateAbbreviations).find(fullName => fullName.toLowerCase() === value.toLowerCase());
+    return canonical || value;
+  }
+
+  function formatLocation(city, state) {
+    return [city || '', getFullStateName(state)].filter(Boolean).join(', ');
+  }
+
   function normalizeAgencyGreenhouseJobs(jobs) {
     return (jobs || []).map((job, index) => {
       const reqId = job.reqId || job.jobId || job.id || `VIP-${index + 1}`;
       const hospitalName = job.hospitalName || job.hospital || '';
+      const fullState = getFullStateName(job.state || '');
       return {
         ...job,
         id: reqId,
@@ -42,7 +69,8 @@ document.addEventListener('DOMContentLoaded', () => {
         hospitalName,
         hospital: hospitalName,
         city: job.city || '',
-        state: job.state || '',
+        state: fullState,
+        location: job.location ? formatLocation((job.location.split(',')[0] || '').trim(), fullState || (job.location.split(',')[1] || '').trim()) : formatLocation(job.city || '', fullState),
         country: job.country || 'USA',
         category: job.category || '',
         jobType: job.jobType || '',

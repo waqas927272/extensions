@@ -453,7 +453,6 @@ document.addEventListener('DOMContentLoaded', () => {
         'R-240335': 'VCA Bellevue Veterinary Hospital',
         'R-228588': 'VCA Stoney Creek Animal Hospital',
         'R-236955': 'VCA Baywood Animal Hospital and Pet Resort',
-        'R-240038': 'VCA Animal Emergency Critical Care and Leesburg Veterinary Internal Medicine (AECC & LVIM)',
         'R-240697': 'VCA Family and Oahu Veterinary Specialty Center',
         'R-227757': 'VCA Cazenovia Animal Hospital',
         'R-230182': 'VCA Regional Institute for Veterinary Emergency and Referral (RIVER)',
@@ -1104,8 +1103,13 @@ document.addEventListener('DOMContentLoaded', () => {
     function extractMultiLocationEntries(text, originalJob = {}) {
         const fallbackTitle = originalJob.title || '';
         const structuredEntries = extractStructuredLocationEntries(text, fallbackTitle);
+        const compoundHospitalEntries = extractCompoundHospitalEntries(text, originalJob, fallbackTitle);
 
-        const dedupedEntries = dedupeMultiLocationEntries(structuredEntries)
+        const entries = structuredEntries.length > 1
+            ? structuredEntries
+            : (compoundHospitalEntries.length > 1 ? compoundHospitalEntries : structuredEntries);
+
+        const dedupedEntries = dedupeMultiLocationEntries(entries)
             .filter(hasMentionedSplitHospital);
 
         return dedupedEntries.length > 1 ? dedupedEntries : [];
@@ -1226,7 +1230,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function addressMatchesExpectedHospitalBrand(hospitalName, addressData, location = '') {
-        const expected = normalizeSimpleText(hospitalName);
+        const expectedHospital = stripMatchingLocationPhraseFromHospitalName(hospitalName, location);
+        const expected = normalizeSimpleText(expectedHospital);
         const actual = normalizeSimpleText(addressData?.businessName || '');
         const website = addressData?.website || '';
 
@@ -1293,6 +1298,8 @@ document.addEventListener('DOMContentLoaded', () => {
         );
         add(raw.replace(/\be\b/g, 'east').replace(/\bw\b/g, 'west').replace(/\bn\b/g, 'north').replace(/\bs\b/g, 'south'));
         add(raw.replace(/\beast\b/g, 'e').replace(/\bwest\b/g, 'w').replace(/\bnorth\b/g, 'n').replace(/\bsouth\b/g, 's'));
+        add(raw.replace(/boro/g, 'borough'));
+        add(raw.replace(/borough/g, 'boro'));
 
         return variants;
     }
@@ -1377,10 +1384,73 @@ document.addEventListener('DOMContentLoaded', () => {
         return withoutLocation.length > 0 ? withoutLocation : words;
     }
 
+    function stripMatchingLocationPhraseFromHospitalName(hospitalName = '', location = '') {
+        let clean = cleanExtractedHospitalName(hospitalName || '')
+            .replace(/\s*\((?:formerly|previously|aka|also known as)[^)]+\)\s*/ig, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        const locationParts = parseLocationParts(location || '');
+        const city = (locationParts.city || '').trim();
+        const state = (locationParts.state || '').trim();
+        if (!clean || (!city && !state)) return clean;
+
+        const suffixes = [];
+        if (city) suffixes.push(city);
+        if (state) suffixes.push(state, getFullStateName(state), getStateAbbreviation(state));
+        if (city && state) {
+            suffixes.push(
+                `${city}, ${state}`,
+                `${city}, ${getFullStateName(state)}`,
+                `${city} ${getStateAbbreviation(state)}`
+            );
+        }
+
+        for (const suffix of suffixes.filter(Boolean)) {
+            const pattern = new RegExp(`\\s+(?:in|at|near|outside\\s+of)\\s+${escapeRegex(suffix)}\\s*$`, 'i');
+            const withoutSuffix = clean.replace(pattern, '').trim();
+            if (withoutSuffix !== clean && looksLikeCompleteHospitalName(withoutSuffix)) {
+                return withoutSuffix.replace(/[\s,;:.!-]+$/, '').trim();
+            }
+        }
+
+        if (city) {
+            const cityPattern = escapeRegex(city);
+            const locationTailPattern = new RegExp(`\\s+(?:in|at|near|outside\\s+of)\\s+${cityPattern}(?:\\s*,?\\s+[^,;.]*)?$`, 'i');
+            const withoutTail = clean.replace(locationTailPattern, '').trim();
+            if (withoutTail !== clean && withoutTail.length >= 6) {
+                return withoutTail.replace(/[\s,;:.!-]+$/, '').trim();
+            }
+        }
+
+        return clean;
+    }
+
+    function isShortVcaLocationName(hospitalName = '', location = '') {
+        const current = stripMatchingLocationPhraseFromHospitalName(hospitalName, location);
+        const words = getMeaningfulHospitalNameWords(current);
+        return /^vca\b/i.test(current) && words.length === 1;
+    }
+
+    function extractHospitalNameLocationPhrase(hospitalName = '') {
+        const match = cleanExtractedHospitalName(hospitalName || '').match(/\s+(?:in|at|near|outside\s+of)\s+([^,;.()]+)(?:\s*,\s*[^;.()]+)?$/i);
+        return match ? match[1].trim() : '';
+    }
+
     function getHospitalNameUpdateScore(currentHospital, candidateHospital, location = '') {
-        const current = cleanExtractedHospitalName(currentHospital || '');
+        const current = stripMatchingLocationPhraseFromHospitalName(currentHospital || '', location);
         const candidate = cleanHospitalNameFromAddressLookup(candidateHospital);
         if (!current || !candidate) return 0;
+
+        const currentComparable = normalizeSimpleText(current);
+        const candidateComparable = normalizeSimpleText(candidate);
+        if (currentComparable && currentComparable === candidateComparable) return 100;
+        if (
+            currentComparable.length >= 12 &&
+            candidateComparable.length >= 12 &&
+            (currentComparable.includes(candidateComparable) || candidateComparable.includes(currentComparable))
+        ) {
+            return 100;
+        }
 
         const candidateWords = new Set(getMeaningfulHospitalNameWords(candidate));
         if (candidateWords.size === 0) return 0;
@@ -1435,13 +1505,22 @@ document.addEventListener('DOMContentLoaded', () => {
         const parsedCity = extractCityFromFullAddress(addressData.fullAddress || addressData.streetAddress || '');
         const resultCity = addressData.city || parsedCity || '';
         const expectedCity = expectedLocation.city || job.city || '';
-        const cityOk = !expectedCity || !resultCity || citiesPracticallyMatch(expectedCity, resultCity);
+        const hospitalLocationPhrase = extractHospitalNameLocationPhrase(job.hospital || job.hospitalName || '');
+        const hospitalLocationMatchesResult = hospitalLocationPhrase && resultCity && citiesPracticallyMatch(hospitalLocationPhrase, resultCity);
+        const cityOk = !expectedCity || !resultCity || citiesPracticallyMatch(expectedCity, resultCity) || hospitalLocationMatchesResult;
 
         const candidateHospital = getAddressHospitalNameCandidate(addressData);
-        const nameScore = getHospitalNameUpdateScore(job.hospital || job.hospitalName || '', candidateHospital, searchLocation || job.location || '');
+        const scoreLocation = hospitalLocationMatchesResult
+            ? [hospitalLocationPhrase, expectedLocation.state || job.state || ''].filter(Boolean).join(', ')
+            : (searchLocation || job.location || '');
+        const nameScore = getHospitalNameUpdateScore(job.hospital || job.hospitalName || '', candidateHospital, scoreLocation);
         const aliasOk = hospitalAliasMatches(job.hospital || job.hospitalName || '', candidateHospital);
+        const shortVcaLocationOk = isShortVcaLocationName(job.hospital || job.hospitalName || '', searchLocation || job.location || '') &&
+            cityOk &&
+            normalizeSimpleText(candidateHospital || '').startsWith('vca');
 
-        return (cityOk && (nameScore >= 80 || aliasOk)) || (aliasOk && addressResultMatchesState(addressData, expectedLocation.state || job.state || ''));
+        return (cityOk && (nameScore >= 80 || aliasOk || shortVcaLocationOk)) ||
+            (aliasOk && addressResultMatchesState(addressData, expectedLocation.state || job.state || ''));
     }
 
     function getLivewellFallbackAddress() {
@@ -2529,9 +2608,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const expectedCity = normalizeCityForCompare(expectedLocation.city);
             const expectedState = expectedLocation.state;
 
-            if (expectedCity && !resultCity) return false;
             if (expectedState && !resultState && !zipCode) return false;
-            if (expectedCity && resultCity !== expectedCity && !citiesPracticallyMatch(expectedLocation.city, result.city || parsedFromAddress.city || '')) return false;
             if (expectedState && resultState && resultState !== expectedState) return false;
             if (expectedState && zipCode && !zipMatchesState(zipCode, expectedState)) return false;
             return true;
@@ -2590,13 +2667,18 @@ document.addEventListener('DOMContentLoaded', () => {
             for (const rawName of rawNames) {
                 const base = rawName.replace(/\s+/g, ' ').trim();
                 if (!base) continue;
+                const coreName = stripMatchingLocationPhraseFromHospitalName(base, location);
 
                 const withoutLocationSuffix = base.replace(/\s*[-–—]\s*[A-Z][a-zA-Z\s.'-]+$/, '').trim();
                 const withoutParens = base.replace(/\s*\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
                 const expandedParens = base.replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim();
                 const plain = base.replace(/&/g, 'and').replace(/[-–—()]/g, ' ').replace(/\s+/g, ' ').trim();
 
-                names.push(base, withoutLocationSuffix, withoutParens, expandedParens, plain);
+                names.push(base, coreName, withoutLocationSuffix, withoutParens, expandedParens, plain);
+
+                if (base && !/^vca\b/i.test(base)) {
+                    names.push(`VCA ${base}`, `VCA ${coreName}`);
+                }
 
                 if (city) {
                     if (isFallbackHospitalName(base) && /^vca\b/i.test(base)) {
@@ -2608,7 +2690,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         );
                     }
 
-                    for (const candidate of [withoutLocationSuffix, withoutParens, plain]) {
+                    if (/^vca\b/i.test(coreName) && !/\b(?:animal|veterinary|hospital|clinic|center|specialty|specialists|care|emergency)\b/i.test(coreName)) {
+                        names.push(
+                            `${coreName} Animal Hospital`,
+                            `${coreName} Veterinary Hospital`,
+                            `${coreName} ${city} Animal Hospital`
+                        );
+                    }
+
+                    for (const candidate of [coreName, withoutLocationSuffix, withoutParens, plain]) {
                         if (candidate && !candidate.toLowerCase().includes(city.toLowerCase())) {
                             names.push(`${candidate} ${city}`);
                         }
@@ -3471,6 +3561,38 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function getExportRowStyle(job, splitParentJobIds) {
+        if (job.hospitalNameUpdated) {
+            return { background: '#d1fae5', border: '#10b981' };
+        }
+
+        if (isSplitChildOrParentJob(job, splitParentJobIds)) {
+            return { background: '#fee2e2', border: '#dc2626' };
+        }
+
+        if (job.isNewLocation) {
+            return { background: '#d1fae5', border: '#10b981' };
+        }
+
+        return null;
+    }
+
+    function escapeExcelHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    function buildExcelCell(value, rowStyle, isFirstCell = false) {
+        const baseStyle = 'border:1px solid #d9e2ec;padding:6px;vertical-align:top;white-space:pre-wrap;mso-number-format:"\\@";';
+        const colorStyle = rowStyle ? `background-color:${rowStyle.background};` : '';
+        const borderStyle = rowStyle && isFirstCell ? `border-left:4px solid ${rowStyle.border};` : '';
+        return `<td style="${baseStyle}${colorStyle}${borderStyle}">${escapeExcelHtml(value)}</td>`;
+    }
+
     function exportToCSV() {
         if (!allJobs || allJobs.length === 0) {
             showToast('No jobs to export!', 'error');
@@ -3478,44 +3600,71 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Aggregator', 'Street Address', 'City', 'State', 'Zip Code', 'Phone', 'Website', 'Location', 'Area of Practice', 'Position', 'Salary', 'Job Type', 'Experience', 'Link', 'Description'];
-        const csvContent = [
-            headers.join(','),
-            ...allJobs.map((job, index) => [
+        const splitParentJobIds = getSplitParentJobIds(allJobs);
+        const headerStyle = 'border:1px solid #174c6f;padding:7px;background-color:#1f5f83;color:#ffffff;font-weight:bold;white-space:nowrap;';
+        const rows = allJobs.map((job, index) => {
+            const rowStyle = getExportRowStyle(job, splitParentJobIds);
+            const values = [
                 index + 1,
-                `"${(job.title || '').replace(/"/g, '""')}"`,
-                `"${(job.jobId || '').replace(/"/g, '""')}"`,
-                `"${(job.hospital || '').replace(/"/g, '""')}"`,
-                `"${(job.aggregator || 'VCA Animal Hospitals (Parent Client)').replace(/"/g, '""')}"`,
-                `"${(job.streetAddress || '').replace(/"/g, '""')}"`,
-                `"${(job.city || '').replace(/"/g, '""')}"`,
-                `"${(job.state || '').replace(/"/g, '""')}"`,
-                `"${(job.zipCode || '').replace(/"/g, '""')}"`,
-                `"${(job.phone || '').replace(/"/g, '""')}"`,
-                `"${(job.website || '').replace(/"/g, '""')}"`,
-                `"${(job.location || '').replace(/"/g, '""')}"`,
-                `"${(job.areaOfPractice || '').replace(/"/g, '""')}"`,
-                `"${(job.position || '').replace(/"/g, '""')}"`,
-                `"${(job.salary || '').replace(/"/g, '""')}"`,
-                `"${(job.jobType || '').replace(/"/g, '""')}"`,
-                `"${(job.experience || '').replace(/"/g, '""')}"`,
-                `"${(job.link || '').replace(/"/g, '""')}"`,
-                `"${(job.description || '').replace(/"/g, '""')}"`
-            ].join(','))
-        ].join('\n');
+                job.title || '',
+                job.jobId || '',
+                job.hospital || '',
+                job.aggregator || 'VCA Animal Hospitals (Parent Client)',
+                job.streetAddress || '',
+                job.city || '',
+                job.state || '',
+                job.zipCode || '',
+                job.phone || '',
+                job.website || '',
+                job.location || '',
+                job.areaOfPractice || '',
+                job.position || '',
+                job.salary || '',
+                job.jobType || '',
+                job.experience || '',
+                job.link || '',
+                job.description || ''
+            ];
 
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            return `<tr>${values.map((value, cellIndex) => buildExcelCell(value, rowStyle, cellIndex === 0)).join('')}</tr>`;
+        }).join('');
+        const headerRow = `<tr>${headers.map(header => `<th style="${headerStyle}">${escapeExcelHtml(header)}</th>`).join('')}</tr>`;
+        const legend = [
+            '<p><strong>Row color legend:</strong> Green = hospital name updated or new location, Red = parent/child rows created from split job logic.</p>'
+        ].join('');
+        const excelContent = `<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+body { font-family: Arial, sans-serif; font-size: 12px; }
+table { border-collapse: collapse; }
+</style>
+</head>
+<body>
+${legend}
+<table>
+${headerRow}
+${rows}
+</table>
+</body>
+</html>`;
+
+        const blob = new Blob(['\ufeff', excelContent], { type: 'application/vnd.ms-excel;charset=utf-8;' });
         const link = document.createElement('a');
         const url = URL.createObjectURL(blob);
 
         link.setAttribute('href', url);
-        link.setAttribute('download', `vca_jobs_${new Date().toISOString().split('T')[0]}.csv`);
+        link.setAttribute('download', `vca_jobs_${new Date().toISOString().split('T')[0]}.xls`);
         link.style.visibility = 'hidden';
 
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
 
-        showToast(`Exported ${allJobs.length} jobs to CSV!`, 'success');
+        URL.revokeObjectURL(url);
+
+        showToast(`Exported ${allJobs.length} jobs with row colors!`, 'success');
     }
 
     // Initialize
@@ -3599,8 +3748,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     editJobForm.addEventListener('submit', saveEditedJob);
 
-    // Export CSV
+    // Export Excel-compatible file so row colors are preserved.
     if (exportCsvButton) {
+        const exportButtonLabel = Array.from(exportCsvButton.childNodes).find(node => node.nodeType === Node.TEXT_NODE && node.textContent.trim());
+        if (exportButtonLabel) {
+            exportButtonLabel.textContent = ' Export Excel';
+        }
+        exportCsvButton.title = 'Export an Excel-compatible file with row colors';
         exportCsvButton.addEventListener('click', exportToCSV);
     }
 
@@ -4536,6 +4690,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 return canLookupAddressForJob(item.job) &&
                     (!item.job.streetAddress ||
                         !item.job.zipCode ||
+                        (!item.job.phone && !item.job.website) ||
+                        item.job.streetAddress === 'TBD' ||
+                        item.job.zipCode === '00000' ||
                         jobLocationMismatch(item.job) ||
                         savedAddressStateMismatch(item.job) ||
                         savedAddressBrandMismatch(item.job) ||

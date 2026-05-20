@@ -12,11 +12,30 @@
         }
     }
 
+    function normalizeExtractedText(text) {
+        return (text || '')
+            .replace(/\u00a0/g, ' ')
+            .replace(/\r/g, '\n')
+            .replace(/[ \t]+/g, ' ')
+            .replace(/\n[ \t]+/g, '\n')
+            .replace(/[ \t]+\n/g, '\n')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+
     function getTextWithLinks(element) {
         if (!element) return '';
 
         const cloned = element.cloneNode(true);
-        cloned.querySelectorAll('script, style, noscript').forEach(node => node.remove());
+        cloned.querySelectorAll('script, style, noscript, svg').forEach(node => node.remove());
+        cloned.querySelectorAll('button').forEach(button => {
+            const text = (button.innerText || button.textContent || '').trim();
+            const ariaLabel = (button.getAttribute('aria-label') || '').trim();
+            if (/^close$/i.test(text) || /close/i.test(ariaLabel)) {
+                button.remove();
+            }
+        });
+
         cloned.querySelectorAll('a[href]').forEach(link => {
             const href = getAbsoluteHref(link.getAttribute('href'));
             if (!href) return;
@@ -25,7 +44,20 @@
             link.textContent = label && !label.includes(href) ? `${label} (${href})` : href;
         });
 
-        return (cloned.innerText || cloned.textContent || '').trim();
+        cloned.querySelectorAll('br').forEach(br => {
+            br.replaceWith(document.createTextNode('\n'));
+        });
+
+        cloned.querySelectorAll('li').forEach(item => {
+            item.insertBefore(document.createTextNode('- '), item.firstChild);
+            item.appendChild(document.createTextNode('\n'));
+        });
+
+        cloned.querySelectorAll('p, div, section, article, header, footer, h1, h2, h3, h4, h5, h6, ul, ol').forEach(block => {
+            block.appendChild(document.createTextNode('\n'));
+        });
+
+        return normalizeExtractedText(cloned.textContent || '');
     }
 
     function parseHospitalLocation(rawLocation) {
@@ -114,11 +146,14 @@
 
     function extractDescriptionFromDialog(dialog) {
         if (!dialog) return '';
-        const candidates = Array.from(dialog.querySelectorAll('div, section, article, p'));
+        const candidates = [
+            ...Array.from(dialog.querySelectorAll('section, article, [role="document"], [data-testid*="description"], [class*="description"], [class*="body"]')),
+            dialog
+        ];
         let best = '';
 
         for (const el of candidates) {
-            const text = getTextWithLinks(el).replace(/\s+/g, ' ').trim();
+            const text = getTextWithLinks(el);
             if (text.length < 120) continue;
             if (/^close$/i.test(text)) continue;
             if (/no description/i.test(text)) continue;
