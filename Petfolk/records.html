@@ -1,0 +1,1258 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Scraped Job Records - Petfolk</title>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --brand-primary: #7b4a39;
+      --brand-primary-dark: #3f271f;
+      --brand-secondary: #6d9b89;
+      --brand-secondary-dark: #426f62;
+      --brand-surface: #fbf6ef;
+      --brand-surface-strong: #efe1d6;
+      --brand-highlight: #d8ebe3;
+      --text-strong: #1f2933;
+      --text-body: #39434f;
+      --text-muted: #6a7280;
+      --border-soft: #e7ddd4;
+      --card: #ffffff;
+      --focus-ring: rgba(109, 155, 137, 0.22);
+    }
+
+    body {
+      font-family: 'Source Sans 3', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: linear-gradient(180deg, #fffaf9 0%, var(--brand-surface) 46%, #f4faf7 100%);
+      min-height: 100vh;
+      color: var(--text-body);
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background:
+        linear-gradient(90deg, rgba(123, 74, 57, 0.035) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(123, 74, 57, 0.03) 1px, transparent 1px);
+      background-size: 32px 32px;
+      pointer-events: none;
+      z-index: 0;
+    }
+
+    .header {
+      background: linear-gradient(135deg, var(--brand-primary-dark) 0%, var(--brand-primary) 62%, var(--brand-secondary-dark) 100%);
+      padding: 14px 20px;
+      color: white;
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 10px 34px rgba(63, 39, 31, 0.22);
+    }
+
+    .header::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(90deg, rgba(255,255,255,0.08), transparent 52%);
+      pointer-events: none;
+    }
+
+    .header::after {
+      display: none;
+    }
+
+    .version-tag {
+      position: absolute;
+      top: 8px;
+      right: 12px;
+      background: rgba(255, 255, 255, 0.25);
+      padding: 4px 9px;
+      border-radius: 8px;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      z-index: 10;
+    }
+
+    .header-content {
+      max-width: 1500px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+      z-index: 5;
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .logo-icon {
+      width: 44px;
+      height: 44px;
+      background: rgba(255, 255, 255, 0.92);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.14);
+      transition: all 0.3s ease;
+    }
+
+    .logo-icon:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+    }
+
+    .logo-icon img {
+      width: 32px;
+      height: 32px;
+      object-fit: contain;
+      filter: none;
+    }
+
+    .header h1 {
+      font-family: 'Manrope', 'Source Sans 3', sans-serif;
+      font-size: 21px;
+      font-weight: 800;
+      margin-bottom: 2px;
+      text-shadow: none;
+      letter-spacing: 0;
+    }
+
+    .header p {
+      font-size: 11px;
+      opacity: 0.95;
+      font-weight: 500;
+      letter-spacing: 0;
+    }
+
+    .stats-badge {
+      background: rgba(255, 255, 255, 0.92);
+      padding: 8px 18px;
+      border-radius: 8px;
+      backdrop-filter: blur(12px);
+      text-align: center;
+      color: var(--brand-primary-dark);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.12);
+      transition: all 0.3s ease;
+    }
+
+    .stats-badge:hover {
+      transform: scale(1.02);
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.15);
+    }
+
+    .stats-badge strong {
+      display: block;
+      font-size: 24px;
+      font-weight: 800;
+      margin-bottom: 0;
+      text-shadow: none;
+    }
+
+    .stats-badge span {
+      font-size: 10px;
+      opacity: 0.95;
+      font-weight: 600;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .container {
+      max-width: none;
+      margin: 0 auto;
+      padding: 12px 14px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .webhook-bar {
+      background: var(--card);
+      border-radius: 8px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+      box-shadow:
+        0 8px 24px rgba(63, 39, 31, 0.06),
+        0 1px 2px rgba(0, 0, 0, 0.04);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      border: 1px solid var(--border-soft);
+      transition: all 0.3s ease;
+    }
+
+    .webhook-bar:hover {
+      box-shadow:
+        0 12px 32px rgba(63, 39, 31, 0.08),
+        0 2px 4px rgba(0, 0, 0, 0.04);
+    }
+
+    .webhook-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .webhook-bar label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-body);
+      min-width: 82px;
+      letter-spacing: 0;
+    }
+
+    .webhook-input-group {
+      display: flex;
+      flex: 1;
+      gap: 8px;
+      min-width: 300px;
+    }
+
+    .webhook-input-group input {
+      flex: 1;
+      padding: 7px 10px;
+      border: 1px solid var(--border-soft);
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 500;
+      outline: none;
+      transition: all 0.25s ease;
+      background: #fffdf9;
+      color: var(--text-strong);
+    }
+
+    .webhook-input-group input:focus {
+      border-color: var(--brand-secondary);
+      box-shadow: 0 0 0 4px var(--focus-ring);
+      background: white;
+    }
+
+    .toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .search-box {
+      display: flex;
+      align-items: center;
+      background: var(--card);
+      border: 1px solid var(--border-soft);
+      border-radius: 8px;
+      padding: 8px 10px;
+      flex: 1;
+      max-width: 420px;
+      transition: all 0.25s ease;
+      box-shadow: 0 4px 14px rgba(63, 39, 31, 0.05);
+    }
+
+    .search-box:focus-within {
+      border-color: var(--brand-secondary);
+      box-shadow: 0 0 0 4px var(--focus-ring), 0 8px 22px rgba(109, 155, 137, 0.12);
+    }
+
+    .search-box svg {
+      width: 15px;
+      height: 15px;
+      fill: var(--text-muted);
+      margin-right: 8px;
+      transition: fill 0.2s ease;
+    }
+
+    .search-box:focus-within svg {
+      fill: var(--brand-secondary);
+    }
+
+    .search-box input {
+      border: none;
+      outline: none;
+      font-size: 13px;
+      font-weight: 500;
+      width: 100%;
+      color: var(--text-strong);
+      background: transparent;
+    }
+
+    .search-box input::placeholder {
+      color: var(--text-muted);
+      font-weight: 400;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 11px;
+      border-radius: 7px;
+      border: none;
+      font-family: 'Manrope', 'Source Sans 3', sans-serif;
+      font-size: 11px;
+      font-weight: 800;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      box-shadow: 0 5px 14px rgba(63, 39, 31, 0.1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 18px rgba(63, 39, 31, 0.16);
+    }
+
+    .btn:active {
+      transform: translateY(-1px);
+    }
+
+    .btn svg {
+      width: 14px;
+      height: 14px;
+      transition: transform 0.3s ease;
+    }
+
+    .btn:hover svg {
+      transform: scale(1.1);
+    }
+
+    .btn:focus-visible,
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible,
+    button:focus-visible {
+      outline: 3px solid var(--focus-ring);
+      outline-offset: 2px;
+    }
+
+    .btn-primary {
+      background: var(--brand-primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--brand-primary-dark);
+      box-shadow: 0 8px 22px rgba(123, 74, 57, 0.26);
+    }
+
+    .btn-webhook {
+      background: var(--brand-secondary-dark);
+      color: white;
+    }
+
+    .btn-webhook:hover {
+      background: #335b50;
+      box-shadow: 0 8px 22px rgba(66, 111, 98, 0.26);
+    }
+
+    .btn-danger {
+      background: white;
+      color: #8a3a36;
+      border: 1px solid #ead8d4;
+    }
+
+    .btn-danger:hover {
+      background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+      border-color: #fca5a5;
+      color: #dc2626;
+      box-shadow: 0 8px 28px rgba(220, 38, 38, 0.2);
+    }
+
+    .btn-toggle-active {
+      background: var(--brand-secondary-dark);
+      color: white;
+      border: 1px solid var(--brand-secondary-dark);
+      box-shadow: 0 8px 28px rgba(114, 67, 51, 0.24);
+    }
+
+    .button-group {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .table-container {
+      background: var(--card);
+      border-radius: 8px;
+      box-shadow:
+        0 10px 26px rgba(63, 39, 31, 0.07),
+        0 1px 2px rgba(0, 0, 0, 0.04);
+      border: 1px solid var(--border-soft);
+      overflow: hidden;
+    }
+
+    /* Wrapper handles horizontal scroll — sticky bottom keeps scrollbar visible on screen */
+    .table-scroll-wrapper {
+      overflow-x: auto;
+      max-height: calc(100vh - 146px);
+      overflow-y: auto;
+    }
+
+    /* Make the horizontal scrollbar stick to the bottom of the viewport */
+    .table-scroll-wrapper::-webkit-scrollbar {
+      height: 14px;
+    }
+    .table-scroll-wrapper::-webkit-scrollbar-track {
+      background: #f3ece5;
+      border-radius: 7px;
+    }
+    .table-scroll-wrapper::-webkit-scrollbar-thumb {
+      background: var(--brand-secondary);
+      border-radius: 7px;
+      border: 2px solid #f3ece5;
+    }
+    .table-scroll-wrapper::-webkit-scrollbar-thumb:hover {
+      background: var(--brand-secondary);
+    }
+
+    table {
+      width: 100%;
+      min-width: 1835px;
+      border-collapse: collapse;
+      table-layout: fixed;
+    }
+
+    th:nth-child(1), td:nth-child(1) { width: 48px; }
+    th:nth-child(2), td:nth-child(2) { width: 34px; }
+    th:nth-child(3), td:nth-child(3) { width: 120px; }
+    th:nth-child(4), td:nth-child(4) { width: 84px; }
+    th:nth-child(5), td:nth-child(5) { width: 155px; }
+    th:nth-child(6), td:nth-child(6) { width: 130px; }
+    th:nth-child(7), td:nth-child(7) { width: 150px; }
+    th:nth-child(8), td:nth-child(8) { width: 75px; }
+    th:nth-child(9), td:nth-child(9) { width: 70px; }
+    th:nth-child(10), td:nth-child(10) { width: 68px; }
+    th:nth-child(11), td:nth-child(11) { width: 92px; }
+    th:nth-child(12), td:nth-child(12) { width: 60px; }
+    th:nth-child(13), td:nth-child(13) { width: 95px; }
+    th:nth-child(14), td:nth-child(14) { width: 110px; }
+    th:nth-child(15), td:nth-child(15) { width: 110px; }
+    th:nth-child(16), td:nth-child(16) { width: 105px; }
+    th:nth-child(17), td:nth-child(17) { width: 72px; }
+    th:nth-child(18), td:nth-child(18) { width: 70px; }
+    th:nth-child(19), td:nth-child(19) { width: 55px; }
+    th:nth-child(20), td:nth-child(20) { width: 225px; }
+
+    thead {
+      background: var(--brand-primary-dark);
+    }
+
+    th {
+      background: var(--brand-primary-dark);
+      color: white;
+      font-family: 'Manrope', 'Source Sans 3', sans-serif;
+      font-weight: 800;
+      text-align: left;
+      padding: 8px 7px;
+      font-size: 10.5px;
+      text-transform: uppercase;
+      letter-spacing: 0;
+      cursor: pointer;
+      transition: background 0.2s ease;
+      user-select: none;
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    th:first-child {
+      text-align: center;
+      width: 34px;
+      cursor: default;
+    }
+
+    th:first-child:hover {
+      background: var(--brand-primary-dark);
+    }
+
+    th:hover {
+      background: var(--brand-primary);
+    }
+
+    th.sort-asc::after {
+      content: " ▲";
+      font-size: 10px;
+    }
+
+    th.sort-desc::after {
+      content: " ▼";
+      font-size: 10px;
+    }
+
+    td {
+      padding: 6px 7px;
+      border-bottom: 1px solid #efe8e1;
+      font-size: 12px;
+      color: var(--text-body);
+      font-weight: 500;
+      transition: background-color 0.2s ease;
+      line-height: 1.25;
+      white-space: normal;
+      overflow: visible;
+      text-overflow: clip;
+      height: auto;
+      min-height: 34px;
+      word-break: break-word;
+    }
+
+    td:first-child {
+      text-align: center;
+      font-weight: 600;
+    }
+
+    tbody tr {
+      transition: all 0.2s ease;
+    }
+
+    tbody tr:nth-child(even) {
+      background-color: #fdfbf8;
+    }
+
+    tbody tr:hover {
+      background-color: #f4eee7;
+    }
+
+    tbody tr:last-child td {
+      border-bottom: none;
+    }
+
+    /* Parent and child rows created by Extract Locations */
+    tbody tr.location-extracted-row,
+    tbody tr.location-extracted-row:nth-child(even) {
+      background-color: #d9f5e6;
+      border-left: 4px solid #2f8f62;
+    }
+
+    tbody tr.location-extracted-row:hover {
+      background-color: #c6ecd8;
+    }
+
+    tbody tr.location-extracted-row td {
+      border-bottom-color: #b8dfca;
+    }
+
+    td a {
+      color: var(--brand-secondary-dark);
+      text-decoration: none;
+      font-weight: 700;
+      transition: color 0.2s ease;
+      white-space: normal;
+      word-break: break-word;
+    }
+
+    td a:hover {
+      color: var(--brand-primary-dark);
+      text-decoration: underline;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 100px 48px;
+      animation: fadeIn 0.5s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .empty-state-icon {
+      width: 120px;
+      height: 120px;
+      background: var(--brand-highlight);
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 32px;
+      border: 1px solid var(--brand-secondary);
+      box-shadow: 0 8px 32px rgba(114, 67, 51, 0.14);
+    }
+
+    .empty-state svg {
+      width: 56px;
+      height: 56px;
+      fill: var(--brand-primary);
+    }
+
+    .empty-state h2 {
+      font-family: 'Manrope', 'Source Sans 3', sans-serif;
+      color: var(--text-strong);
+      font-size: 26px;
+      font-weight: 800;
+      margin-bottom: 16px;
+      letter-spacing: 0;
+    }
+
+    .empty-state p {
+      color: var(--text-muted);
+      font-size: 16px;
+      max-width: 450px;
+      margin: 0 auto;
+      line-height: 1.7;
+      font-weight: 500;
+    }
+
+    /* Progress Bar */
+    .progress-section {
+      background: var(--card);
+      border-radius: 8px;
+      padding: 8px 10px;
+      margin-bottom: 8px;
+      box-shadow: 0 8px 24px rgba(63, 39, 31, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+      border: 1px solid var(--border-soft);
+    }
+
+    .progress-info {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .progress-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-body);
+    }
+
+    .progress-text {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--brand-secondary-dark);
+    }
+
+    .progress-bar-container {
+      width: 100%;
+      height: 6px;
+      background: #f2e9e0;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: var(--brand-secondary);
+      border-radius: 3px;
+      transition: width 0.3s ease;
+      width: 0%;
+    }
+
+    /* Description Column */
+    .description-cell {
+      max-height: 32px;
+      overflow-y: auto;
+      font-size: 10px;
+      line-height: 1.25;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--text-body);
+      padding: 3px 5px;
+      background: #fffdf9;
+      border-radius: 4px;
+      border: 1px solid var(--border-soft);
+      min-width: 160px;
+      max-width: 220px;
+    }
+
+    .description-view-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 28px;
+      padding: 6px 8px;
+      border: none;
+      border-radius: 6px;
+      background: var(--brand-secondary-dark);
+      color: white;
+      font-size: 10px;
+      font-weight: 700;
+      cursor: pointer;
+      box-shadow: 0 3px 10px rgba(114, 67, 51, 0.18);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .description-view-btn:hover {
+      transform: translateY(-1px);
+      background: var(--brand-primary);
+      box-shadow: 0 6px 16px rgba(114, 67, 51, 0.25);
+    }
+
+    .description-view-content {
+      max-height: 64vh;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: #fffdf9;
+      border: 1px solid var(--border-soft);
+      border-radius: 10px;
+      padding: 14px;
+      color: var(--text-body);
+      font-size: 14px;
+      line-height: 1.55;
+    }
+
+    td:has(.description-cell) {
+      overflow: hidden;
+      vertical-align: top;
+    }
+
+    .selection-cell {
+      text-align: center;
+      vertical-align: middle;
+    }
+
+    .selection-checkbox {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--brand-secondary-dark);
+      cursor: pointer;
+    }
+
+    tr.row-selected td {
+      background: rgba(109, 155, 137, 0.15);
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(79, 46, 36, 0.54);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      z-index: 10000;
+      backdrop-filter: blur(4px);
+    }
+
+    .modal-card {
+      width: min(980px, 100%);
+      max-height: 92vh;
+      overflow-y: auto;
+      background: var(--card);
+      border-radius: 10px;
+      box-shadow: 0 28px 80px rgba(79, 46, 36, 0.26);
+      border: 1px solid var(--border-soft);
+      padding: 20px;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .modal-header h2 {
+      font-size: 18px;
+      font-family: 'Manrope', 'Source Sans 3', sans-serif;
+      font-weight: 800;
+      color: var(--brand-primary-dark);
+      margin-bottom: 4px;
+    }
+
+    .modal-header p {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .modal-close {
+      background: #fffdf9;
+      color: var(--text-body);
+      border: 1px solid var(--border-soft);
+      border-radius: 8px;
+      width: 36px;
+      height: 36px;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .edit-form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .form-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .form-field.full-width {
+      grid-column: 1 / -1;
+    }
+
+    .form-field label {
+      font-size: 11px;
+      font-weight: 700;
+      color: var(--text-body);
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .form-field input,
+    .form-field textarea,
+    .form-field select {
+      width: 100%;
+      padding: 9px 11px;
+      border: 1px solid var(--border-soft);
+      border-radius: 8px;
+      font-size: 14px;
+      color: var(--text-strong);
+      background: #fffdf9;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    .form-field input:focus,
+    .form-field textarea:focus,
+    .form-field select:focus {
+      border-color: var(--brand-secondary);
+      box-shadow: 0 0 0 4px var(--focus-ring);
+      background: white;
+    }
+
+    .form-field textarea {
+      min-height: 130px;
+      resize: vertical;
+    }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 18px;
+    }
+
+    @media (max-width: 900px) {
+      .edit-form-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .toast {
+      position: fixed;
+      bottom: 32px;
+      right: 32px;
+      padding: 18px 28px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      z-index: 9999;
+      animation: slideInUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(8px);
+    }
+
+    .toast svg {
+      width: 22px;
+      height: 22px;
+      fill: currentColor;
+    }
+
+    .toast.success {
+      background: var(--brand-secondary-dark);
+      color: white;
+    }
+
+    .toast.error {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: white;
+    }
+
+    @keyframes slideInUp {
+      from {
+        transform: translateY(100px);
+        opacity: 0;
+      }
+      to {
+        transform: translateY(0);
+        opacity: 1;
+      }
+    }
+
+    /* Scrollbar styling */
+    ::-webkit-scrollbar {
+      width: 10px;
+      height: 10px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #f3ece5;
+      border-radius: 8px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--brand-secondary);
+      border-radius: 8px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--brand-primary);
+    }
+
+    @media (max-width: 1024px) {
+      .header {
+        padding: 32px 24px;
+      }
+
+      .container {
+        padding: 28px 24px;
+      }
+
+      .header-content {
+        flex-direction: column;
+        gap: 24px;
+        text-align: center;
+      }
+
+      .header-left {
+        flex-direction: column;
+      }
+
+      .toolbar {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .search-box {
+        max-width: 100%;
+      }
+
+      .button-group {
+        justify-content: center;
+      }
+
+      .webhook-row {
+        flex-direction: column;
+        align-items: stretch;
+      }
+
+      .webhook-bar label {
+        min-width: auto;
+      }
+
+      .webhook-input-group {
+        min-width: auto;
+      }
+
+      .table-container {
+        overflow-x: auto;
+      }
+
+      table {
+        min-width: 800px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="version-tag">v2.0</span>
+    <div class="header-content">
+      <div class="header-left">
+        <div class="logo-icon">
+          <img src="icons/petfolk-logo.png" alt="Petfolk">
+        </div>
+        <div>
+          <h1>Scraped Job Records</h1>
+          <p>Petfolk Job Listings</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div class="stats-badge">
+          <strong id="totalCount">0</strong>
+          <span>Jobs Found</span>
+        </div>
+        <button class="btn btn-primary" id="exportCsv">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M12,19L8,15H10.5V12H13.5V15H16L12,19Z"/>
+          </svg>
+          Export CSV
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="webhook-bar">
+      <div class="webhook-row">
+        <label>Webhook URL:</label>
+        <div class="webhook-input-group">
+          <input type="url" id="webhookUrl" placeholder="Enter webhook URL or leave blank for localhost">
+          <button class="btn btn-webhook" id="sendToWebhook">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M4.93,3.93C3.12,5.74 2,8.24 2,11C2,13.76 3.12,16.26 4.93,18.07L6.34,16.66C4.89,15.22 4,13.22 4,11C4,8.79 4.89,6.78 6.34,5.34L4.93,3.93M19.07,3.93L17.66,5.34C19.11,6.78 20,8.79 20,11C20,13.22 19.11,15.22 17.66,16.66L19.07,18.07C20.88,16.26 22,13.76 22,11C22,8.24 20.88,5.74 19.07,3.93M7.76,6.76C6.67,7.85 6,9.35 6,11C6,12.65 6.67,14.15 7.76,15.24L9.17,13.83C8.45,13.11 8,12.11 8,11C8,9.89 8.45,8.89 9.17,8.17L7.76,6.76M16.24,6.76L14.83,8.17C15.55,8.89 16,9.89 16,11C16,12.11 15.55,13.11 14.83,13.83L16.24,15.24C17.33,14.15 18,12.65 18,11C18,9.35 17.33,7.85 16.24,6.76M12,9A2,2 0 0,0 10,11A2,2 0 0,0 12,13A2,2 0 0,0 14,11A2,2 0 0,0 12,9M11,15V19H10A1,1 0 0,0 9,20H2V22H9A1,1 0 0,0 10,23H14A1,1 0 0,0 15,22H22V20H15A1,1 0 0,0 14,19H13V15H11Z"/>
+            </svg>
+            Send to Webhook
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <div class="search-box">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+          <path d="M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z"/>
+        </svg>
+        <input type="text" id="searchInput" placeholder="Search jobs by title, hospital, location...">
+      </div>
+      <div class="button-group">
+        <button class="btn btn-primary" id="getDescriptionsBtn">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M13,13H11V18H13V13M13,9.5H11V11.5H13V9.5Z"/>
+          </svg>
+          Get Descriptions
+        </button>
+        <button class="btn btn-primary" id="extractLocationsBtn">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12,2C8.13,2 5,5.13 5,9C5,14.25 12,22 12,22C12,22 19,14.25 19,9C19,5.13 15.87,2 12,2M12,11.5C10.62,11.5 9.5,10.38 9.5,9C9.5,7.62 10.62,6.5 12,6.5C13.38,6.5 14.5,7.62 14.5,9C14.5,10.38 13.38,11.5 12,11.5Z"/>
+          </svg>
+          Extract Locations
+        </button>
+        <button class="btn btn-primary" id="fetchDetailsBtn">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M11,7V13L16.2,16.2L17,14.9L12.5,12.2V7H11Z"/>
+          </svg>
+          Fetch Details
+        </button>
+        <button class="btn btn-primary" id="fetchAddressesBtn">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12,2C8.13,2 5,5.13 5,9C5,14.25 12,22 12,22C12,22 19,14.25 19,9C19,5.13 15.87,2 12,2M12,11.5C10.62,11.5 9.5,10.38 9.5,9C9.5,7.62 10.62,6.5 12,6.5C13.38,6.5 14.5,7.62 14.5,9C14.5,10.38 13.38,11.5 12,11.5Z"/>
+          </svg>
+          Fetch Addresses
+        </button>
+        <button class="btn btn-primary hidden" id="editSelectedJob">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M14.06,9.02L14.98,9.94L5.92,19H5V18.08L14.06,9.02M17.66,3C17.41,3 17.16,3.1 16.97,3.29L15.13,5.13L18.87,8.87L20.71,7.03C21.1,6.64 21.1,6 20.71,5.61L18.39,3.29C18.19,3.1 17.95,3 17.66,3M14.06,6.2L3,17.26V21H6.74L17.8,9.94L14.06,6.2Z"/>
+          </svg>
+          Edit Selected
+        </button>
+        <button class="btn btn-danger hidden" id="deleteSelectedJobs">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6Z"/>
+          </svg>
+          Delete Selected
+        </button>
+        <button class="btn btn-danger" id="clearDetailsBtn">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M7,15H17V13H7V15M7,11H17V9H7V11Z"/>
+          </svg>
+          Clear Details
+        </button>
+        <button class="btn btn-danger" id="clearDescriptions">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M13,13V18H11V13H13M13,9H11V11H13V9Z"/>
+          </svg>
+          Clear Descriptions
+        </button>
+        <button class="btn btn-danger" id="clearAddresses">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M12,11.5A2.5,2.5 0 0,1 9.5,9A2.5,2.5 0 0,1 12,6.5A2.5,2.5 0 0,1 14.5,9A2.5,2.5 0 0,1 12,11.5M12,2A7,7 0 0,0 5,9C5,14.25 12,22 12,22C12,22 19,14.25 19,9A7,7 0 0,0 12,2Z"/>
+          </svg>
+          Clear Addresses
+        </button>
+        <button class="btn btn-danger" id="clearRecords">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+            <path d="M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z"/>
+          </svg>
+          Clear All
+        </button>
+      </div>
+    </div>
+
+    <div class="progress-section hidden" id="progressSection">
+      <div class="progress-info">
+        <span class="progress-label" id="progressLabel">Progress</span>
+        <span class="progress-text" id="progressText">0 / 0</span>
+      </div>
+      <div class="progress-bar-container">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+    </div>
+
+    <div class="table-container">
+      <div class="table-scroll-wrapper">
+      <table id="jobRecordsTable">
+        <thead>
+          <tr>
+            <th class="selection-cell">
+              <input type="checkbox" id="selectAllVisibleJobs" class="selection-checkbox" aria-label="Select all visible jobs">
+            </th>
+            <th>#</th>
+            <th data-sort="title">Job Title</th>
+            <th data-sort="jobId">Job ID</th>
+            <th data-sort="hospital">Hospital</th>
+            <th>Aggregator</th>
+            <th data-sort="streetAddress">Street Address</th>
+            <th data-sort="city">City</th>
+            <th data-sort="state">State</th>
+            <th data-sort="zipCode">Zip Code</th>
+            <th data-sort="phone">Phone</th>
+            <th data-sort="website">Website</th>
+            <th data-sort="location">Location</th>
+            <th data-sort="areaOfPractice">Area of Practice</th>
+            <th data-sort="position">Position</th>
+            <th data-sort="salary">Salary</th>
+            <th data-sort="jobType">Job Type</th>
+            <th data-sort="experience">Experience</th>
+            <th data-sort="link">Link</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Scraped data will be inserted here by records.js -->
+        </tbody>
+      </table>
+      </div><!-- end table-scroll-wrapper -->
+      <div id="emptyState" class="empty-state hidden">
+        <div class="empty-state-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+            <path d="M20,6H12L10,4H4A2,2 0 0,0 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8A2,2 0 0,0 20,6M20,18H4V6H9.17L11.17,8H20V18M15,13H17V15H15V17H13V15H11V13H13V11H15V13Z"/>
+          </svg>
+        </div>
+        <h2>No Jobs Scraped Yet</h2>
+        <p>Visit the Petfolk Rippling careers page and use the extension to scrape available job listings.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="editJobModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h2>Edit Job Record</h2>
+          <p id="editJobMeta">Update the selected record and save it back to the extension storage.</p>
+        </div>
+        <button class="modal-close" id="closeEditJobModal" type="button">X</button>
+      </div>
+      <form id="editJobForm">
+        <div class="edit-form-grid">
+          <div class="form-field">
+            <label for="editJobTitle">Job Title</label>
+            <input type="text" id="editJobTitle" name="title">
+          </div>
+          <div class="form-field">
+            <label for="editJobHospital">Hospital</label>
+            <input type="text" id="editJobHospital" name="hospital">
+          </div>
+          <div class="form-field">
+            <label for="editJobLocation">Location</label>
+            <input type="text" id="editJobLocation" name="location">
+          </div>
+          <div class="form-field">
+            <label for="editJobStreetAddress">Street Address</label>
+            <input type="text" id="editJobStreetAddress" name="streetAddress">
+          </div>
+          <div class="form-field">
+            <label for="editJobCity">City</label>
+            <input type="text" id="editJobCity" name="city">
+          </div>
+          <div class="form-field">
+            <label for="editJobState">State</label>
+            <input type="text" id="editJobState" name="state">
+          </div>
+          <div class="form-field">
+            <label for="editJobZipCode">Zip Code</label>
+            <input type="text" id="editJobZipCode" name="zipCode">
+          </div>
+          <div class="form-field">
+            <label for="editJobPhone">Phone</label>
+            <input type="text" id="editJobPhone" name="phone">
+          </div>
+          <div class="form-field">
+            <label for="editJobWebsite">Website</label>
+            <input type="url" id="editJobWebsite" name="website">
+          </div>
+          <div class="form-field">
+            <label for="editJobAreaOfPractice">Area of Practice</label>
+            <input type="text" id="editJobAreaOfPractice" name="areaOfPractice">
+          </div>
+          <div class="form-field">
+            <label for="editJobPosition">Position</label>
+            <input type="text" id="editJobPosition" name="position">
+          </div>
+          <div class="form-field">
+            <label for="editJobSalary">Salary</label>
+            <input type="text" id="editJobSalary" name="salary">
+          </div>
+          <div class="form-field">
+            <label for="editJobType">Job Type</label>
+            <input type="text" id="editJobType" name="jobType">
+          </div>
+          <div class="form-field">
+            <label for="editJobExperience">Experience</label>
+            <input type="text" id="editJobExperience" name="experience">
+          </div>
+          <div class="form-field full-width">
+            <label for="editJobDescription">Description</label>
+            <textarea id="editJobDescription" name="description"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-danger" id="cancelEditJob" type="button">Cancel</button>
+          <button class="btn btn-primary" type="submit">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="modal-overlay hidden" id="descriptionModal">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h2 id="descriptionModalTitle">Job Description</h2>
+          <p id="descriptionModalMeta">Saved description for the selected job.</p>
+        </div>
+        <button class="modal-close" id="closeDescriptionModal" type="button">X</button>
+      </div>
+      <div class="description-view-content" id="descriptionModalContent"></div>
+    </div>
+  </div>
+
+  <div id="toastContainer"></div>
+  <script src="records.js"></script>
+</body>
+</html>
