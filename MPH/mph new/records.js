@@ -621,7 +621,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     zipCode: parsed.zipCode,
                     fullAddress: parsed.fullAddress,
                     website: config.website,
-                    phone: extractPhoneFromText(htmlToPlainText(html))
+                    phone: extractPhoneFromText(htmlToPlainText(html)),
+                    allowPostalCityMismatch: true
                 };
             }
         } catch (error) {
