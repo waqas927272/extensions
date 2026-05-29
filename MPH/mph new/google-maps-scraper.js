@@ -106,17 +106,20 @@
     function findBestMatch(links, searchQuery) {
         if (!searchQuery || links.length === 0) return null;
 
-        const stopWords = new Set(['the', 'and', 'for', 'with', 'veterinary', 'animal', 'pet', 'hospital', 'clinic', 'center', 'centre']);
+        const stopWords = new Set(['the', 'and', 'for', 'with', 'of', 'at', 'in', 'veterinary', 'animal', 'pet']);
+        const facilityWords = new Set(['hospital', 'clinic', 'center', 'centre']);
 
         // Normalize for comparison: lowercase, remove special chars
         const normalize = (str) => str.toLowerCase()
             .replace(/&/g, 'and')
+            .replace(/\bcentre\b/g, 'center')
             .replace(/[^a-z0-9\s]/g, '')
             .replace(/\s+/g, ' ')
             .trim();
 
         const queryNorm = normalize(searchQuery);
-        const queryWords = queryNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w));
+        const queryWords = queryNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w) && !facilityWords.has(w));
+        const queryHasFacilityWord = queryNorm.split(' ').some(w => facilityWords.has(w));
 
         let bestLink = null;
         let bestScore = 0;
@@ -128,12 +131,15 @@
             if (isLivewellQuery(searchQuery) && !labelNorm.includes('livewell')) {
                 continue;
             }
-            const labelWords = new Set(labelNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w)));
+            const cardText = normalize(link.closest('article, [role="article"], .Nv2PK, .bfdHYd')?.textContent || '');
+            const haystack = `${labelNorm} ${cardText}`.trim();
+            const haystackWords = new Set(haystack.split(' ').filter(w => w.length > 2 && !stopWords.has(w)));
+            const haystackHasFacilityWord = haystack.split(' ').some(w => facilityWords.has(w));
 
             // Count how many query words appear in the label
             let matchCount = 0;
             for (const word of queryWords) {
-                if (labelNorm.includes(word) || labelWords.has(word)) {
+                if (haystack.includes(word) || haystackWords.has(word)) {
                     matchCount++;
                 }
             }
@@ -142,6 +148,7 @@
             let score = queryWords.length > 0 ? matchCount / queryWords.length : 0;
             if (labelNorm === queryNorm) score += 0.5;
             if (labelNorm.startsWith(queryNorm) || queryNorm.startsWith(labelNorm)) score += 0.2;
+            if (queryHasFacilityWord && haystackHasFacilityWord) score += 0.1;
 
             if (score > bestScore) {
                 bestScore = score;

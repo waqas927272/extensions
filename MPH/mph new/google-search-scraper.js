@@ -28,7 +28,7 @@
             }
         }
 
-        return extractLeftSideResult() || emptyResult(panel ? 'no_panel_or_left_address' : 'no_panel_or_left_match');
+        return extractLeftSideResult() || extractWholePageResult() || emptyResult(panel ? 'no_panel_or_left_address' : 'no_panel_or_left_match');
     } catch (error) {
         return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: error.message };
     }
@@ -171,6 +171,36 @@
         return best;
     }
 
+    function extractWholePageResult() {
+        const expected = getExpectedSearchParts();
+        const text = cleanText(document.body?.innerText || document.body?.textContent || '');
+        if (!text) return null;
+
+        const address = extractAddress(text, document.body);
+        if (!address) return null;
+
+        const parsed = parseAddress(address);
+        if (!parsed.streetAddress || !parsed.zipCode) return null;
+
+        const businessName = extractBusinessNameFromPanel(getKnowledgePanelRoot()) || expected.name || '';
+        const score = scoreLeftSideCandidate({ text, businessName, parsed, expected });
+        if (score < 4) return null;
+
+        return {
+            businessName,
+            fullAddress: address,
+            streetAddress: parsed.streetAddress || '',
+            city: parsed.city || '',
+            state: parsed.state || '',
+            zipCode: parsed.zipCode || '',
+            phone: extractPhone(text) || '',
+            website: extractWebsiteFromPanel(document.body) || '',
+            panelText: text,
+            source: 'google_whole_page',
+            score
+        };
+    }
+
     function getExpectedSearchParts() {
         let query = '';
         try {
@@ -269,18 +299,15 @@
     function requiredFacilityPhraseMatches(expectedName, text) {
         const expected = normalizeName(expectedName);
         const haystack = normalizeName(text);
-        const phrases = [
-            'animal hospital',
-            'veterinary clinic',
-            'veterinary hospital',
-            'pet hospital',
-            'animal clinic',
-            'veterinary center',
-            'animal medical center',
-            'urgent care'
-        ].filter(phrase => expected.includes(phrase));
+        const facilityGroups = [
+            ['animal hospital', 'animal clinic', 'animal center', 'animal centre', 'veterinary hospital', 'veterinary clinic', 'veterinary center', 'veterinary centre'],
+            ['pet hospital', 'pet clinic', 'pet center', 'pet centre'],
+            ['animal medical center', 'animal medical centre', 'animal medical clinic', 'animal medical hospital'],
+            ['urgent care', 'emergency care', 'veterinary urgent care']
+        ];
+        const requiredGroups = facilityGroups.filter(group => group.some(phrase => expected.includes(phrase)));
 
-        return phrases.length === 0 || phrases.some(phrase => haystack.includes(phrase));
+        return requiredGroups.length === 0 || requiredGroups.some(group => group.some(phrase => haystack.includes(phrase)));
     }
 
     function normalizeName(value) {
@@ -431,8 +458,9 @@
             .replace(/^Address\s*[:\n]\s*/i, '')
             .replace(/\s+/g, ' ')
             .replace(/\s*,\s*/g, ', ')
-            .replace(/\s+(?:United States|USA)\s*$/i, '')
+            .replace(/,?\s+(?:United States|USA)\s*$/i, '')
             .replace(/\s+(?:Website|Phone|Directions|Hours|Open|Closed).*$/i, '')
+            .replace(/,\s*$/, '')
             .trim();
     }
 
