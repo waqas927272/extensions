@@ -4,10 +4,14 @@ const SUPPORTED_URLS = [
 const REQUIRED_DEPARTMENT = 'Medical';
 const SKIPPED_JOB_COUNT_LABELS = ['Locum', 'Relief', 'Mentorship', 'Weekend'];
 
+function isPetfolkRipplingJobsPath(pathname = '') {
+    return /^\/(?:[a-z]{2}(?:-[a-z]{2})?\/)?petfolk\/jobs\/?$/i.test(pathname);
+}
+
 function isSupportedPage(url = '') {
     try {
         const parsed = new URL(url);
-        return parsed.hostname === 'ats.rippling.com' && parsed.pathname === '/petfolk/jobs';
+        return parsed.hostname === 'ats.rippling.com' && isPetfolkRipplingJobsPath(parsed.pathname);
     } catch (_) {
         return SUPPORTED_URLS.some(pattern => url.includes(pattern));
     }

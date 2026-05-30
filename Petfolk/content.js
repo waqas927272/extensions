@@ -1,6 +1,7 @@
 // Petfolk Job Scraper - Content Script
 // Supports:
 //   - https://ats.rippling.com/petfolk/jobs*
+//   - https://ats.rippling.com/{locale}/petfolk/jobs*
 
 (async () => {
     try {
@@ -64,7 +65,12 @@
 })();
 
 function detectPageType(url) {
-    if (url.includes('ats.rippling.com/petfolk/jobs')) return 'rippling';
+    try {
+        const parsed = new URL(url);
+        if (parsed.hostname === 'ats.rippling.com' && /\/petfolk\/jobs(?:\/|$)/i.test(parsed.pathname)) return 'rippling';
+    } catch (_) {
+        if (/ats\.rippling\.com\/(?:[^/]+\/)?petfolk\/jobs/i.test(url)) return 'rippling';
+    }
     if (url.includes('/agency/')) return 'agency';
     return 'marketplace';
 }

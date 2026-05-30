@@ -28,7 +28,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://ats.rippling.com/petfolk/jobs*"
+        "https://ats.rippling.com/petfolk/jobs*",
+        "https://ats.rippling.com/*/petfolk/jobs*"
       ],
       "js": ["content.js"]
     }
