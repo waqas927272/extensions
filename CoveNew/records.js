@@ -380,9 +380,10 @@ document.addEventListener('DOMContentLoaded', () => {
         // Emergency
         if (t.includes('emergency') || t.match(/\ber\b/) || t.includes('er vet') || t.includes('er dvm')) return 'Emergency Care';
 
-        // Equine/Bovine/Exotics
+        // Equine/Bovine/Exotics default to GP unless the title/category already
+        // identified Emergency, Urgent Care, or Specialty above.
         if (t.includes('equine') || t.includes('bovine') || t.includes('large animal') ||
-            t.includes('avian') || t.includes('exotics')) return 'General Practice Care / Emergency Care / Urgent Care';
+            t.includes('avian') || t.includes('exotics')) return 'General Practice Care';
 
         return '';
     }
@@ -580,10 +581,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 return 'Emergency Care';
             }
 
-            // STEP 4: Check TITLE for equine/bovine/large animal/avian/exotics
+            // STEP 4: Check TITLE for equine/bovine/large animal/avian/exotics.
+            // Keep this as one AOP; explicit Emergency/Urgent/Specialty signals
+            // are handled before this fallback.
             if (title.includes('equine') || title.includes('bovine') || title.includes('large animal') ||
                 title.includes('avian') || title.includes('exotics')) {
-                return 'General Practice Care / Emergency Care / Urgent Care';
+                return 'General Practice Care';
             }
 
             // STEP 5: For generic titles, check ONLY the qualifications section

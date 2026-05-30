@@ -332,10 +332,12 @@
         // STEP 4: Urgent Care from title
         if (titleLower.includes('urgent care')) return 'Urgent Care';
 
-        // STEP 5: Equine/Bovine/Exotics from title
+        // STEP 5: Equine/Bovine/Exotics from title.
+        // Use one default AOP; explicit Emergency/Urgent/Specialty signals are
+        // handled before this fallback.
         if (titleLower.includes('equine') || titleLower.includes('bovine') || titleLower.includes('large animal') ||
             titleLower.includes('avian') || titleLower.includes('exotics')) {
-            return 'General Practice Care / Emergency Care / Urgent Care';
+            return 'General Practice Care';
         }
 
         // STEP 6: Check qualifications section for specialty requirements

@@ -2,10 +2,12 @@
 if (!window.__COVENEW_SCRAPER_INITIALIZED__) {
     window.__COVENEW_SCRAPER_INITIALIZED__ = true;
 
-    const EXCLUDED_JOB_TITLE_PATTERN = /\b(?:veterinary\s+referral\s+manager|certified\s+canine\s+rehabilitation\s+practitioner|veterinary\s+emergency\s+administrative\s+liaison|mentor(?:ship|ing|ed|s)?|locum(?:s)?|relie(?:f|ver|vers)|releif|technician|veterinary\s+assistant|assistant|client\s+services?\s+coordinator|client\s+care\s+coordinator|client\s+services?|kennel\s+technician|hospital\s+manager|veterinary\s+(?:or\s+)?supervisor|veterinary[\w\s-]*specialty[\w\s-]*surgical[\w\s-]*supervisor|specialty[\w\s-]*surgical[\w\s-]*supervisor|area\s+director\s+of\s+operations|veterinary\s+department\s+manager|department\s+manager|veterinary\s+coordinator)\b/i;
+    const EXCLUDED_JOB_TITLE_PATTERN = /\b(?:digital\s+marketing|marketing|business\s+partner|student|externship|extern|internship|intern|veterinary\s+referral\s+manager|certified\s+canine\s+rehabilitation\s+practitioner|veterinary\s+emergency\s+administrative\s+liaison|mentor(?:ship|ing|ed|s)?|locum(?:s)?|relie(?:f|ver|vers)|releif|technician|veterinary\s+assistant|assistant|client\s+services?\s+coordinator|client\s+care\s+coordinator|client\s+services?|kennel\s+technician|hospital\s+manager|veterinary\s+(?:or\s+)?supervisor|veterinary[\w\s-]*specialty[\w\s-]*surgical[\w\s-]*supervisor|specialty[\w\s-]*surgical[\w\s-]*supervisor|area\s+director\s+of\s+operations|veterinary\s+department\s+manager|department\s+manager|veterinary\s+coordinator)\b/i;
+    const ALLOWED_JOB_TITLE_PATTERN = /\b(?:associate\s+veterinarian|lead\s+veterinarian|partner\s+veterinarian|veterinarian|dvm|medical\s+director|anesthesiologist|cardiologist|criticalist|ecc\s+specialist|internal\s+medicine\s+specialist|internist|dental\s+specialist|dermatologist|medical\s+oncologist|neurologist|neurosurgeon|ophthalmologist|radiation\s+oncologist|radiologist|surgeon|diplomate|board\s+certified|residency[-\s]+trained|dacv(?:ecc|im|r|s|d|o|aa)?|dacvr[-\s]?ro|davdc|dabvp)\b/i;
 
     function isExcludedJobListing(title, jobType = '') {
-        return EXCLUDED_JOB_TITLE_PATTERN.test(`${title || ''} ${jobType || ''}`);
+        const listingText = `${title || ''} ${jobType || ''}`;
+        return EXCLUDED_JOB_TITLE_PATTERN.test(listingText) || !ALLOWED_JOB_TITLE_PATTERN.test(listingText);
     }
 
     function parseCityState(locationText) {
