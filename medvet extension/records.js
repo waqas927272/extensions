@@ -189,7 +189,10 @@
     }
 
     function getDescriptionBodyText(descriptionText) {
-        return (descriptionText || '').split(/===\s*FULL JOB DESCRIPTION\s*===/i).pop() || descriptionText || '';
+        const body = (descriptionText || '').split(/===\s*FULL JOB DESCRIPTION\s*===/i).pop() || descriptionText || '';
+        return body
+            .replace(/\u00c2(?=\s|$)/g, ' ')
+            .replace(/\u00a0/g, ' ');
     }
 
     function stripHospitalLocationSuffix(hospitalName) {
@@ -249,9 +252,17 @@
 
     function resolveHospitalNameForSave(candidateHospitalName, currentHospitalName, fallbackBrand = 'MedVet') {
         const candidate = cleanHospitalNameCandidate(candidateHospitalName);
-        if (candidate) return candidate;
-
         const current = cleanHospitalNameCandidate(currentHospitalName);
+
+        // Never let a generic extraction such as "MedVet" erase a previously
+        // verified/specific facility name such as "MedVet Dallas".
+        if (candidate && addressQuality.isGenericHospitalName(candidate) && current && !addressQuality.isGenericHospitalName(current)) {
+            const candidateBrand = addressQuality.getBrand(candidate);
+            const currentBrand = addressQuality.getBrand(current);
+            if (candidateBrand === currentBrand) return current;
+        }
+
+        if (candidate) return candidate;
         if (current) return current;
 
         const brand = /westvet/i.test(`${candidateHospitalName || ''} ${currentHospitalName || ''}`) ? 'WestVet' : fallbackBrand;
@@ -2637,7 +2648,25 @@
         });
     }
 
-    function finishDetailsFetching() {
+    function reconcileGenericHospitalNames(jobs) {
+        return addressQuality.reconcileGenericHospitalNames(jobs);
+    }
+
+    async function finishDetailsFetching() {
+        let reconciledCount = 0;
+        try {
+            const data = await chrome.storage.local.get(['scrapedJobs']);
+            const jobs = data.scrapedJobs || [];
+            reconciledCount = reconcileGenericHospitalNames(jobs);
+            if (reconciledCount > 0) {
+                await chrome.storage.local.set({ scrapedJobs: jobs, records: jobs });
+                allJobs = jobs;
+                displayRecords(allJobs);
+            }
+        } catch (error) {
+            console.error('Error reconciling hospital names:', error);
+        }
+
         isFetchingDetails = false;
         fetchDetailsBtn.disabled = false;
         fetchDetailsBtn.innerHTML = `
@@ -2647,7 +2676,8 @@
             Fetch Details
         `;
         document.getElementById('progressSection').classList.add('hidden');
-        showToast(`Details fetched! Processed ${detailsQueue.length} jobs.`, 'success');
+        const reconciliationMessage = reconciledCount > 0 ? ` Corrected ${reconciledCount} generic hospital name(s).` : '';
+        showToast(`Details fetched! Processed ${detailsQueue.length} jobs.${reconciliationMessage}`, 'success');
     }
 
     // ============ FETCH ADDRESSES ============

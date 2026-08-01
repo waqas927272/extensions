@@ -222,8 +222,94 @@
         return candidateValidation.accepted ? candidateValidation.result : emptyAddressResult();
     }
 
+    function extractExplicitHospitalName(description, location, currentHospital = '') {
+        const locationParts = parseLocation(location);
+        const city = locationParts.city;
+        if (!city || !description) return '';
+
+        const body = (description || '')
+            .split(/===\s*FULL JOB DESCRIPTION\s*===/i)
+            .pop()
+            .replace(/\u00c2(?=\s|$)/g, ' ')
+            .replace(/\u00a0/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        const escapedCity = city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        const namedPattern = new RegExp(`\\b(Med\\s*Vet|WestVet)\\s+${escapedCity}\\b`, 'i');
+        const namedMatch = body.match(namedPattern);
+        if (namedMatch) {
+            const brand = /west/i.test(namedMatch[1]) ? 'WestVet' : 'MedVet';
+            return `${brand} ${city}`;
+        }
+
+        const cityHospitalPattern = new RegExp(
+            `\\b(?:join|support|serve|grow)[^.]{0,160}?\\bour\\s+(?:new\\s+)?${escapedCity}\\s*,[^.]{0,40}?\\bhospital\\b`,
+            'i'
+        );
+        if (cityHospitalPattern.test(body)) {
+            return `${getBrand(currentHospital) || getBrand(body) || 'MedVet'} ${city}`;
+        }
+
+        return '';
+    }
+
+    function reconcileGenericHospitalNames(records) {
+        const candidatesByLocation = new Map();
+        let updatedCount = 0;
+
+        for (const record of records || []) {
+            const explicitName = extractExplicitHospitalName(
+                record?.description || '',
+                record?.location || [record?.city, record?.state].filter(Boolean).join(', '),
+                record?.hospital || ''
+            );
+            if (explicitName && explicitName !== record.hospital) {
+                record.hospital = explicitName;
+                record.hospitalNameUpdated = true;
+                updatedCount++;
+            }
+        }
+
+        for (const record of records || []) {
+            const hospital = collapseRepeatedBrand(record?.hospital || '')
+                .replace(/\s*[|·].*$/, '')
+                .replace(/\s+/g, ' ')
+                .trim();
+            const brand = getBrand(hospital);
+            const locationKey = normalizeCompact(record?.location || [record?.city, record?.state].filter(Boolean).join(', '));
+            if (!brand || !locationKey || isGenericHospitalName(hospital) || hasSuspiciousHospitalSuffix(hospital)) continue;
+
+            const key = `${brand.toLowerCase()}|${locationKey}`;
+            if (!candidatesByLocation.has(key)) candidatesByLocation.set(key, new Map());
+            const counts = candidatesByLocation.get(key);
+            counts.set(hospital, (counts.get(hospital) || 0) + 1);
+        }
+
+        for (const record of records || []) {
+            const hospital = (record?.hospital || '').replace(/\s+/g, ' ').trim();
+            if (!isGenericHospitalName(hospital)) continue;
+
+            const brand = getBrand(hospital);
+            const locationKey = normalizeCompact(record?.location || [record?.city, record?.state].filter(Boolean).join(', '));
+            if (!brand || !locationKey) continue;
+
+            const counts = candidatesByLocation.get(`${brand.toLowerCase()}|${locationKey}`);
+            if (!counts || counts.size === 0) continue;
+
+            const ranked = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+            if (ranked.length > 1 && ranked[0][1] === ranked[1][1]) continue;
+
+            record.hospital = ranked[0][0];
+            record.hospitalNameUpdated = true;
+            updatedCount++;
+        }
+
+        return updatedCount;
+    }
+
     return {
         emptyAddressResult,
+        extractExplicitHospitalName,
         getBrand,
         isGenericHospitalName,
         normalizeCompact,
@@ -231,6 +317,7 @@
         normalizeState,
         parseLocation,
         placeNameMatchScore,
+        reconcileGenericHospitalNames,
         selectAtomicAddress,
         validateAddressCandidate
     };

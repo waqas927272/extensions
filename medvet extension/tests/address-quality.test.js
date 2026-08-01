@@ -133,6 +133,25 @@ test('accepts a strongly named facility with a legitimate mailing-city differenc
     assert.equal(validation.result.locationMismatch, true);
 });
 
+test('accepts the official MedVet West Chester township address', () => {
+    const validation = quality.validateAddressCandidate(candidate({
+        streetAddress: '7735 Liberty Field Dr',
+        city: 'West Chester Township',
+        state: 'OH',
+        zipCode: '45069',
+        fullAddress: '7735 Liberty Field Dr, West Chester Township, OH 45069',
+        phone: '513.298.4016',
+        website: 'https://www.medvet.com/location/west-chester/',
+        placeName: 'MedVet West Chester'
+    }), {
+        hospitalName: 'MedVet West Chester',
+        location: 'West Chester, Ohio'
+    });
+
+    assert.equal(validation.accepted, true);
+    assert.equal(validation.result.zipCode, '45069');
+});
+
 test('never combines partial fields from separate search attempts', () => {
     const partialAddress = candidate({ city: '', state: '', placeName: '' });
     const partialIdentity = candidate({ streetAddress: '', zipCode: '' });
@@ -182,6 +201,52 @@ test('repairs duplicated and prose-corrupted hospital search names', () => {
     );
 });
 
+test('reconciles generic Raleigh and Dallas rows from specific same-location jobs', () => {
+    const jobs = [
+        { hospital: 'MedVet Raleigh', location: 'Cary, North Carolina' },
+        { hospital: 'MedVet Raleigh', location: 'Cary, North Carolina' },
+        { hospital: 'MedVet', location: 'Cary, North Carolina' },
+        { hospital: 'MedVet Dallas', location: 'Dallas, Texas' },
+        { hospital: 'MedVet', location: 'Dallas, Texas' },
+        { hospital: 'WestVet Meridian', location: 'Meridian, Idaho' },
+        { hospital: 'WestVet', location: 'Meridian, Idaho' },
+        {
+            hospital: 'MedVet Cincinnati',
+            location: 'West Chester, Ohio',
+            description: '=== FULL JOB DESCRIPTION === Why Join MedVet West Chester? Take a video tour of our hospital.'
+        }
+    ];
+
+    const updated = quality.reconcileGenericHospitalNames(jobs);
+
+    assert.equal(updated, 4);
+    assert.equal(jobs[2].hospital, 'MedVet Raleigh');
+    assert.equal(jobs[4].hospital, 'MedVet Dallas');
+    assert.equal(jobs[6].hospital, 'WestVet Meridian');
+    assert.equal(jobs[7].hospital, 'MedVet West Chester');
+});
+
+test('extracts an explicit hospital name despite mojibake spacing', () => {
+    const description = '=== FULL JOB DESCRIPTION === Now hiring at MedVet\u00c2 Dallas. Why Join MedVet\u00c2 Dallas?';
+    assert.equal(
+        quality.extractExplicitHospitalName(description, 'Dallas, Texas', 'MedVet'),
+        'MedVet Dallas'
+    );
+});
+
+test('does not guess when a location has tied specific facility names', () => {
+    const jobs = [
+        { hospital: 'MedVet Alpha', location: 'Example, Ohio' },
+        { hospital: 'MedVet Beta', location: 'Example, Ohio' },
+        { hospital: 'MedVet', location: 'Example, Ohio' }
+    ];
+
+    const updated = quality.reconcileGenericHospitalNames(jobs);
+
+    assert.equal(updated, 0);
+    assert.equal(jobs[2].hospital, 'MedVet');
+});
+
 test('Google Search scraper does not scan arbitrary body text for addresses', () => {
     const scraper = fs.readFileSync(path.join(__dirname, '..', 'google-search-scraper.js'), 'utf8');
     assert.doesNotMatch(scraper, /extractAddress\(bodyText\)/);
@@ -191,6 +256,8 @@ test('Google Search scraper does not scan arbitrary body text for addresses', ()
 test('records pipeline uses the atomic selector instead of field-wise address merging', () => {
     const records = fs.readFileSync(path.join(__dirname, '..', 'records.js'), 'utf8');
     assert.match(records, /addressQuality\.selectAtomicAddress/);
+    assert.match(records, /candidate\s*&&\s*addressQuality\.isGenericHospitalName\(candidate\)/);
+    assert.match(records, /addressQuality\.reconcileGenericHospitalNames/);
     assert.doesNotMatch(records, /primary\.streetAddress\s*\|\|\s*safeSecondary\.streetAddress/);
 });
 
