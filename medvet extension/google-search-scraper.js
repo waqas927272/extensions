@@ -1,13 +1,12 @@
 // google-search-scraper.js
-// Injected into Google Search. Prefer the right-side knowledge panel/business card
-// for address, phone, and website, then fall back to visible result text.
+// Injected into Google Search. Only the right-side knowledge panel/business card
+// is trusted. General result text can contain unrelated veterinary businesses.
 (async () => {
     try {
         await waitForGoogleResults();
 
         const panelText = getKnowledgePanelText();
-        const bodyText = cleanText(document.body.innerText || '');
-        const address = extractAddress(panelText) || extractAddress(bodyText);
+        const address = extractAddress(panelText);
         const parsed = parseAddress(address);
 
         return {
@@ -16,10 +15,11 @@
             city: parsed.city || '',
             state: parsed.state || '',
             zipCode: parsed.zipCode || '',
-            phone: extractPhoneFromPanel() || extractPhone(panelText) || extractPhone(bodyText) || '',
-            website: extractWebsiteFromPanel() || extractWebsiteFromResults() || '',
+            phone: extractPhoneFromPanel() || extractPhone(panelText) || '',
+            website: extractWebsiteFromPanel() || '',
             placeName: extractPlaceNameFromPanel() || '',
-            panelText: panelText || ''
+            panelText: panelText || '',
+            sourceType: 'google-search-panel'
         };
     } catch (error) {
         return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: error.message };
@@ -37,10 +37,9 @@
         while (Date.now() < deadline) {
             await wait(500);
             const panelText = getKnowledgePanelText();
-            const bodyText = cleanText(document.body.innerText || '');
-            const text = panelText || bodyText;
+            const text = panelText;
 
-            if (extractAddress(panelText) || extractAddress(bodyText)) return;
+            if (extractAddress(panelText) && extractPlaceNameFromPanel()) return;
 
             if (text && text === lastText) stableCount++;
             else stableCount = 0;
@@ -124,6 +123,9 @@
     }
 
     function extractAddressFromAttributes() {
+        const panel = document.querySelector('#rhs') || document.querySelector('[role="complementary"]');
+        if (!panel) return '';
+
         const selectors = [
             '[data-attrid*="address"]',
             '[aria-label^="Address"]',
@@ -132,7 +134,7 @@
         ];
 
         for (const selector of selectors) {
-            for (const element of document.querySelectorAll(selector)) {
+            for (const element of panel.querySelectorAll(selector)) {
                 const text = cleanText(element.innerText || element.textContent || element.getAttribute('aria-label') || '');
                 if (/\d/.test(text) && /\b[A-Z]{2}\s+\d{5}/.test(text)) return text.replace(/^Address\s*[:\n]\s*/i, '');
             }
@@ -287,7 +289,10 @@
             });
         }
 
-        return safeAddressResult({ streetAddress: beforeStateZip, city: '', state, zipCode });
+        // Without a comma-delimited city, text such as
+        // "677 Brevard Rd. Asheville, NC 28806" is ambiguous and previously put
+        // Asheville inside the street while the caller substituted another city.
+        return { streetAddress: '', city: '', state: '', zipCode: '' };
     }
 
     function cleanText(text) {
