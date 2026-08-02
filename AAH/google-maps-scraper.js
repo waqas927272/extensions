@@ -10,9 +10,10 @@
 //
 // Uses polling — checks every 500ms for up to 15 seconds total.
 (async () => {
+    const scrapeContext = globalThis.__AAH_ADDRESS_CONTEXT__ || {};
     try {
-        const MAX_WAIT = 15000;   // 15 seconds max total
-        const POLL = 500;         // Check every 500ms
+        const MAX_WAIT = Number(scrapeContext.maxWaitMs) || 15000;   // 15 seconds max total
+        const POLL = Number(scrapeContext.pollMs) || 500;            // Check every 500ms
         const startTime = Date.now();
 
         // Helper: wait ms
@@ -57,7 +58,18 @@
 
         // Try matching results one by one. Some hospital names have multiple
         // branches, so the first fuzzy match is not always the right city.
-        const matchedResults = findMatchingResults(resultLinks, hospitalName);
+        let matchedResults = findMatchingResults(resultLinks, hospitalName);
+        const originalHospitalName = String(scrapeContext.originalHospitalName || '').trim();
+        if (originalHospitalName && originalHospitalName !== hospitalName) {
+            const originalMatches = findMatchingResults(resultLinks, originalHospitalName);
+            const seen = new Set(matchedResults.map(item => item.href || item.label));
+            matchedResults = matchedResults.concat(originalMatches.filter(item => {
+                const key = item.href || item.label;
+                if (seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            }));
+        }
         if (matchedResults.length === 0) {
             console.warn('No fuzzy business-name match found in Google Maps results');
             return emptyResult();
@@ -91,9 +103,8 @@
             }
         }
 
-        // Last resort: try extracting from whatever is on the page now
-        const fallback = tryExtractFromPageBody();
-        return fallback && shouldAcceptAddressData(fallback) ? fallback : emptyResult();
+        // Do not scan the full page body: it can contain unrelated result-card addresses.
+        return emptyResult();
 
     } catch (e) {
         return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: e.message };
@@ -102,6 +113,7 @@
     // ===== Extract hospital name from the Google Maps URL query =====
     // URL format: https://www.google.com/maps/search/Hospital+Name+City+State
     function getHospitalNameFromUrl() {
+        if (scrapeContext.hospitalName) return String(scrapeContext.hospitalName).trim();
         const url = window.location.href;
         const searchMatch = url.match(/\/maps\/search\/([^?#]+)/);
         if (searchMatch) {
@@ -123,6 +135,7 @@
             .replace(/&/g, 'and')
             .replace(/[^a-z0-9\s]/g, '')
             .replace(/\s+/g, ' ')
+            .replace(/\b(?:[a-z]\s+){2,}[a-z]\b/g, letters => letters.replace(/\s+/g, ''))
             .trim();
 
         const queryNorm = normalize(searchQuery);
@@ -170,9 +183,15 @@
     }
 
     function businessNameMatchesSearch(businessName) {
-        const searchName = getHospitalNameFromUrl();
-        if (!searchName || !businessName) return true;
-        return !!findBestMatch([{ getAttribute: () => businessName }], searchName);
+        if (!businessName) return true;
+        const expectedNames = [
+            getHospitalNameFromUrl(),
+            String(scrapeContext.originalHospitalName || '').trim()
+        ].filter(Boolean);
+        if (expectedNames.length === 0) return true;
+        return expectedNames.some(searchName =>
+            !!findBestMatch([{ getAttribute: () => businessName }], searchName)
+        );
     }
 
     function scoreBusinessName(label, searchQuery) {
@@ -182,10 +201,11 @@
             .replace(/&/g, 'and')
             .replace(/[^a-z0-9\s]/g, '')
             .replace(/\s+/g, ' ')
+            .replace(/\b(?:[a-z]\s+){2,}[a-z]\b/g, letters => letters.replace(/\s+/g, ''))
             .trim();
 
         const queryNorm = normalize(searchQuery);
-        const labelNorm = normalize(String(label || '').replace(/Â·.*$/, '').split(',')[0]);
+        const labelNorm = normalize(String(label || '').replace(/·.*$/, '').split(',')[0]);
         const queryWords = queryNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w));
         const labelWords = new Set(labelNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w)));
 
@@ -204,7 +224,7 @@
         if (!searchQuery || links.length === 0) return [];
         return Array.from(links)
             .map(link => {
-                const label = (link.getAttribute('aria-label') || '').replace(/Â·.*$/, '').trim();
+                const label = (link.getAttribute('aria-label') || '').replace(/·.*$/, '').trim();
                 return {
                     link,
                     href: link.href || link.getAttribute('href') || '',
@@ -216,20 +236,19 @@
             .sort((a, b) => b.score - a.score);
     }
 
-    function findBestMatch(links, searchQuery) {
-        const matches = findMatchingResults(links, searchQuery);
-        return matches.length ? matches[0].link : null;
-    }
-
     function findResultLink(candidate) {
         const links = Array.from(document.querySelectorAll('a.hfpxzc'));
         return links.find(link =>
             (candidate.href && (link.href === candidate.href || link.getAttribute('href') === candidate.href)) ||
-            ((link.getAttribute('aria-label') || '').replace(/Â·.*$/, '').trim() === candidate.label)
+            ((link.getAttribute('aria-label') || '').replace(/·.*$/, '').trim() === candidate.label)
         ) || null;
     }
 
     function getExpectedLocationFromUrl() {
+        if (scrapeContext.location) {
+            const parts = String(scrapeContext.location).split(',').map(part => part.trim()).filter(Boolean);
+            return { city: parts[0] || '', state: parts[1] || '' };
+        }
         const url = window.location.href;
         const searchMatch = url.match(/\/maps\/search\/([^?#]+)/);
         if (!searchMatch) return { city: '', state: '' };
@@ -293,6 +312,12 @@
         const resultCity = normalizeForCompare(data.city);
         const resultState = normalizeStateForCompare(data.state);
         if (resultCity === expectedCity && resultState === expectedState) return true;
+
+        const resultBusiness = normalizeForCompare(data.businessName);
+        const expectedBusiness = normalizeForCompare(getHospitalNameFromUrl());
+        if (resultBusiness && resultBusiness === expectedBusiness && resultState === expectedState) {
+            return true;
+        }
 
         const cityFromHospitalName = getHospitalNameCityCandidates()
             .some(candidate => normalizeForCompare(candidate) === resultCity);

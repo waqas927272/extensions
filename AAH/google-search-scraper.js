@@ -6,10 +6,13 @@
         await waitForGoogleResults();
 
         const panelText = getKnowledgePanelText();
-        const bodyText = cleanText(document.body.innerText || '');
-        const address = extractAddress(panelText) || extractAddress(bodyText);
-        const parsed = parseAddress(address);
         const businessName = extractBusinessNameFromPanel() || '';
+        if (!panelText || !businessName) {
+            return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
+        }
+
+        const address = extractAddress(panelText);
+        const parsed = parseAddress(address);
 
         return {
             businessName,
@@ -18,8 +21,8 @@
             city: parsed.city || '',
             state: parsed.state || '',
             zipCode: parsed.zipCode || '',
-            phone: extractPhoneFromPanel() || extractPhone(panelText) || extractPhone(bodyText) || '',
-            website: extractWebsiteFromPanel() || extractWebsiteFromResults() || '',
+            phone: extractPhoneFromPanel() || extractPhone(panelText) || '',
+            website: extractWebsiteFromPanel() || '',
             panelText: panelText || ''
         };
     } catch (error) {
