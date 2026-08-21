@@ -191,6 +191,7 @@
     function getDescriptionBodyText(descriptionText) {
         const body = (descriptionText || '').split(/===\s*FULL JOB DESCRIPTION\s*===/i).pop() || descriptionText || '';
         return body
+            .replace(/([a-z])(?=(?:Med\s*Vet|WestVet)\b)/g, '$1 ')
             .replace(/\u00c2(?=\s|$)/g, ' ')
             .replace(/\u00a0/g, ' ');
     }
@@ -2682,31 +2683,8 @@
 
     // ============ FETCH ADDRESSES ============
 
-    function normalizeAddressCacheValue(value) {
-        return (value || '')
-            .toLowerCase()
-            .replace(/&/g, ' and ')
-            .replace(/\([^)]*\)/g, ' ')
-            .replace(/[-â€“â€”]/g, ' ')
-            .replace(/\b(?:hospital|clinic|center|centre|veterinary|animal|pet)\b/g, ' ')
-            .replace(/[^a-z0-9]+/g, ' ')
-            .trim();
-    }
-
-    function makeAddressCacheKey(hospital, location) {
-        const hospitalKey = normalizeAddressCacheValue(hospital);
-        const locationKey = normalizeAddressCacheValue(location);
-        return hospitalKey && locationKey ? `${hospitalKey}|${locationKey}` : '';
-    }
-
     function getAddressCacheKeys(hospital, location, originalHospital = '') {
-        const keys = new Set();
-        const names = [hospital, originalHospital].filter(Boolean);
-        for (const name of names) {
-            const key = makeAddressCacheKey(name, location);
-            if (key) keys.add(key);
-        }
-        return [...keys];
+        return addressQuality.getAddressCacheKeys(hospital, location, originalHospital);
     }
 
     function hasUsableCachedAddress(data) {
@@ -2797,7 +2775,20 @@
         }
 
         const data = await chrome.storage.local.get(['scrapedJobs']);
-        const jobs = data.scrapedJobs || [];
+        let jobs = data.scrapedJobs || [];
+
+        const originalCount = jobs.length;
+        jobs = addressQuality.removeStaleGeneratedLocationRows(jobs);
+        const removedStaleRows = originalCount - jobs.length;
+        const reconciledHospitalNames = reconcileGenericHospitalNames(jobs);
+        if (removedStaleRows > 0 || reconciledHospitalNames > 0) {
+            await chrome.storage.local.set({ scrapedJobs: jobs, records: jobs });
+            allJobs = jobs;
+            displayRecords(allJobs);
+            if (removedStaleRows > 0) {
+                showToast(`Removed ${removedStaleRows} stale generated location row(s).`, 'success');
+            }
+        }
 
         // Find jobs that need address/contact data (using LOCATION column)
         const jobsNeedingAddresses = jobs.map((job, index) => ({ job, index }))
