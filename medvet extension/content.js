@@ -29,7 +29,12 @@
     /\bassistant\b.*\b(?:oncology|neurology|radiology|surgery|emergency|critical\s+care|internal\s+medicine|nursing)\b/,
     /\blvt\b/,
     /\brvt\b/,
-    /\bva\b/
+    /\bva\b/,
+    /\bseo\s+(?:and\s+)?content\s+strategist\b/,
+    /\bstaff\s+accountant\b/,
+    /\bclinical\s+education\s+specialist\b/,
+    /\b(?:veterinary\s+)?rehabilitation\s+scheduling\s+coordinator\b/,
+    /\bhospital\s+director\b/
   ];
 
   function normalizeTitle(title) {
@@ -44,6 +49,13 @@
   function shouldSkipJobTitle(title) {
     const normalizedTitle = normalizeTitle(title);
     return excludedJobTitlePatterns.some(pattern => pattern.test(normalizedTitle));
+  }
+
+  function hasUsableCityAndState(city, state) {
+    const normalizedCity = (city || '').trim().toLowerCase();
+    const normalizedState = (state || '').trim().toLowerCase();
+    const invalidValues = new Set(['', 'tbd', 'unknown', 'not found', 'nationwide', 'national', 'remote', 'multiple', 'united states', 'usa']);
+    return !invalidValues.has(normalizedCity) && !invalidValues.has(normalizedState);
   }
 
   function scrapeData() {
@@ -92,6 +104,11 @@
             } else {
                 city = locationString;
             }
+        }
+
+        // Non-facility and nationwide roles do not have a usable city/state pair.
+        if (!hasUsableCityAndState(city, state)) {
+          return;
         }
 
         const location = [city, state].filter(Boolean).join(', ');

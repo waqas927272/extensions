@@ -17,9 +17,7 @@
 
         for (const line of lines) {
             if (!line) {
-                if (!previousBlank && cleanedLines.length > 0) {
-                    cleanedLines.push('');
-                }
+                if (!previousBlank && cleanedLines.length > 0) cleanedLines.push('');
                 previousBlank = true;
                 continue;
             }
@@ -28,26 +26,36 @@
             previousBlank = false;
         }
 
-        while (cleanedLines.length > 0 && cleanedLines[cleanedLines.length - 1] === '') {
-            cleanedLines.pop();
-        }
-
+        while (cleanedLines[cleanedLines.length - 1] === '') cleanedLines.pop();
         return cleanedLines.join('\n').trim();
     }
 
-    function htmlToText(html) {
-        const temp = document.createElement('div');
+    function elementToMultilineText(element) {
+        if (!element) return '';
+
+        const clone = element.cloneNode(true);
+        clone.querySelectorAll('br').forEach(node => node.replaceWith('\n'));
+        clone.querySelectorAll('li').forEach(node => {
+            node.insertBefore(node.ownerDocument.createTextNode('- '), node.firstChild);
+            node.append(node.ownerDocument.createTextNode('\n'));
+        });
+        clone.querySelectorAll('p, div, section, article, h1, h2, h3, h4, h5, h6, ul, ol')
+            .forEach(node => node.append(node.ownerDocument.createTextNode('\n')));
+
+        return normalizeMultilineText(clone.textContent || element.innerText || '');
+    }
+
+    function htmlToText(html, ownerDocument = document) {
+        const temp = ownerDocument.createElement('div');
         temp.innerHTML = html || '';
-        return normalizeMultilineText(temp.innerText || temp.textContent || '');
+        return elementToMultilineText(temp);
     }
 
     function findJobPostingJson(data) {
         if (!data || typeof data !== 'object') return null;
 
         const type = data['@type'];
-        if (type === 'JobPosting' || (Array.isArray(type) && type.includes('JobPosting'))) {
-            return data;
-        }
+        if (type === 'JobPosting' || (Array.isArray(type) && type.includes('JobPosting'))) return data;
 
         const graph = data['@graph'];
         if (Array.isArray(graph)) {
@@ -55,21 +63,18 @@
             if (match) return match;
         }
 
-        if (Array.isArray(data)) {
-            return data.map(findJobPostingJson).find(Boolean) || null;
-        }
-
+        if (Array.isArray(data)) return data.map(findJobPostingJson).find(Boolean) || null;
         return null;
     }
 
-    function extractJsonLdText() {
-        const scripts = Array.from(document.querySelectorAll('script[type="application/ld+json"]'));
+    function extractJsonLdText(rootDocument = document) {
+        const scripts = Array.from(rootDocument.querySelectorAll('script[type="application/ld+json"]'));
 
         for (const script of scripts) {
             try {
                 const json = JSON.parse(script.textContent || '{}');
                 const jobPosting = findJobPostingJson(json);
-                const description = htmlToText(jobPosting?.description || '');
+                const description = htmlToText(jobPosting?.description || '', rootDocument);
 
                 if (description) {
                     const metadata = [];
@@ -97,8 +102,8 @@
         return { text: '', hasDescription: false };
     }
 
-    function extractAvatureSectionContent() {
-        const root = document.querySelector('.grid__item.grid__item--main section.section.js_views');
+    function extractAvatureSectionContent(rootDocument = document) {
+        const root = rootDocument.querySelector('.grid__item.grid__item--main section.section.js_views');
         if (!root) return { text: '', hasDescription: false };
 
         const articles = Array.from(root.querySelectorAll('article.article.article--details'));
@@ -110,7 +115,7 @@
 
         for (const article of articles) {
             const headerTitle = normalizeWhitespace(
-                article.querySelector('.article__header__text__title')?.innerText || ''
+                article.querySelector('.article__header__text__title')?.textContent || ''
             );
             const sectionTitle = headerTitle || lastSectionTitle || 'General Information';
             if (headerTitle) lastSectionTitle = headerTitle;
@@ -118,12 +123,12 @@
             const fields = Array.from(article.querySelectorAll('.article__content__view__field'));
             for (const field of fields) {
                 const label = normalizeWhitespace(
-                    field.querySelector('.article__content__view__field__label')?.innerText || ''
+                    field.querySelector('.article__content__view__field__label')?.textContent || ''
                 );
                 const valueEl = field.querySelector('.article__content__view__field__value');
-                const valueText = normalizeWhitespace(valueEl?.innerText || '');
-                const valueBlockText = normalizeMultilineText(valueEl?.innerText || '');
-                if (!valueText && !valueBlockText) continue;
+                const valueBlockText = elementToMultilineText(valueEl);
+                const valueText = normalizeWhitespace(valueBlockText);
+                if (!valueText) continue;
 
                 const isDescriptionField =
                     sectionTitle.toLowerCase().includes('description') ||
@@ -141,11 +146,7 @@
                     continue;
                 }
 
-                if (label) {
-                    metadataLines.push(`${label}: ${valueText}`);
-                } else if (valueText) {
-                    metadataLines.push(valueText);
-                }
+                metadataLines.push(label ? `${label}: ${valueText}` : valueText);
             }
         }
 
@@ -165,7 +166,7 @@
         };
     }
 
-    function extractDomDescription() {
+    function extractDomDescription(rootDocument = document) {
         const selectors = [
             '.jv-job-detail-description',
             '.jv-wrapper',
@@ -176,8 +177,7 @@
         ];
 
         for (const selector of selectors) {
-            const element = document.querySelector(selector);
-            const text = normalizeMultilineText(element?.innerText || '');
+            const text = elementToMultilineText(rootDocument.querySelector(selector));
             if (text.length > 100) {
                 return {
                     text: `=== DESCRIPTION & REQUIREMENTS ===\n${text}`,
@@ -186,7 +186,7 @@
             }
         }
 
-        const bodyText = normalizeMultilineText(document.body?.innerText || '');
+        const bodyText = elementToMultilineText(rootDocument.body);
         const looksLikeDescription = /job description|description & requirements|responsibilities|qualifications|requirements/i.test(bodyText);
         if (looksLikeDescription && bodyText.length > 100) {
             return {
@@ -198,24 +198,36 @@
         return { text: '', hasDescription: false };
     }
 
-    function extractDescription() {
-        const avature = extractAvatureSectionContent();
+    function extractDescription(rootDocument = document) {
+        const avature = extractAvatureSectionContent(rootDocument);
         if (avature.hasDescription) return avature;
 
-        const jsonLd = extractJsonLdText();
+        const jsonLd = extractJsonLdText(rootDocument);
         if (jsonLd.hasDescription) return jsonLd;
 
-        return extractDomDescription();
+        return extractDomDescription(rootDocument);
+    }
+
+    function extractDescriptionFromHtml(html) {
+        const parsedDocument = new DOMParser().parseFromString(html || '', 'text/html');
+        return extractDescription(parsedDocument);
     }
 
     function sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    globalThis.MphDescriptionParser = Object.freeze({
+        extractDescription,
+        extractDescriptionFromHtml
+    });
+
+    if (globalThis.location?.protocol === 'chrome-extension:') return null;
+
     return (async () => {
         const startedAt = Date.now();
         while (Date.now() - startedAt < WAIT_TIMEOUT_MS) {
-            const result = extractDescription();
+            const result = extractDescription(document);
             if (result.hasDescription) {
                 return result.text.replace(/\n{3,}/g, '\n\n').trim();
             }

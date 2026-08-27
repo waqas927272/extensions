@@ -18,7 +18,9 @@
 
         const scrapedJobIds = new Set(data.scrapedJobIds || []);
         const newScrape = scrapeCurrentPage(scrapedJobIds, pageType);
-        const allJobs = (data.scrapedJobs || []).concat(newScrape.jobs);
+        const allJobs = (data.scrapedJobs || [])
+            .concat(newScrape.jobs)
+            .filter(job => !hasRemoteCityOrState(job));
         const allJobIds = Array.from(newScrape.scrapedJobIds);
 
         await chrome.storage.local.set({
@@ -133,6 +135,10 @@ function shouldSkipJobTitle(title) {
     return EXCLUDED_JOB_TITLES.has(normalizeTitleForComparison(title));
 }
 
+function hasRemoteCityOrState(job) {
+    return [job?.city, job?.state].some(value => /remote/i.test(value || ''));
+}
+
 function scrapeCurrentPage(scrapedJobIds, pageType) {
     if (pageType === 'agency') {
         return scrapeAgencyPage(scrapedJobIds);
@@ -155,15 +161,16 @@ function scrapeMarketplacePage(scrapedJobIds) {
 
             const rawJobId = extractNumericId(jobLink);
             if (!rawJobId || scrapedJobIds.has(rawJobId)) return;
-            scrapedJobIds.add(rawJobId);
-
             const { location, city, state, hospital } = extractLocationFromSubtitle(article);
+            if (hasRemoteCityOrState({ city, state })) return;
+
+            scrapedJobIds.add(rawJobId);
             jobs.push({
                 title,
                 jobId: `MPH-${rawJobId}`,
                 location,
-                city: '',
-                state: '',
+                city,
+                state,
                 hospital,
                 link: jobLink
             });
@@ -201,15 +208,16 @@ function tryArticleStrategy(scrapedJobIds, jobs) {
 
             const rawJobId = extractNumericId(jobLink);
             if (!rawJobId || scrapedJobIds.has(rawJobId)) return;
-            scrapedJobIds.add(rawJobId);
-
             const { location, city, state, hospital } = extractLocationFromSubtitle(article);
+            if (hasRemoteCityOrState({ city, state })) return;
+
+            scrapedJobIds.add(rawJobId);
             jobs.push({
                 title,
                 jobId: `MPH-${rawJobId}`,
                 location,
-                city: '',
-                state: '',
+                city,
+                state,
                 hospital,
                 link: jobLink
             });
@@ -237,18 +245,19 @@ function tryTableStrategy(scrapedJobIds, jobs) {
 
             const rawJobId = extractNumericId(link.href);
             if (!rawJobId || scrapedJobIds.has(rawJobId)) return;
-            scrapedJobIds.add(rawJobId);
-
             const cells = Array.from(row.querySelectorAll('td'));
             const locText = cells.map(cell => cell.textContent.trim()).join(' | ');
             const parsed = parseLocationText(locText);
+            if (hasRemoteCityOrState(parsed)) return;
+
+            scrapedJobIds.add(rawJobId);
 
             jobs.push({
                 title,
                 jobId: `MPH-${rawJobId}`,
                 location: parsed.location,
-                city: '',
-                state: '',
+                city: parsed.city,
+                state: parsed.state,
                 hospital: '',
                 link: link.href
             });
@@ -278,17 +287,18 @@ function tryListItemStrategy(scrapedJobIds, jobs) {
 
             const rawJobId = extractNumericId(link.href);
             if (!rawJobId || scrapedJobIds.has(rawJobId)) return;
-            scrapedJobIds.add(rawJobId);
-
             const locEl = item.querySelector('.location, .city, .jobLocation');
             const parsed = parseLocationText(locEl ? locEl.textContent : '');
+            if (hasRemoteCityOrState(parsed)) return;
+
+            scrapedJobIds.add(rawJobId);
 
             jobs.push({
                 title,
                 jobId: `MPH-${rawJobId}`,
                 location: parsed.location,
-                city: '',
-                state: '',
+                city: parsed.city,
+                state: parsed.state,
                 hospital: '',
                 link: link.href
             });
@@ -428,33 +438,42 @@ function extractLocationFromSubtitle(article) {
     let state = '';
     let hospital = '';
 
+    const spans = article.querySelectorAll('.article__header__subtitle span.paragraph--inline, .article__header__subtitle span');
+    spans.forEach((span) => {
+        const text = span.textContent.replace(/\s+/g, ' ').trim();
+        const label = span.querySelector('strong')?.textContent.replace(/:\s*$/, '').trim().toLowerCase() || '';
+        const value = label
+            ? text.replace(new RegExp(`^${label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:?\\s*`, 'i'), '').trim()
+            : text;
+
+        if (!value) return;
+        if (label === 'location' || label === 'site' || label === 'practice') {
+            hospital = value;
+        } else if (label === 'city') {
+            city = value;
+        } else if (label === 'state' || label === 'province') {
+            state = value;
+        } else if (label === 'work location' || label === 'job location') {
+            const parsed = parseLocationText(value);
+            location = parsed.location;
+            city = parsed.city;
+            state = parsed.state;
+        }
+    });
+
     const siteEl = article.querySelector('span.list-item-site');
+    if (!hospital && siteEl) hospital = siteEl.textContent.trim();
+
     const locEl = article.querySelector('span.list-item-location');
-    if (siteEl) hospital = siteEl.textContent.trim();
-    if (locEl) {
-        const raw = locEl.textContent.trim();
-        const parsed = parseLocationText(raw);
+    if (!location && !city && locEl) {
+        const parsed = parseLocationText(locEl.textContent.trim());
         location = parsed.location;
         city = parsed.city;
         state = parsed.state;
     }
 
-    if (!city && !location) {
-        const spans = article.querySelectorAll('.article__header__subtitle span.paragraph--inline, .article__header__subtitle span');
-        spans.forEach((span) => {
-            const text = span.textContent.trim();
-            if (text.startsWith('Location:')) location = text.replace(/^Location:\s*/i, '').trim();
-            else if (text.startsWith('City:')) city = text.replace(/^City:\s*/i, '').trim();
-            else if (text.startsWith('State:')) state = text.replace(/^State:\s*/i, '').trim();
-            else if (text.startsWith('Site:') || text.startsWith('Practice:')) hospital = text.replace(/^(?:Site|Practice):\s*/i, '').trim();
-        });
-    }
-
-    if ((!city || !state) && location) {
-        const parsed = parseLocationText(location);
-        city = city || parsed.city;
-        state = state || parsed.state;
-        location = parsed.location;
+    if (city || state) {
+        location = [city, state].filter(Boolean).join(', ');
     }
 
     return { location, city, state, hospital };

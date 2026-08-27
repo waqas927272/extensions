@@ -17,6 +17,94 @@ function cleanText(html) {
   return text;
 }
 
+function getJobPostingObjects(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value.flatMap(getJobPostingObjects);
+  if (typeof value !== 'object') return [];
+
+  const objects = [];
+  const type = value['@type'];
+  const types = Array.isArray(type) ? type : [type];
+  if (types.some(item => String(item || '').toLowerCase() === 'jobposting')) {
+    objects.push(value);
+  }
+  if (value['@graph']) objects.push(...getJobPostingObjects(value['@graph']));
+  return objects;
+}
+
+function hasUsableSalaryValue(value) {
+  if (value == null) return false;
+  const normalized = String(value).replace(/,/g, '').trim();
+  return /^\d+(?:\.\d+)?$/.test(normalized) && Number(normalized) > 0;
+}
+
+function formatStructuredSalary(baseSalary) {
+  const salary = baseSalary?.value;
+  if (!salary || typeof salary !== 'object') return '';
+
+  const hasMin = hasUsableSalaryValue(salary.minValue);
+  const hasMax = hasUsableSalaryValue(salary.maxValue);
+  if (!hasMin && !hasMax) return '';
+
+  const rawCurrency = salary.currency || baseSalary?.currency || '$';
+  const currency = /^usd$/i.test(String(rawCurrency).trim()) ? '$' : rawCurrency;
+  const unit = String(salary.unitText || '').trim();
+  const amount = hasMin && hasMax
+    ? `${currency}${salary.minValue} - ${currency}${salary.maxValue}`
+    : `${currency}${hasMin ? salary.minValue : salary.maxValue}`;
+  return [amount, unit].filter(Boolean).join(' ');
+}
+
+function formatJobPosting(jobPosting, doc) {
+  const lines = [
+    '=== JOB POSTING DATA ===',
+    `Title: ${jobPosting.title || ''}`,
+    `Date Posted: ${jobPosting.datePosted || ''}`,
+    `Industry/Category: ${jobPosting.industry || ''}`,
+    `Employment Type: ${jobPosting.employmentType || ''}`
+  ];
+
+  const organizationName = jobPosting.hiringOrganization?.name || '';
+  if (organizationName) lines.push(`Hiring Organization: ${organizationName}`);
+
+  const rawLocations = jobPosting.jobLocation
+    ? (Array.isArray(jobPosting.jobLocation) ? jobPosting.jobLocation : [jobPosting.jobLocation])
+    : [];
+  const locations = rawLocations
+    .map(location => location?.address || {})
+    .map(address => [address.addressLocality, address.addressRegion, address.addressCountry].filter(Boolean).join(', '))
+    .filter(Boolean);
+  if (locations.length > 0) {
+    lines.push('Locations:');
+    locations.forEach(location => lines.push(`  - ${location}`));
+  }
+
+  const structuredSalary = formatStructuredSalary(jobPosting.baseSalary);
+  if (structuredSalary) lines.push(`Salary Range: ${structuredSalary}`);
+
+  const description = cleanText(jobPosting.description || '');
+  if (description) {
+    lines.push('', '=== FULL JOB DESCRIPTION ===', description);
+  }
+
+  const wrapper = doc.querySelector('.jv-wrapper');
+  const wrapperText = wrapper ? cleanText(wrapper.innerHTML) : '';
+  if (wrapperText && wrapperText.length > 100 && wrapperText !== description) {
+    lines.push('', '=== ADDITIONAL PAGE CONTENT ===', wrapperText);
+  }
+
+  return {
+    description: lines.join('\n').trim(),
+    hospitalName: organizationName || 'N/A',
+    jobInfo: {
+      title: jobPosting.title || '',
+      identifier: jobPosting.identifier?.value || jobPosting.identifier || '',
+      employmentType: jobPosting.employmentType || '',
+      locations
+    }
+  };
+}
+
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.command === 'parse-html') {
     const html = message.html;
@@ -30,18 +118,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     for (const script of scriptLdJson) {
       try {
         const json = JSON.parse(script.textContent);
-        if (json['@type'] === 'JobPosting') {
-          if (json.description) {
-            description = cleanText(json.description);
-          }
-          if (json.hiringOrganization && json.hiringOrganization.name) {
-            hospitalName = json.hiringOrganization.name;
-          }
-          // If both found, we can potentially stop early for JSON-LD
-          if (description !== 'Description not found.' && hospitalName !== 'N/A') {
-            sendResponse({ description: description, hospitalName: hospitalName });
-            return false;
-          }
+        const jobPosting = getJobPostingObjects(json)[0];
+        if (jobPosting) {
+          sendResponse(formatJobPosting(jobPosting, doc));
+          return false;
         }
       } catch (e) {
         console.warn('Could not parse JSON-LD script:', e);

@@ -21,11 +21,35 @@ function sendRuntimeMessage(message) {
 }
 
 function normalizeSalaryText(salary) {
-  return (salary || '')
+  const normalized = (salary || '')
     .replace(/â€“|â€”|–|—/g, ' - ')
     .replace(/\s+-\s+/g, ' - ')
     .replace(/\s{2,}/g, ' ')
     .trim();
+  return /^(?:\$|usd)?\s*-\s*(?:\$|usd)?$/i.test(normalized) ? '' : normalized;
+}
+
+function shouldSkipIncomingJobTitle(title) {
+  const normalizedTitle = (title || '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[\/_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return [
+    /\bseo\s+(?:and\s+)?content\s+strategist\b/,
+    /\bstaff\s+accountant\b/,
+    /\bclinical\s+education\s+specialist\b/,
+    /\b(?:veterinary\s+)?rehabilitation\s+scheduling\s+coordinator\b/,
+    /\bhospital\s+director\b/
+  ].some(pattern => pattern.test(normalizedTitle));
+}
+
+function hasUsableCityAndState(record) {
+  const normalizedCity = (record?.city || '').trim().toLowerCase();
+  const normalizedState = (record?.state || '').trim().toLowerCase();
+  const invalidValues = new Set(['', 'tbd', 'unknown', 'not found', 'nationwide', 'national', 'remote', 'multiple', 'united states', 'usa']);
+  return !invalidValues.has(normalizedCity) && !invalidValues.has(normalizedState);
 }
 
 async function setupOffscreenDocument(path) {
@@ -105,6 +129,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       chrome.storage.local.get({ scrapedJobs: [] }, (result) => {
         const allRecords = result.scrapedJobs || [];
         for (const record of request.records || []) {
+          if (shouldSkipIncomingJobTitle(record?.title || '')) continue;
+          if (!hasUsableCityAndState(record)) continue;
           if (!record.link || uniqueJobLinks.has(record.link)) continue;
           uniqueJobLinks.add(record.link);
           allRecords.push(record);
@@ -120,8 +146,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     (async () => {
       try {
         await setupOffscreenDocument('offscreen.html');
-        const jobUrl = request.url;
-        const response = await fetch(jobUrl);
+        const jobUrl = new URL(request.url);
+        if (jobUrl.hostname.includes('jobvite.com')) jobUrl.searchParams.set('nl', '1');
+
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 30000);
+        let response;
+        try {
+          response = await fetch(jobUrl.toString(), {
+            cache: 'no-store',
+            credentials: 'omit',
+            redirect: 'follow',
+            signal: controller.signal
+          });
+        } finally {
+          clearTimeout(timeout);
+        }
+
+        if (!response.ok) {
+          throw new Error(`Description fetch failed with HTTP ${response.status}`);
+        }
         const html = await response.text();
 
         // Send HTML to offscreen document for parsing
@@ -129,111 +173,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           command: 'parse-html',
           html: html
         });
-        sendResponse({ description: parsingResponse.description });
+        const description = parsingResponse?.description || '';
+        if (!description || description === 'Description not found.') {
+          throw new Error('No JobPosting description was found in the fetched HTML');
+        }
+
+        sendResponse({
+          success: true,
+          description,
+          hospitalName: parsingResponse?.hospitalName || '',
+          jobInfo: parsingResponse?.jobInfo || null
+        });
       } catch (error) {
         console.error('Error in fetch-job-description:', error);
-        sendResponse({ description: 'Error fetching description.' });
+        sendResponse({ success: false, description: '', error: error.message || 'Error fetching description' });
       }
     })();
     return true; // Indicates that the response is sent asynchronously
-  } else if (request.action === 'scrapeJobDescription') {
-    const { tabId, jobIndex } = request;
-    sendResponse({ status: 'queued' });
-
-    // Wait for the tab to finish loading, then inject the description-only scraper.
-    chrome.tabs.onUpdated.addListener(function listener(updatedTabId, info) {
-      if (updatedTabId === tabId && info.status === 'complete') {
-        chrome.tabs.onUpdated.removeListener(listener);
-
-        chrome.scripting.executeScript({
-          target: { tabId: tabId },
-          files: ['description-scraper.js']
-        }).then((results) => {
-          const description = results?.[0]?.result || '';
-          const firstDetail = description ? { description } : null;
-
-          chrome.storage.local.get({ scrapedJobs: [] }, (result) => {
-            const records = result.scrapedJobs || [];
-            if (records[jobIndex] && firstDetail) {
-              const record = records[jobIndex];
-
-              // Description
-              if (firstDetail.description) {
-                record.description = firstDetail.description;
-              }
-
-              // Hospital name — prefer specific "MedVet [City]" over plain "MedVet"
-              if (firstDetail.hospitalName && firstDetail.hospitalName !== 'MedVet') {
-                record.hospitalName = firstDetail.hospitalName;
-              } else if (!record.hospitalName || record.hospitalName === 'MedVet') {
-                const city = firstDetail.city || record.city || '';
-                const skipLocs = ['nationwide', 'remote', 'national', 'multiple', 'united states', ''];
-                if (city && !skipLocs.includes(city.toLowerCase())) {
-                  record.hospitalName = 'MedVet ' + city;
-                } else {
-                  record.hospitalName = record.hospitalName || 'MedVet';
-                }
-              }
-
-              // Area of Practice
-              if (firstDetail.areaOfPractice) {
-                record.areaOfPractice = firstDetail.areaOfPractice;
-              }
-
-              // Position — derived by detail-extractor.js with full keyword matching
-              if (firstDetail.position) {
-                record.position = firstDetail.position;
-              }
-
-              // Salary
-              if (firstDetail.salary) {
-                record.salary = normalizeSalaryText(firstDetail.salary);
-              }
-
-              // Job Type
-              if (firstDetail.jobType) {
-                record.jobType = firstDetail.jobType;
-              }
-
-              // City / State — fill in if missing from listing
-              if (firstDetail.city && !record.city) record.city = firstDetail.city;
-              if (firstDetail.state && !record.state) record.state = firstDetail.state;
-
-              chrome.storage.local.set({ scrapedJobs: records, records: records }, () => {
-                console.log(`Details saved for job ${jobIndex + 1}: ${record.title} → ${record.position} (${record.areaOfPractice})`);
-                chrome.tabs.remove(tabId);
-                sendRuntimeMessage({
-                  action: 'descriptionSaved',
-                  jobIndex: jobIndex,
-                  success: true
-                });
-              });
-            } else {
-              // Nothing extracted — close tab and report failure
-              chrome.tabs.remove(tabId).catch(() => {});
-              sendRuntimeMessage({
-                action: 'descriptionSaved',
-                jobIndex: jobIndex,
-                success: false
-              });
-            }
-          });
-        }).catch(err => {
-          console.error('Error extracting description:', err);
-          chrome.tabs.remove(tabId).catch(() => {});
-          sendRuntimeMessage({
-            action: 'descriptionSaved',
-            jobIndex: jobIndex,
-            success: false
-          });
-        });
-      }
-    });
   } else if (request.command === 'send-to-webhook') {
     (async () => {
       try {
         const webhookUrl = request.url;
-        const rawRecords = request.records || [];
+        const rawRecords = (request.records || []).filter(hasUsableCityAndState);
         const syncId = Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
 
         // Map to the same field structure used by records.js

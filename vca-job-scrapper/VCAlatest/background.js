@@ -1,6 +1,156 @@
+importScripts('hospital-resolver.js');
+
 chrome.runtime.onInstalled.addListener(() => {
   console.log('VCA Jobs Scraper extension installed');
 });
+
+const VCA_DIRECTORY_URL = 'https://vcahospitals.com/find-a-hospital/location-directory';
+const VCA_DIRECTORY_TTL_MS = 6 * 60 * 60 * 1000;
+let vcaDirectoryEntries = [];
+let vcaDirectoryExpiresAt = 0;
+let vcaDirectoryRequest = null;
+
+async function loadVcaDirectoryEntries() {
+  if (vcaDirectoryEntries.length && Date.now() < vcaDirectoryExpiresAt) {
+    return vcaDirectoryEntries;
+  }
+  if (vcaDirectoryRequest) return vcaDirectoryRequest;
+
+  vcaDirectoryRequest = (async () => {
+    const response = await fetch(VCA_DIRECTORY_URL, {
+      cache: 'no-store',
+      credentials: 'omit',
+      redirect: 'follow',
+      headers: { Accept: 'text/html,application/xhtml+xml' }
+    });
+    if (!response.ok) throw new Error(`VCA directory request failed with HTTP ${response.status}`);
+    const html = await response.text();
+    const entries = VcaHospitalResolver.parseVcaDirectory(html);
+    if (entries.length < 100) throw new Error(`VCA directory returned only ${entries.length} usable locations`);
+    vcaDirectoryEntries = entries;
+    vcaDirectoryExpiresAt = Date.now() + VCA_DIRECTORY_TTL_MS;
+    return entries;
+  })().finally(() => {
+    vcaDirectoryRequest = null;
+  });
+
+  return vcaDirectoryRequest;
+}
+
+async function resolveOfficialVcaHospital(request) {
+  const entries = await loadVcaDirectoryEntries();
+  return VcaHospitalResolver.resolveDirectoryEntry(entries, {
+    hospitalName: request.hospitalName || '',
+    description: request.description || '',
+    location: request.location || '',
+    city: request.city || '',
+    state: request.state || '',
+    website: request.website || '',
+    candidates: Array.isArray(request.candidates) ? request.candidates : []
+  });
+}
+
+const BLOCKED_OFFICIAL_SITE_HOST_PARTS = [
+  'google.', 'gstatic.', 'googleusercontent.', 'facebook.', 'instagram.', 'linkedin.', 'youtube.',
+  'yelp.', 'mapquest.', 'bing.', 'duckduckgo.', 'indeed.', 'glassdoor.', 'ziprecruiter.',
+  'careerbuilder.', 'jobvite.', 'workday.', 'vcacareers.'
+];
+
+function normalizeOfficialWebsiteUrl(value) {
+  try {
+    const url = new URL(value || '');
+    if (!/^https?:$/.test(url.protocol)) return '';
+    const host = url.hostname.replace(/^www\./i, '').toLowerCase();
+    if (!host || BLOCKED_OFFICIAL_SITE_HOST_PARTS.some(part => host.includes(part))) return '';
+    url.hash = '';
+    return url.href;
+  } catch (_) {
+    return '';
+  }
+}
+
+async function fetchOfficialWebsiteHtml(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(url, {
+      cache: 'no-store',
+      credentials: 'omit',
+      redirect: 'follow',
+      signal: controller.signal,
+      headers: { Accept: 'text/html,application/xhtml+xml' }
+    });
+    if (!response.ok) throw new Error(`Official website request failed with HTTP ${response.status}`);
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType && !/html|xhtml/i.test(contentType)) throw new Error('Official website did not return HTML');
+    const html = await response.text();
+    if (html.length > 3_000_000) throw new Error('Official website page was too large to inspect safely');
+    return { html, url: normalizeOfficialWebsiteUrl(response.url) || url };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function resolveOfficialWebsiteAddress(request) {
+  const website = normalizeOfficialWebsiteUrl(request.website || '');
+  if (!website) return null;
+
+  const firstPage = await fetchOfficialWebsiteHtml(website);
+  const candidateUrls = [firstPage.url];
+  const discoveredLinks = VcaHospitalResolver.extractOfficialSiteLinks(firstPage.html, firstPage.url);
+  for (const href of discoveredLinks) {
+    if (!candidateUrls.includes(href)) candidateUrls.push(href);
+    if (candidateUrls.length >= 5) break;
+  }
+
+  if (candidateUrls.length < 5) {
+    const origin = new URL(firstPage.url).origin;
+    for (const path of ['/contact', '/contact-us', '/locations', '/location']) {
+      const href = `${origin}${path}`;
+      if (!candidateUrls.includes(href)) candidateUrls.push(href);
+      if (candidateUrls.length >= 5) break;
+    }
+  }
+
+  const pages = [{ ...firstPage, requestedUrl: candidateUrls[0] }];
+  const additionalPages = await Promise.allSettled(
+    candidateUrls.slice(1).map(async url => ({ ...(await fetchOfficialWebsiteHtml(url)), requestedUrl: url }))
+  );
+  for (const result of additionalPages) {
+    if (result.status === 'fulfilled') pages.push(result.value);
+  }
+
+  const expected = VcaHospitalResolver.parseLocation(request.location || '', request.city || '', request.state || '');
+  const expectedName = request.hospitalName || '';
+  const candidates = [];
+  for (const page of pages) {
+    const parsed = VcaHospitalResolver.parseOfficialWebsite(
+      page.html,
+      page.url,
+      expectedName,
+      request.location || [request.city, request.state].filter(Boolean).join(', ')
+    );
+    if (!parsed) continue;
+    const resultState = VcaHospitalResolver.stateCode(parsed.state || '');
+    if (expected.state && resultState && resultState !== expected.state) continue;
+    const similarity = expectedName && parsed.businessName
+      ? VcaHospitalResolver.nameSimilarity(expectedName, parsed.businessName)
+      : 0;
+    if (expectedName && parsed.businessName && similarity < 0.34) continue;
+    candidates.push({
+      ...parsed,
+      website: website,
+      matchConfidence: Math.max(parsed.matchConfidence || 0, Math.round(similarity * 100)),
+      _score: (parsed.matchConfidence || 0) + similarity * 100 + (expected.state && resultState === expected.state ? 35 : 0)
+    });
+  }
+
+  candidates.sort((a, b) => b._score - a._score);
+  if (!candidates.length) return null;
+  const best = { ...candidates[0] };
+  delete best._score;
+  return best;
+}
 
 function cleanDirectJobText(value) {
   return (value || '')
@@ -248,6 +398,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       request.action === 'scrapingError' ||
       request.action === 'updateStatus') {
     chrome.runtime.sendMessage(request).catch(() => {});
+  } else if (request.action === 'resolveOfficialVcaHospital') {
+    resolveOfficialVcaHospital(request)
+      .then(result => sendResponse({ ok: true, result: result || null }))
+      .catch(error => {
+        console.warn('Official VCA hospital lookup failed:', error);
+        sendResponse({ ok: false, result: null, error: error.message });
+      });
+    return true;
+  } else if (request.action === 'resolveOfficialWebsiteAddress') {
+    resolveOfficialWebsiteAddress(request)
+      .then(result => sendResponse({ ok: true, result: result || null }))
+      .catch(error => {
+        console.warn('Official website address lookup failed:', error);
+        sendResponse({ ok: false, result: null, error: error.message });
+      });
+    return true;
   } else if (request.action === 'fetchJobDescription') {
     fetchJobDescriptionDirectly(request)
       .then((extractionResult) => {
@@ -1104,7 +1270,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       }
                     ];
 
-                    // Position mapping from CorrectJobNames.txt - maps keywords to exact position names
+                    // Position mapping to the extension's approved position names
                     // Order: most specific first to avoid false matches
                     const positionMap = [
                       // Specialty Care - Doctors (most specific first)
@@ -1181,6 +1347,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                     // Helper: extract salary from text with type identification
                     function extractSalary(text) {
+                      if (globalThis.VcaSalaryResolver?.extractSalaryFromText) {
+                        return globalThis.VcaSalaryResolver.extractSalaryFromText(text);
+                      }
                       if (!text) return '';
 
                       // Priority patterns for full sentences - Extract ONLY the salary amount, not incomplete prefixes

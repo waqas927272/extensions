@@ -1,4 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const addressQuality = globalThis.MphAddressQuality;
+    if (!addressQuality) {
+        console.error('Address quality module did not load. Address fetching is disabled.');
+    }
     const tableBody = document.querySelector('#jobRecordsTable tbody');
     const tableHeaders = document.querySelectorAll('#jobRecordsTable th');
     const clearRecordsButton = document.getElementById('clearRecords');
@@ -18,6 +22,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const cancelEditJobBtn = document.getElementById('cancelEditJob');
     const editJobForm = document.getElementById('editJobForm');
     const editJobMeta = document.getElementById('editJobMeta');
+    const descriptionModal = document.getElementById('descriptionModal');
+    const closeDescriptionModalBtn = document.getElementById('closeDescriptionModal');
+    const closeDescriptionModalFooterBtn = document.getElementById('closeDescriptionModalFooter');
+    const descriptionModalTitle = document.getElementById('descriptionModalTitle');
+    const descriptionModalMeta = document.getElementById('descriptionModalMeta');
+    const descriptionModalBody = document.getElementById('descriptionModalBody');
 
     let currentSortColumn = null;
     let currentSortDirection = 'asc';
@@ -27,9 +37,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let isGettingDescriptions = false;
     let isFetchingDetails = false;
     let isFetchingAddresses = false;
-    let currentJobIndex = 0;
     let descriptionQueue = [];
+    let nextDescriptionQueueIndex = 0;
+    let activeDescriptionRequests = 0;
+    let descriptionCompletedCount = 0;
     let failedDescriptionCount = 0;
+    let descriptionUpdates = new Map();
+    let descriptionStorageWriteChain = Promise.resolve();
+    let descriptionLastScheduledCount = 0;
+    let descriptionStorageError = null;
     let detailsQueue = [];
     let currentDetailsIndex = 0;
     let addressQueue = [];
@@ -39,6 +55,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const getDescriptionsBtn = document.getElementById('getDescriptionsBtn');
     const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
     const fetchAddressesBtn = document.getElementById('fetchAddressesBtn');
+    const DESCRIPTION_FETCH_CONCURRENCY = 1;
+    const DESCRIPTION_REQUEST_TIMEOUT_MS = 15000;
+    const DESCRIPTION_FETCH_ATTEMPTS = 3;
+    const DESCRIPTION_SAVE_BATCH_SIZE = 1;
 
     // ============ WEBHOOK URL DYNAMIC CONFIGURATION ============
 
@@ -279,6 +299,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ]);
         if (
             metadataHospital &&
+            !isGenericOrganizationHospitalName(metadataHospital) &&
             !isLocationOnlyHospitalName(metadataHospital, location, city, state)
         ) {
             return metadataHospital;
@@ -297,6 +318,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const candidate = match?.[1]?.trim() || '';
             if (
                 candidate &&
+                !isGenericOrganizationHospitalName(candidate) &&
                 !isLocationOnlyHospitalName(candidate, location, city, state)
             ) {
                 return candidate;
@@ -307,8 +329,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function resolveHospitalNameFromDetails(currentHospital, detailHospital, description, location, city, state) {
-        const currentIsLocationOnly = isLocationOnlyHospitalName(currentHospital, location, city, state);
+        const currentIsLocationOnly = isLocationOnlyHospitalName(currentHospital, location, city, state) ||
+            isGenericOrganizationHospitalName(currentHospital);
         const detailIsBetter = detailHospital &&
+            !isGenericOrganizationHospitalName(detailHospital) &&
             !isLocationOnlyHospitalName(detailHospital, location, city, state);
 
         if (currentIsLocationOnly && detailIsBetter) {
@@ -321,6 +345,97 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         return currentHospital || descriptionHospital || detailHospital || '';
+    }
+
+    function extractTitleContext(title) {
+        const cleanTitle = (title || '').replace(/\s+/g, ' ').trim();
+        const result = { hospital: '', city: '', state: '', location: '' };
+        if (!cleanTitle) return result;
+
+        function applyLocationCandidate(candidate, allowCityOnly = false) {
+            const value = (candidate || '').replace(/^[,\s]+|[,\s]+$/g, '').trim();
+            if (!value) return false;
+
+            const commaMatch = value.match(/^(.+?),\s*([^,]+)$/);
+            const abbreviationMatch = value.match(/^(.+?)\s+([A-Z]{2})$/);
+            const fullStateName = Object.values(stateAbbreviations)
+                .sort((left, right) => right.length - left.length)
+                .find(stateName => value.toLowerCase().endsWith(` ${stateName.toLowerCase()}`));
+            const fullStateMatch = fullStateName
+                ? [value, value.slice(0, -(fullStateName.length + 1)), fullStateName]
+                : null;
+            const match = commaMatch && isStateValue(commaMatch[2])
+                ? commaMatch
+                : (abbreviationMatch && isStateValue(abbreviationMatch[2]) ? abbreviationMatch : fullStateMatch);
+
+            if (match && isStateValue(match[2])) {
+                result.city = match[1].trim();
+                result.state = getFullStateName(match[2].trim());
+                result.location = `${result.city}, ${result.state}`;
+                return true;
+            }
+
+            const blockedCity = /\b(?:hospital|clinic|veterinary|animal|care|specialist|sponsored|opportunity|leader|director|partner|residency|nationwide|remote)\b/i;
+            if (allowCityOnly && !blockedCity.test(value) && /^[A-Za-z][A-Za-z .'-]{1,40}$/.test(value)) {
+                result.city = value;
+                result.location = value;
+                return true;
+            }
+
+            if (/^(?:nationwide|remote)$/i.test(value)) {
+                result.location = toDisplayCase(value);
+                return true;
+            }
+
+            return false;
+        }
+
+        const inLocationMatch = cleanTitle.match(/\b(?:in|at)\s+(.+)$/i);
+        if (inLocationMatch) {
+            applyLocationCandidate(inLocationMatch[1]);
+        }
+
+        const segments = cleanTitle
+            .split(/\s+[-–—]\s*|\s*[-–—]\s+/)
+            .map(segment => segment.trim())
+            .filter(Boolean);
+
+        if (!result.location && segments.length >= 2) {
+            applyLocationCandidate(segments[segments.length - 1], true);
+        }
+
+        if (segments.length >= 3) {
+            const middle = segments.slice(1, -1).join(' - ').trim();
+            const looksLikeHospital = /\b(?:hospital|clinic|center|centre|veterinary|animal|pet|pets|cardiac care|specialists?|emergency|cvca)\b/i.test(middle);
+            const isRoleDescriptor = /^(?:urgent care|emergency|er|gp|general practice|service leader|medical director|lead veterinarian)$/i.test(middle);
+            if (looksLikeHospital && !isRoleDescriptor) {
+                result.hospital = middle;
+            }
+        }
+
+        if (!result.hospital) {
+            const atHospitalMatch = cleanTitle.match(/\bat\s+(.+?(?:Hospital|Clinic|Center|Centre|Veterinary|Animal|Pet Care|Specialists?))\b/i);
+            if (atHospitalMatch) result.hospital = atHospitalMatch[1].trim();
+        }
+
+        return result;
+    }
+
+    function getRoleTitleText(title) {
+        const cleanTitle = (title || '').replace(/\s+/g, ' ').trim();
+        const titleContext = extractTitleContext(cleanTitle);
+        if (!titleContext.hospital) return cleanTitle;
+
+        const atHospitalIndex = cleanTitle.search(/\s+at\s+/i);
+        if (atHospitalIndex > 0) return cleanTitle.slice(0, atHospitalIndex).trim();
+
+        const segments = cleanTitle
+            .split(/\s+[-–—]\s*|\s*[-–—]\s+/)
+            .map(segment => segment.trim())
+            .filter(Boolean);
+        if (segments.length >= 3) return segments[0];
+
+        return cleanTitle;
     }
 
     function canFetchAddressForHospital(hospitalName, location = '', city = '', state = '') {
@@ -410,7 +525,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function isLivewellHospital(hospitalName) {
-        return /livewell animal hospital/i.test(hospitalName || '');
+        return /\blive\s*well\b/i.test(String(hospitalName || '').replace(/\b(?:hopsital|hosptital|hospial)\b/gi, 'hospital'));
     }
 
     function isLivewellWebsite(website) {
@@ -425,22 +540,15 @@ document.addEventListener('DOMContentLoaded', () => {
     let livewellLocationsCache = null;
 
     function addressMatchesExpectedHospitalBrand(hospitalName, addressData) {
-        if (!isLivewellHospital(hospitalName)) return true;
-
-        const website = addressData?.website || '';
-        if (website) return isLivewellWebsite(website);
-
-        const businessName = addressData?.businessName || '';
-        if (businessName) return /\blivewell\b/i.test(businessName);
-
-        return false;
+        if (!addressQuality || !hospitalName) return false;
+        return addressQuality.hospitalIdentityMatches(hospitalName, addressData || {});
     }
 
     function resolveWebsiteForHospital(hospitalName, website = '') {
         const name = (hospitalName || '').trim();
         if (/^mission pet health$/i.test(name)) return 'https://missionpethealth.com/';
-        if (/livewell animal hospital/i.test(name)) {
-            return isLivewellWebsite(website) ? website : 'https://www.livewellanimal.com/';
+        if (isLivewellHospital(name)) {
+            return isLivewellWebsite(website) ? website : '';
         }
         const officialFallback = getOfficialWebsiteAddressFallbackConfig(name);
         if (officialFallback) {
@@ -451,8 +559,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function applyMissingAddressDefaults(job) {
         const locationParts = parseLocationParts(job.location || '');
-        job.streetAddress = !job.streetAddress || job.streetAddress === 'Not Available' ? 'TBD' : job.streetAddress;
-        job.zipCode = job.zipCode || '00000';
+        job.streetAddress = /^(?:TBD|Not Available)$/i.test(job.streetAddress || '') ? '' : (job.streetAddress || '');
+        job.zipCode = job.zipCode === '00000' ? '' : (job.zipCode || '');
         job.city = formatCityForStorage(job.city || locationParts.city || '');
         job.state = formatStateForStorage(job.state || locationParts.state || '');
         job.website = resolveWebsiteForHospital(job.hospital || '', job.website || '');
@@ -460,12 +568,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function getLivewellFallbackAddress() {
         return {
-            streetAddress: 'TBD',
-            zipCode: '00000',
+            streetAddress: '',
+            zipCode: '',
             city: '',
             state: '',
             fullAddress: '',
-            website: 'https://www.livewellanimal.com/',
+            website: '',
             phone: ''
         };
     }
@@ -622,6 +730,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     fullAddress: parsed.fullAddress,
                     website: config.website,
                     phone: extractPhoneFromText(htmlToPlainText(html)),
+                    sourceType: 'official-website',
                     allowPostalCityMismatch: true
                 };
             }
@@ -649,7 +758,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function normalizeLivewellLocationName(name) {
-        return normalizeSimpleText(name)
+        return normalizeSimpleText(String(name || '').replace(/\b(?:hopsital|hosptital|hospial)\b/gi, 'hospital'))
             .replace(/\blivewell\b/g, ' ')
             .replace(/\banimal\b/g, ' ')
             .replace(/\bhospital\b/g, ' ')
@@ -714,28 +823,31 @@ document.addEventListener('DOMContentLoaded', () => {
         const expected = parseLocationParts(location || '');
         const expectedCity = normalizeCityForCompare(expected.city);
         const expectedState = getStateAbbreviation(expected.state);
-        if (!expectedCity || !expectedState) return emptyAddressResult();
 
         const locations = await getLivewellLocations();
         const expectedNames = [hospitalName, originalHospitalName].filter(Boolean);
         let best = null;
-        let bestScore = 0;
+        let bestScore = -1;
+        let bestNameScore = 0;
 
         for (const feature of locations) {
             const props = feature?.properties || {};
             const parsed = parseLivewellCityStateZip(props.cityStateZip || '');
             if (!props.name || !props.address1 || !parsed.city || !parsed.state || !parsed.zipCode) continue;
-            if (normalizeCityForCompare(parsed.city) !== expectedCity) continue;
-            if (getStateAbbreviation(parsed.state) !== expectedState) continue;
-
-            const score = Math.max(...expectedNames.map(name => scoreLivewellLocationName(name, props.name || '')));
+            const nameScore = Math.max(...expectedNames.map(name => scoreLivewellLocationName(name, props.name || '')));
+            const cityMatch = !expectedCity || normalizeCityForCompare(parsed.city) === expectedCity;
+            const stateMatch = !expectedState || getStateAbbreviation(parsed.state) === expectedState;
+            const score = (nameScore * 10) + (cityMatch ? 2 : 0) + (stateMatch ? 2 : -4);
             if (score > bestScore) {
                 bestScore = score;
+                bestNameScore = nameScore;
                 best = { props, parsed };
             }
         }
 
-        if (!best || bestScore < 0.5) return emptyAddressResult();
+        // A strong branch-name match is authoritative even when the job card uses a
+        // nearby city (the public postal city can legitimately differ).
+        if (!best || bestNameScore < 0.6) return emptyAddressResult();
 
         const streetAddress = [best.props.address1, best.props.address2].filter(Boolean).join(', ');
         const stateZip = [getStateAbbreviation(best.parsed.state), best.parsed.zipCode].filter(Boolean).join(' ');
@@ -749,7 +861,9 @@ document.addEventListener('DOMContentLoaded', () => {
             state: best.parsed.state,
             fullAddress,
             website: normalizeLivewellWebsiteUrl(best.props.url),
-            phone: best.props.phone || ''
+            phone: best.props.phone || '',
+            sourceType: 'livewell-geojson',
+            allowPostalCityMismatch: !!expectedCity && normalizeCityForCompare(best.parsed.city) !== expectedCity
         };
     }
 
@@ -902,7 +1016,12 @@ document.addEventListener('DOMContentLoaded', () => {
         return {
             searchHospital: match?.searchHospital || hospitalName,
             searchLocation: match?.searchLocation || location,
-            directResult: match?.result ? { ...match.result } : null
+            directResult: match?.result ? {
+                ...match.result,
+                businessName: match.result.businessName || match?.searchHospital || hospitalName || originalHospitalName,
+                sourceType: 'verified-override',
+                verified: true
+            } : null
         };
     }
 
@@ -936,7 +1055,7 @@ document.addEventListener('DOMContentLoaded', () => {
             'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
             'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
             'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
-            'Radiologist', 'Surgeon'
+            'Radiologist', 'Surgeon', 'Partner Veterinarian'
         ],
         'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
     };
@@ -1029,14 +1148,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // The listing title (e.g. "Veterinary Cardiologist") is always more specific than
     // generic detail page content, so we use it as the primary position signal.
     function getPositionFromTitle(title) {
-        const t = (title || '').toLowerCase();
+        const t = getRoleTitleText(title).toLowerCase();
         if (isNonClinicalJobTitle(t)) return '';
 
         // === HIGHEST PRIORITY: Leadership positions ===
         // "Group Medical Director - The Oncology Service" → Medical Director, NOT Medical Oncologist
         if (t.includes('regional medical director')) return 'Medical Director';
         if (t.includes('medical director')) return 'Medical Director';
-        if (t.includes('founding partner')) return 'Partner Veterinarian';
+        if (t.includes('founding partner') || t.includes('founding specialist')) return 'Partner Veterinarian';
         if (t.includes('medical lead')) return 'Medical Lead Veterinarian';
         if (t.includes('lead veterinarian') || t.includes('lead vet')) return 'Lead Veterinarian';
 
@@ -1053,7 +1172,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (t.includes('criticalist') || t.match(/\becc\b/) || t.includes('emergency medicine')) return 'ECC Specialist';
         if (t.includes('dabvp')) return 'DABVP Specialist';
         if ((t.includes('dental') || t.includes('dentist') || t.includes('dentistry')) && !t.includes('assistant')) return 'Dental Specialist';
-        if ((t.includes('surgeon') || t.includes('surgery')) && !t.includes('neurosurgeon') && !t.includes('neurology') && !t.includes('dental') && !t.includes('dentistry')) return 'Surgeon';
+        if ((/\b(?:veterinary\s+)?surgeon\b/.test(t) || /\b(?:veterinary\s+)?surgery\s+(?:specialist|diplomate)\b/.test(t)) &&
+            !t.includes('neurosurgeon') && !t.includes('neurology') && !t.includes('dental') && !t.includes('dentistry')) return 'Surgeon';
 
         // === VTS/CREDENTIALED SPECIALIST ===
         if (t.includes('technician specialist') || (t.match(/\bvts\b/) && t.includes('specialist'))) return 'Credentialed Veterinary Technician Specialist';
@@ -1112,7 +1232,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Determine AOP from title keywords when category is not available
     function getAOPFromTitle(title) {
-        const t = title.toLowerCase();
+        const t = getRoleTitleText(title).toLowerCase();
 
         // Specialty indicators
         const specialtyNames = ['oncologist', 'cardiologist', 'neurologist', 'neurosurgeon',
@@ -1142,7 +1262,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Equine/Bovine/Exotics
         if (t.includes('equine') || t.includes('bovine') || t.includes('large animal') ||
-            t.includes('avian') || t.includes('exotics')) return 'General Practice Care / Emergency Care / Urgent Care';
+            t.includes('avian') || t.includes('exotics')) return 'General Practice Care';
 
         return '';
     }
@@ -1173,14 +1293,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!raw) return '';
             const isHourly = /(?:per\s+)?(?:hour|hr|\/hr)/i.test(raw);
             const amounts = [];
-            const amountRegex = /\$?([\d,]+(?:\.\d{2})?)\s*k?\b/gi;
+            const amountRegex = /\$?\s*([\d,]+(?:\.\d{2})?)\s*(k)?\b/gi;
             let match;
             while ((match = amountRegex.exec(raw)) !== null) {
                 let num = parseFloat(match[1].replace(/,/g, ''));
-                const afterMatch = raw.substring(match.index + match[0].length - 1, match.index + match[0].length + 1);
-                if (/k/i.test(match[0]) || /k/i.test(afterMatch)) {
-                    num = num * 1000;
-                }
+                if (match[2]) num *= 1000;
                 if (num > 0) amounts.push(num);
             }
             if (amounts.length === 0) return raw;
@@ -1197,9 +1314,50 @@ document.addEventListener('DOMContentLoaded', () => {
             return `${fmt(amounts[0])} ${unit}`;
         }
 
+        function parseStructuredSalaryAmount(raw) {
+            const match = (raw || '').match(/\$?\s*([\d,]+(?:\.\d{1,2})?)\s*(k)?\b/i);
+            if (!match) return 0;
+            let amount = Number(match[1].replace(/,/g, ''));
+            if (match[2]) amount *= 1000;
+            return Number.isFinite(amount) ? amount : 0;
+        }
+
+        function formatStructuredSalary(minRaw, maxRaw) {
+            let min = parseStructuredSalaryAmount(minRaw);
+            let max = parseStructuredSalaryAmount(maxRaw);
+            if (min <= 0 && max <= 0) return '';
+            const isHourly = Math.max(min, max) > 0 && Math.max(min, max) < 1000;
+
+            if (min > 0 && max > 0) {
+                let low = Math.min(min, max);
+                let high = Math.max(min, max);
+
+                // Correct obvious single-zero source typos such as 1,150,000 vs 180,000
+                // or 17,000 vs 130,000 without changing ordinary compensation ranges.
+                while (high > low * 3 && high >= 500000) high /= 10;
+                while (high > low * 3 && low < 50000) low *= 10;
+                min = Math.min(low, high);
+                max = Math.max(low, high);
+            } else {
+                min = Math.max(min, max);
+                max = min;
+            }
+
+            const formatAmount = amount => '$' + Math.round(amount).toLocaleString('en-US');
+            const unit = isHourly ? 'per hour' : 'per year';
+            return min === max
+                ? `${formatAmount(min)} ${unit}`
+                : `${formatAmount(min)}–${formatAmount(max)} ${unit}`;
+        }
+
         // Extract salary from stored description (which now includes JSON-LD data)
         function extractSalary(text) {
             if (!text) return '';
+
+            const baseMinimum = getMetadataField(text, ['Base Min.', 'Base Min', 'Base Minimum']);
+            const baseMaximum = getMetadataField(text, ['Base Max.', 'Base Max', 'Base Maximum']);
+            const structuredSalary = formatStructuredSalary(baseMinimum, baseMaximum);
+            if (structuredSalary) return structuredSalary;
 
             // Try to extract from JSON-LD data in the text
             const jsonLdMatch = text.match(/Salary Range:\s*([^\n]+)/i);
@@ -1283,16 +1441,26 @@ document.addEventListener('DOMContentLoaded', () => {
         // Determine Area of Practice
         // Priority: 1) Title-specific overrides (urgent care), 2) Industry/Category from JSON-LD, 3) title keywords, 4) description qualifications
         function determineAreaOfPractice(positionText, descriptionText, hospitalName = '') {
-            const title = positionText.toLowerCase();
+            const title = getRoleTitleText(positionText).toLowerCase();
             const category = getIndustryCategory(descriptionText).toLowerCase();
             const department = getMetadataField(descriptionText, ['Department', 'Division', 'Team']).toLowerCase();
 
             if (isNonClinicalJobTitle(title)) return '';
             if (hasUrgentCareSignal(title, hospitalName, department)) return 'Urgent Care';
+            if (/\bfounding specialist\b/i.test(title)) return 'Specialty Care';
             if (/\b(?:oncologist|cardiologist|neurologist|neurosurgeon|dermatologist|ophthalmologist|anesthesiologist|theriogenologist|radiologist|internist|criticalist|ecc specialist|oncology|cardiology|neurology|dermatology|ophthalmology|anesthesia|theriogenology|radiology)\b/i.test(title)) return 'Specialty Care';
-            if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
-            if (hasEmergencySignal(title, hospitalName, department)) return 'Emergency Care';
+            if (/\b(?:emergency|er)\b/i.test(title)) return 'Emergency Care';
             if (/\b(?:founding partner|medical lead|lead veterinarian|lead vet|medical director|regional medical director)\b/i.test(title)) return 'General Practice Care';
+            if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
+            // A hospital brand can contain "Emergency" while the advertised role is explicitly
+            // general practice or mixed GP/urgent care. The role description outranks the brand.
+            if (
+                department === 'veterinarian' &&
+                /\b(?:small[-\s]animal general practice|strong general practice foundation|general practice medicine|dynamic gp\s*\+\s*urgent care)\b/i.test(descriptionText)
+            ) {
+                return 'General Practice Care';
+            }
+            if (hasEmergencySignal(title, hospitalName, department)) return 'Emergency Care';
 
             // STEP 0: Title-specific overrides — these are MORE specific than Jobvite categories.
             // e.g. "Urgent Care Veterinarian" is categorized as "Veterinarian (ER)" on Jobvite,
@@ -1347,7 +1515,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // STEP 4: Check TITLE for equine/bovine/large animal/avian/exotics
             if (title.includes('equine') || title.includes('bovine') || title.includes('large animal') ||
                 title.includes('avian') || title.includes('exotics')) {
-                return 'General Practice Care / Emergency Care / Urgent Care';
+                return 'General Practice Care';
             }
 
             // STEP 5: For generic titles, check ONLY the qualifications section
@@ -1362,7 +1530,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Match position from title keywords
         // PRIORITY ORDER: Leadership first (to avoid false matches on service names), then specialty, then generic
         function matchPositionFromTitle(title) {
-            const t = (title || '').toLowerCase();
+            const t = getRoleTitleText(title).toLowerCase();
             if (isNonClinicalJobTitle(t)) return '';
 
             // === HIGHEST PRIORITY: Leadership positions ===
@@ -1370,7 +1538,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Medical Director, NOT Medical Oncologist. The specialty word is the service name, not the role.
             if (t.includes('regional medical director')) return 'Medical Director';
             if (t.includes('medical director')) return 'Medical Director';
-            if (t.includes('founding partner')) return 'Partner Veterinarian';
+            if (t.includes('founding partner') || t.includes('founding specialist')) return 'Partner Veterinarian';
             if (t.includes('medical lead')) return 'Medical Lead Veterinarian';
             if (t.includes('lead veterinarian') || t.includes('lead vet')) return 'Lead Veterinarian';
 
@@ -1388,7 +1556,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (t.includes('dabvp')) return 'DABVP Specialist';
             if ((t.includes('dental') || t.includes('dentist') || t.includes('dentistry')) && !t.includes('assistant')) return 'Dental Specialist';
             // For surgeon, be specific - check it's not part of neurosurgeon (already handled)
-            if ((t.includes('surgeon') || t.includes('surgery')) && !t.includes('neurosurgeon') && !t.includes('neurology') && !t.includes('dental') && !t.includes('dentistry')) return 'Surgeon';
+            if ((/\b(?:veterinary\s+)?surgeon\b/.test(t) || /\b(?:veterinary\s+)?surgery\s+(?:specialist|diplomate)\b/.test(t)) &&
+                !t.includes('neurosurgeon') && !t.includes('neurology') && !t.includes('dental') && !t.includes('dentistry')) return 'Surgeon';
 
             // === VTS/CREDENTIALED SPECIALIST (check before generic technician) ===
             if (t.includes('technician specialist') || (t.match(/\bvts\b/) && t.includes('specialist'))) return 'Credentialed Veterinary Technician Specialist';
@@ -1406,7 +1575,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return getPositionFromDescription(extractRoleSignalText(descriptionText));
         }
 
-        // Validate position is allowed for given AOP per CorrectJobNames.txt
+        // Validate that the position is allowed for the selected area of practice.
         function validatePositionForAOP(position, aop) {
             const validPositions = {
                 'Emergency Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
@@ -1416,7 +1585,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
                     'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
                     'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
-                    'Radiologist', 'Surgeon'
+                    'Radiologist', 'Surgeon', 'Partner Veterinarian'
                 ],
                 'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian'],
             };
@@ -1449,6 +1618,149 @@ document.addEventListener('DOMContentLoaded', () => {
             return APPROVED_POSITION_SET.has(position) ? position : '';
         }
 
+        function parseLocationAddressValue(rawAddress) {
+            if (!rawAddress) return { streetAddress: '', city: '', state: '', zipCode: '' };
+
+            const cleanAddress = rawAddress.replace(/\s+/g, ' ').trim();
+
+            const stateNames = Object.values(stateAbbreviations)
+                .sort((left, right) => right.length - left.length)
+                .map(stateName => stateName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+                .join('|');
+            const stateZipMatch = cleanAddress.match(new RegExp(
+                `(?:,\\s*)?\\b(${stateNames}|[A-Z]{2})(?:\\s+(\\d{4,5}(?:-\\d{4})?))?(?:\\s+(?:Suite|Ste\\.?|Unit)\\s+#?\\s*[A-Za-z0-9-]+)?(?:,?\\s+United States(?: of America)?)?$`,
+                'i'
+            ));
+            if (!stateZipMatch) return { streetAddress: '', city: '', state: '', zipCode: '' };
+
+            const prefix = cleanAddress.slice(0, stateZipMatch.index).replace(/[,.\s]+$/, '').trim();
+            if (!prefix) return { streetAddress: '', city: '', state: '', zipCode: '' };
+            const commaParts = prefix.split(/\s*,\s*/).map(part => part.trim()).filter(Boolean);
+            let city = '';
+            let streetAddress = '';
+
+            if (commaParts.length >= 2) {
+                city = commaParts.pop();
+                streetAddress = commaParts.join(', ');
+            } else {
+                const streetAndCityMatch = prefix.match(
+                    /^(\d.+?\b(?:Street|St\.?|Road|Rd\.?|Avenue|Ave\.?|Way|Lane|Ln\.?|Boulevard|Blvd\.?|Drive|Dr\.?|Highway|Hwy\.?|Court|Ct\.?|Parkway|Pkwy\.?|Place|Pl\.?))(?:\s+(N|S|E|W|NE|NW|SE|SW|North|South|East|West))?\s+(.+)$/i
+                );
+                if (streetAndCityMatch) {
+                    streetAddress = streetAndCityMatch[1].trim();
+                    if (streetAndCityMatch[2]) streetAddress += ` ${streetAndCityMatch[2]}`;
+                    city = streetAndCityMatch[3].trim();
+                } else {
+                    city = prefix;
+                }
+            }
+
+            const unitMatch = city.match(/^((?:Unit|Suite|Ste\.?)\s+[A-Za-z0-9-]+)\s+(.+)$/i) ||
+                city.match(/^(Building\s+[A-Za-z0-9]+(?:\s*&\s*[A-Za-z0-9]+)?)\s+(.+)$/i);
+            if (unitMatch) {
+                streetAddress = [streetAddress, unitMatch[1]].filter(Boolean).join(', ');
+                city = unitMatch[2].trim();
+            }
+
+            let zipCode = stateZipMatch[2] || '';
+            if (/^\d{4}$/.test(zipCode)) zipCode = zipCode.padStart(5, '0');
+            return {
+                streetAddress,
+                city,
+                state: getFullStateName(stateZipMatch[1].trim()),
+                zipCode
+            };
+        }
+
+        function parseStructuredLocationAddress(text) {
+            // Descriptions use both labels. Prefer Location Address, then accept Location
+            // when it contains a parseable City/State or full street address.
+            const rawAddresses = [
+                getMetadataField(text, ['Location Address']),
+                getMetadataField(text, ['Location'])
+            ].filter(Boolean);
+
+            for (const rawAddress of rawAddresses) {
+                const parsed = parseLocationAddressValue(rawAddress);
+                if (parsed.city && parsed.state) return parsed;
+            }
+
+            return { streetAddress: '', city: '', state: '', zipCode: '' };
+        }
+
+        function extractReliableDescriptionLocation(text, parsedAddress) {
+            function makeLocation(city, state, source) {
+                const cleanCity = (city || '')
+                    .replace(/^[,;:\s]+|[,;:\s]+$/g, '')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                const stateAbbreviation = getStateAbbreviation(state);
+                if (!cleanCity || !stateAbbreviation) return null;
+                if (/\b(?:remote|nationwide|united states)\b/i.test(cleanCity)) return null;
+                if (/\b(?:hospital|clinic|practice|location|description|position|veterinarian)\b/i.test(cleanCity)) return null;
+
+                const cleanState = getFullStateName(stateAbbreviation);
+                return {
+                    city: cleanCity,
+                    state: cleanState,
+                    location: `${cleanCity}, ${cleanState}`,
+                    source
+                };
+            }
+
+            // Structured fields are the strongest description evidence.
+            if (parsedAddress?.city && parsedAddress?.state) {
+                const structuredLocation = makeLocation(
+                    parsedAddress.city,
+                    parsedAddress.state,
+                    'structured-address'
+                );
+                if (structuredLocation) return structuredLocation;
+            }
+
+            const explicitCity = getMetadataField(text, ['City', 'Job City']);
+            const explicitState = getMetadataField(text, ['State', 'Province', 'Job State']);
+            if (explicitCity && explicitState) {
+                const metadataLocation = makeLocation(
+                    explicitCity,
+                    explicitState,
+                    'structured-city-state'
+                );
+                if (metadataLocation) return metadataLocation;
+            }
+
+            // Generic City, ST matching is unsafe: descriptions also mention licensing
+            // jurisdictions and the corporate Birmingham office. Only wording that explicitly
+            // connects a place to this hospital/job is accepted from free text.
+            const stateNames = Object.values(stateAbbreviations)
+                .sort((left, right) => right.length - left.length)
+                .map(stateName => stateName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+                .join('|');
+            const cityState = `([A-Z][A-Za-z.'’-]*(?:\\s+[A-Z][A-Za-z.'’-]*){0,4})\\s*,\\s*(${stateNames}|[A-Z]{2})\\b`;
+            const explicitPatterns = [
+                new RegExp(`(?:our|this)\\s+(?:hospital|practice|clinic)\\s+(?:(?:is\\s+)?(?:located|based)\\s+)?in\\s+${cityState}`, 'gi'),
+                new RegExp(`(?:job|position|role|opportunity)\\s+(?:is\\s+)?(?:located|based)\\s+in\\s+${cityState}`, 'gi'),
+                new RegExp(`join\\s+our(?:\\s+[A-Za-z'-]+){0,4}\\s+team\\s+in\\s+${cityState}`, 'gi')
+            ];
+
+            for (const pattern of explicitPatterns) {
+                let match;
+                while ((match = pattern.exec(text || '')) !== null) {
+                    const contextStart = Math.max(0, match.index - 140);
+                    const contextEnd = Math.min((text || '').length, match.index + match[0].length + 140);
+                    const context = (text || '').slice(contextStart, contextEnd);
+                    if (/heartbeat of Mission|headquarters|corporate office|licen[cs](?:e|ing|ure)/i.test(context)) {
+                        continue;
+                    }
+
+                    const explicitLocation = makeLocation(match[1], match[2], 'explicit-job-location');
+                    if (explicitLocation) return explicitLocation;
+                }
+            }
+
+            return null;
+        }
+
         // Extract locations from stored description (which now includes JSON-LD data)
         function extractLocations(text) {
             const locations = [];
@@ -1456,6 +1768,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const explicitLocation = getMetadataField(text, ['Location', 'Job Location', 'Work Location']);
             const explicitCity = getMetadataField(text, ['City', 'Job City']);
             const explicitState = getMetadataField(text, ['State', 'Province', 'Job State']);
+            const locationAddress = getMetadataField(text, ['Location Address']);
+            const workingArrangement = getMetadataField(text, ['Working Arrangement']);
 
             if (explicitCity && explicitState) {
                 locations.push({
@@ -1484,6 +1798,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 } else if (isStateValue(explicitLocation)) {
                     locations.push({ city: '', state: explicitLocation, location: explicitLocation });
                 }
+            }
+
+            // A small number of detail pages provide only a full street address. Extract the
+            // trailing City/State while avoiding state-license language elsewhere in the body.
+            if (locations.length === 0 && locationAddress) {
+                const parsedAddress = parseStructuredLocationAddress(text);
+                if (parsedAddress.city && parsedAddress.state) {
+                    const city = parsedAddress.city;
+                    const state = parsedAddress.state;
+                    locations.push({ city, state, location: `${city}, ${state}` });
+                }
+            }
+
+            if (locations.length === 0 && /\bremote\b/i.test(workingArrangement)) {
+                locations.push({ city: '', state: '', location: 'Remote' });
             }
 
             // First try to extract from structured JSON-LD data in the text
@@ -1558,6 +1887,19 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!text) return 'Full-Time';
             const lower = text.toLowerCase();
 
+            const payClass = getMetadataField(text, ['Pay Class', 'Employment Type', 'Job Type']).toLowerCase();
+            if (payClass) {
+                if (/^(?:prn|per[\s-]?diem)$/i.test(payClass)) {
+                    return 'PRN';
+                }
+                if ((/\bpart[\s-]?time\b/i.test(payClass) || /^pt(?:\d+)?$/i.test(payClass)) && !/\bfull[\s-]?time\b/i.test(payClass)) {
+                    return 'Part-Time';
+                }
+                if (/\b(?:full[\s-]?time|salary|salaried)\b/i.test(payClass) || /^ft(?:\d+)?$/i.test(payClass)) {
+                    return 'Full-Time';
+                }
+            }
+
             // First check the structured Employment Type field from JSON-LD
             const empTypeMatch = lower.match(/employment type:\s*([^\n]+)/i);
             if (empTypeMatch) {
@@ -1588,11 +1930,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const yearToken = '(?:years?|yrs?\\.?)';
             const candidateLines = [];
             const qualificationsSection = extractQualificationsSection(text);
+            const splitExperienceSegments = value => (value || '').split(/\r?\n|\s+[•▪]\s*|\s+-\s+/);
 
             if (qualificationsSection) {
-                candidateLines.push(...qualificationsSection.split('\n'));
+                candidateLines.push(...splitExperienceSegments(qualificationsSection));
             }
-            candidateLines.push(...text.split('\n'));
+            candidateLines.push(...splitExperienceSegments(text));
 
             const prioritizedLines = candidateLines
                 .map(line => line.trim())
@@ -1605,10 +1948,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 new RegExp(`\\b(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
                 new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
                 new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\b`, 'i'),
-                new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
+                new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(?:of\\s+)?(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
                 new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
                 new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
-                new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
+                new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(?:of\\s+)?(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
                 new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:in\\s+(?:practice|a\\s+practice\\s+setting)|practice\\s+setting)\\b`, 'i')
             ];
 
@@ -1636,6 +1979,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
+            // Experience is a duration field. Qualitative statements such as "new graduates
+            // welcome", "experienced veterinarian", or board certification belong elsewhere
+            // and must not be stored here.
             return '';
         }
 
@@ -1645,6 +1991,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const areaOfPractice = determineAreaOfPractice(positionTitle, descriptionText, hospitalName);
         const position = determinePosition(positionTitle, descriptionText, areaOfPractice);
         const locations = extractLocations(descriptionText);
+        const address = parseStructuredLocationAddress(descriptionText);
+        const descriptionLocation = extractReliableDescriptionLocation(descriptionText, address);
         const jobType = extractJobType(descriptionText);
         const experience = extractExperience(descriptionText);
 
@@ -1655,7 +2003,10 @@ document.addEventListener('DOMContentLoaded', () => {
             locations,
             hospitalName,
             jobType,
-            experience
+            experience,
+            descriptionLocation,
+            streetAddress: address.streetAddress,
+            zipCode: address.zipCode
         };
     }
 
@@ -1668,10 +2019,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
 
         function emptyAddressResult() {
-            return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
+            return addressQuality ? addressQuality.emptyAddressResult() : { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
         }
 
         const expectedLocation = parseExpectedLocation(location);
+        const identityContext = {
+            hospitalName,
+            originalHospitalName: originalHospitalName || hospitalName,
+            location,
+            zipMatchesState
+        };
 
         function normalizeForCompare(value) {
             return (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -1740,61 +2097,33 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         function filterDataForExpectedLocation(data, sourceLabel) {
-            const result = data || emptyAddressResult();
-            const hasLocationSignal = !!(result.streetAddress || result.zipCode || result.fullAddress || result.city || result.state);
-
-            if (hasLocationSignal && !resultMatchesExpectedLocation(result)) {
-                console.warn(`Ignoring address result outside requested location "${location}" from "${sourceLabel}": ${result.fullAddress || [result.city, result.state, result.zipCode].filter(Boolean).join(', ')}`);
+            const result = { ...(data || emptyAddressResult()), sourceType: data?.sourceType || sourceLabel || '' };
+            if (!addressQuality) return emptyAddressResult();
+            const validation = addressQuality.validateAddressCandidate(result, identityContext);
+            if (!validation.accepted) {
+                const summary = result.fullAddress || result.businessName || [result.city, result.state, result.zipCode].filter(Boolean).join(', ');
+                console.warn(`Ignoring unverified address result (${validation.reason}) from "${sourceLabel}": ${summary}`);
                 return emptyAddressResult();
             }
-
-            return result;
+            return validation.result;
         }
 
         function mergeMapsData(primary, secondary, sourceLabel = '') {
             const safeSecondary = filterDataForExpectedLocation(secondary, sourceLabel);
-            return {
-                businessName: primary.businessName || safeSecondary.businessName || '',
-                streetAddress: primary.streetAddress || safeSecondary.streetAddress || '',
-                zipCode: primary.zipCode || safeSecondary.zipCode || '',
-                city: primary.city || safeSecondary.city || '',
-                state: primary.state || safeSecondary.state || '',
-                fullAddress: primary.fullAddress || safeSecondary.fullAddress || '',
-                website: primary.website || safeSecondary.website || '',
-                phone: primary.phone || safeSecondary.phone || ''
-            };
+            return addressQuality.selectAtomicAddress(primary, safeSecondary, identityContext);
         }
 
         function mergeOfficialWebsiteData(primary, secondary, sourceLabel = '') {
-            const safeSecondary = secondary || emptyAddressResult();
-            const parsedFromAddress = parseLocationFromAddressText(safeSecondary.fullAddress || safeSecondary.streetAddress || '');
-            const zipCode = safeSecondary.zipCode || parsedFromAddress.zipCode || extractZipFromAddressText(safeSecondary.fullAddress || safeSecondary.streetAddress || '');
-            const resultState = normalizeStateForCompare(safeSecondary.state || parsedFromAddress.state || '');
-
-            if (expectedLocation.state && resultState && resultState !== expectedLocation.state) {
-                console.warn(`Ignoring official website address outside requested state "${location}" from "${sourceLabel}": ${safeSecondary.fullAddress}`);
-                return primary;
-            }
-            if (expectedLocation.state && zipCode && !zipMatchesState(zipCode, expectedLocation.state)) {
-                console.warn(`Ignoring official website address with wrong state ZIP "${location}" from "${sourceLabel}": ${safeSecondary.fullAddress}`);
-                return primary;
-            }
-
-            return {
-                businessName: primary.businessName || safeSecondary.businessName || '',
-                streetAddress: primary.streetAddress || safeSecondary.streetAddress || '',
-                zipCode: primary.zipCode || safeSecondary.zipCode || '',
-                city: primary.city || safeSecondary.city || '',
-                state: primary.state || safeSecondary.state || '',
-                fullAddress: primary.fullAddress || safeSecondary.fullAddress || '',
-                website: primary.website || safeSecondary.website || '',
-                phone: primary.phone || safeSecondary.phone || '',
-                allowPostalCityMismatch: primary.allowPostalCityMismatch || safeSecondary.allowPostalCityMismatch || false
+            const safeSecondary = {
+                ...(secondary || emptyAddressResult()),
+                businessName: secondary?.businessName || originalHospitalName || hospitalName,
+                sourceType: secondary?.sourceType || 'official-website'
             };
+            return mergeMapsData(primary, safeSecondary, sourceLabel);
         }
 
         function needsMapsRetry(data) {
-            return !data.streetAddress || !data.zipCode;
+            return !data.streetAddress || !data.zipCode || !data.phone || !data.website;
         }
 
         function uniqueQueries(names) {
@@ -1881,7 +2210,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                         state: data.state || '',
                                         fullAddress: data.fullAddress || '',
                                         website: data.website || '',
-                                        phone: data.phone || ''
+                                        phone: data.phone || '',
+                                        sourceType: 'google-maps'
                                     });
                                 }).catch((err) => {
                                     console.error(`Google Maps script error for "${queryLabel}":`, err);
@@ -1945,7 +2275,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                         state: data.state || '',
                                         fullAddress: data.fullAddress || '',
                                         website: data.website || '',
-                                        phone: data.phone || ''
+                                        phone: data.phone || '',
+                                        sourceType: 'google-maps'
                                     });
                                 }).catch((err) => {
                                     console.error(`Google Maps script error for "${queryLabel}":`, err);
@@ -2005,7 +2336,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                         state: data.state || '',
                                         fullAddress: data.fullAddress || '',
                                         website: data.website || '',
-                                        phone: data.phone || ''
+                                        phone: data.phone || '',
+                                        sourceType: 'google-search'
                                     });
                                 }).catch((err) => {
                                     console.error(`Google Search script error for "${queryLabel}":`, err);
@@ -2068,7 +2400,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                         state: data.state || '',
                                         fullAddress: data.fullAddress || '',
                                         website: data.website || '',
-                                        phone: data.phone || ''
+                                        phone: data.phone || '',
+                                        sourceType: 'google-search'
                                     });
                                 }).catch((err) => {
                                     console.error(`Google Search script error for "${queryLabel}":`, err);
@@ -2081,6 +2414,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     chrome.tabs.onUpdated.addListener(listener);
                 });
             });
+        }
+
+        if (isLivewellHospital(hospitalName) || isLivewellHospital(originalHospitalName)) {
+            console.log(`Checking authoritative Livewell location feed: "${searchQuery}"`);
+            const livewellData = filterDataForExpectedLocation(
+                await fetchLivewellLocationAddress(hospitalName, location, originalHospitalName),
+                'livewell-geojson'
+            );
+            if (livewellData.streetAddress && livewellData.zipCode) {
+                console.log(`Verified Livewell branch: "${livewellData.fullAddress}"`);
+                return livewellData;
+            }
         }
 
         console.log(`Google Maps address search: "${searchQuery}"`);
@@ -2135,6 +2480,8 @@ document.addEventListener('DOMContentLoaded', () => {
             fullAddress: data.fullAddress || '',
             website: data.website || '',
             phone: data.phone || '',
+            sourceType: data.sourceType || '',
+            verified: data.verified || false,
             allowPostalCityMismatch: data.allowPostalCityMismatch || false
         };
     }
@@ -2168,8 +2515,33 @@ document.addEventListener('DOMContentLoaded', () => {
         totalCountElement.textContent = count;
     }
 
+    function hasRemoteCityOrState(job) {
+        return [job?.city, job?.state].some(value => /remote/i.test(value || ''));
+    }
+
+    function excludeRemoteJobs(jobs) {
+        return (jobs || []).filter(job => !hasRemoteCityOrState(job));
+    }
+
     function getJobSelectionKey(job) {
-        return job.jobId || job.link || `${job.title || ''}||${job.hospital || ''}||${job.location || ''}`;
+        // One job's description Ref # can equal a later job's listing URL ID. The full link
+        // remains unique during that first detail pass, so it must take priority over jobId for
+        // selection and queue identity.
+        return job.link || job.jobId || `${job.title || ''}||${job.hospital || ''}||${job.location || ''}`;
+    }
+
+    function getReferenceJobIdFromDescription(description, currentJobId = '') {
+        const match = (description || '').match(/^\s*Ref\s*#\s*:\s*(?:MPH-)?(\d+)\s*$/im);
+        if (!match) return '';
+
+        const splitSuffixMatch = (currentJobId || '').match(/^MPH-\d+-(\d+)$/i);
+        const splitSuffix = splitSuffixMatch ? `-${splitSuffixMatch[1]}` : '';
+        return `MPH-${match[1]}${splitSuffix}`;
+    }
+
+    function getBaseJobId(jobId) {
+        const match = (jobId || '').match(/^(MPH-\d+)(?:-\d+)?$/i);
+        return match ? match[1].replace(/^mph-/i, 'MPH-') : (jobId || '');
     }
 
     function pruneSelection() {
@@ -2295,6 +2667,27 @@ document.addEventListener('DOMContentLoaded', () => {
         editingJobKey = '';
         editJobModal.classList.add('hidden');
         editJobForm.reset();
+    }
+
+    function openDescriptionModal(job) {
+        if (!job?.description) return;
+
+        descriptionModalTitle.textContent = job.title || 'Job Description';
+        descriptionModalMeta.textContent = [
+            job.jobId || '',
+            job.hospital || '',
+            job.location || ''
+        ].filter(Boolean).join(' | ') || 'Full scraped description for the selected job.';
+        descriptionModalBody.textContent = job.description;
+        descriptionModal.classList.remove('hidden');
+        closeDescriptionModalBtn.focus();
+    }
+
+    function closeDescriptionModal() {
+        descriptionModal.classList.add('hidden');
+        descriptionModalTitle.textContent = 'Job Description';
+        descriptionModalMeta.textContent = 'Full scraped description for the selected job.';
+        descriptionModalBody.textContent = '';
     }
 
     function openEditJobModal() {
@@ -2457,10 +2850,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const descCell = row.insertCell(19);
             if (job.description) {
-                const descDiv = document.createElement('div');
-                descDiv.className = 'description-cell';
-                descDiv.textContent = job.description;
-                descCell.appendChild(descDiv);
+                const viewDescriptionBtn = document.createElement('button');
+                viewDescriptionBtn.type = 'button';
+                viewDescriptionBtn.className = 'btn description-action';
+                viewDescriptionBtn.textContent = 'View Description';
+                viewDescriptionBtn.setAttribute('aria-label', `View description for ${job.title || 'job'}`);
+                viewDescriptionBtn.addEventListener('click', () => openDescriptionModal(job));
+                descCell.appendChild(viewDescriptionBtn);
             } else {
                 descCell.innerHTML = '<span style="color: #94a3b8; font-style: italic; font-size: 12px;">Not scraped</span>';
             }
@@ -2518,7 +2914,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 `"${(job.position || '').replace(/"/g, '""')}"`,
                 `"${(job.salary || '').replace(/"/g, '""')}"`,
                 `"${(job.jobType || '').replace(/"/g, '""')}"`,
-                `"${(job.experience || '').replace(/"/g, '""')}"`,
+                `"${(job.experience || '-').replace(/"/g, '""')}"`,
                 `"${(job.link || '').replace(/"/g, '""')}"`,
                 `"${(job.description || '').replace(/"/g, '""')}"`
             ].join(','))
@@ -2541,7 +2937,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize
     chrome.storage.local.get(['scrapedJobs'], (result) => {
-        allJobs = result.scrapedJobs || [];
+        const storedJobs = result.scrapedJobs || [];
+        allJobs = excludeRemoteJobs(storedJobs);
+
+        if (allJobs.length !== storedJobs.length) {
+            chrome.storage.local.set({ scrapedJobs: allJobs });
+        }
+
         renderCurrentView();
 
         tableHeaders.forEach(header => {
@@ -2600,9 +3002,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    closeDescriptionModalBtn.addEventListener('click', closeDescriptionModal);
+    closeDescriptionModalFooterBtn.addEventListener('click', closeDescriptionModal);
+    descriptionModal.addEventListener('click', (event) => {
+        if (event.target === descriptionModal) {
+            closeDescriptionModal();
+        }
+    });
+
     document.addEventListener('keydown', (event) => {
         if (event.key === 'Escape' && !editJobModal.classList.contains('hidden')) {
             closeEditJobModal();
+        }
+        if (event.key === 'Escape' && !descriptionModal.classList.contains('hidden')) {
+            closeDescriptionModal();
         }
     });
 
@@ -2863,9 +3276,9 @@ document.addEventListener('DOMContentLoaded', () => {
         descriptionQueue = jobs
             .map((job, index) => ({
                 index,
+                key: getJobSelectionKey(job),
                 jobId: job.jobId || '',
-                link: job.link || '',
-                attempts: 0
+                link: job.link || ''
             }))
             .filter(item => !jobs[item.index].description && item.link);
 
@@ -2875,8 +3288,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         isGettingDescriptions = true;
-        currentJobIndex = 0;
+        nextDescriptionQueueIndex = 0;
+        activeDescriptionRequests = 0;
+        descriptionCompletedCount = 0;
         failedDescriptionCount = 0;
+        descriptionUpdates = new Map();
+        descriptionStorageWriteChain = Promise.resolve();
+        descriptionLastScheduledCount = 0;
+        descriptionStorageError = null;
 
         getDescriptionsBtn.disabled = true;
         getDescriptionsBtn.textContent = 'Getting Descriptions...';
@@ -2891,117 +3310,215 @@ document.addEventListener('DOMContentLoaded', () => {
         progressText.textContent = `0 / ${descriptionQueue.length}`;
         progressBar.style.width = '0%';
 
-        processNextJob();
+        try {
+            await runDescriptionWorkers();
+            scheduleDescriptionStorageFlush(true);
+            await descriptionStorageWriteChain;
+
+            if (descriptionStorageError) {
+                throw descriptionStorageError;
+            }
+
+            finishDescriptionFetchRun();
+        } catch (error) {
+            console.error('Description fetch run failed:', error);
+            finishDescriptionFetchRun(error);
+        }
     });
 
-    async function processNextJob() {
-        // Update progress
+    function updateDescriptionProgress() {
         const progressBar = document.getElementById('progressBar');
         const progressText = document.getElementById('progressText');
         const totalToProcess = descriptionQueue.length;
-        progressText.textContent = `${Math.min(currentJobIndex, totalToProcess)} / ${totalToProcess}`;
+        const completed = Math.min(descriptionCompletedCount, totalToProcess);
+        progressText.textContent = `${completed} / ${totalToProcess}`;
         progressBar.style.width = totalToProcess
-            ? `${(Math.min(currentJobIndex, totalToProcess) / totalToProcess) * 100}%`
+            ? `${(completed / totalToProcess) * 100}%`
             : '0%';
+        getDescriptionsBtn.textContent = `Getting Descriptions... (${completed}/${totalToProcess})`;
+    }
 
-        if (currentJobIndex >= descriptionQueue.length) {
-            isGettingDescriptions = false;
-            getDescriptionsBtn.disabled = false;
-            getDescriptionsBtn.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M13,13H11V18H13V13M13,9.5H11V11.5H13V9.5Z"/>
-                </svg>
-                Get Descriptions
-            `;
-            document.getElementById('progressSection').classList.add('hidden');
-            if (failedDescriptionCount > 0) {
-                showToast(`Descriptions finished with ${failedDescriptionCount} failed job(s). Check console for details.`, 'error');
-            } else {
-                showToast('All descriptions have been fetched!', 'success');
-            }
-            return;
+    function finishDescriptionFetchRun(runError = null) {
+        isGettingDescriptions = false;
+        activeDescriptionRequests = 0;
+        getDescriptionsBtn.disabled = false;
+        getDescriptionsBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M13,13H11V18H13V13M13,9.5H11V11.5H13V9.5Z"/>
+            </svg>
+            Get Descriptions
+        `;
+        updateDescriptionProgress();
+        document.getElementById('progressSection').classList.add('hidden');
+
+        if (runError) {
+            showToast(`Description fetching stopped: ${runError.message || runError}`, 'error');
+        } else if (failedDescriptionCount > 0) {
+            showToast(`Descriptions finished with ${failedDescriptionCount} failed job(s). Check console for details.`, 'error');
+        } else {
+            showToast('All descriptions have been fetched!', 'success');
         }
+    }
 
-        const data = await chrome.storage.local.get(['scrapedJobs']);
-        const jobs = data.scrapedJobs || [];
-        const queueItem = descriptionQueue[currentJobIndex];
-        const jobIndex = jobs.findIndex((job, index) => {
+    function findDescriptionJobIndex(jobs, queueItem) {
+        return jobs.findIndex((job, index) => {
+            if (queueItem.key && getJobSelectionKey(job) === queueItem.key) return true;
             if (queueItem.jobId && job.jobId === queueItem.jobId) return true;
             if (queueItem.link && job.link === queueItem.link) return true;
             return index === queueItem.index;
         });
+    }
 
-        if (jobIndex === -1 || jobs[jobIndex]?.description || !jobs[jobIndex]?.link) {
-            currentJobIndex++;
-            setTimeout(() => processNextJob(), 50);
-            return;
+    function validateDescriptionUrl(rawUrl) {
+        const url = new URL(rawUrl);
+        if (url.protocol !== 'https:' || url.hostname !== 'missionpethealth.avature.net') {
+            throw new Error(`Unsupported job URL: ${rawUrl}`);
         }
 
-        const job = jobs[jobIndex];
-        getDescriptionsBtn.textContent = `Getting Descriptions... (${currentJobIndex + 1}/${descriptionQueue.length})`;
+        if (!/\/JobDetail\/|\/agency\/OpenPositions\//i.test(url.pathname)) {
+            throw new Error(`URL is not an Avature job-detail page: ${rawUrl}`);
+        }
+
+        return url;
+    }
+
+    function createDescriptionFetchError(message, retryable = true) {
+        const error = new Error(message);
+        error.retryable = retryable;
+        return error;
+    }
+
+    function waitForDescriptionRetry(attempt) {
+        const delay = (600 * (2 ** (attempt - 1))) + Math.floor(Math.random() * 250);
+        return new Promise(resolve => setTimeout(resolve, delay));
+    }
+
+    async function fetchDescriptionAttempt(url) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), DESCRIPTION_REQUEST_TIMEOUT_MS);
 
         try {
-            // Add nl=1 param so Jobvite serves the standalone page instead of redirecting to the parent site iframe
-            const jobUrl = new URL(job.link);
-            jobUrl.searchParams.set('nl', '1');
-            const tab = await chrome.tabs.create({ url: jobUrl.toString(), active: false });
-            chrome.runtime.sendMessage({
-                action: 'scrapeJobDescription',
-                tabId: tab.id,
-                jobIndex: jobIndex,
-                queueIndex: currentJobIndex,
-                jobLink: job.link
-            }).catch((error) => {
-                console.error('Error starting description scrape:', error);
-                chrome.tabs.remove(tab.id).catch(() => {});
-                failedDescriptionCount++;
-                currentJobIndex++;
-                setTimeout(() => processNextJob(), 1500);
+            const response = await fetch(url.href, {
+                cache: 'no-store',
+                credentials: 'include',
+                redirect: 'follow',
+                headers: { Accept: 'text/html,application/xhtml+xml' },
+                signal: controller.signal
             });
+
+            if (!response.ok) {
+                const retryable = response.status === 408 || response.status === 425 ||
+                    response.status === 429 || response.status >= 500;
+                throw createDescriptionFetchError(`HTTP ${response.status} for ${url.href}`, retryable);
+            }
+
+            const finalUrl = new URL(response.url);
+            if (finalUrl.hostname !== 'missionpethealth.avature.net') {
+                throw createDescriptionFetchError(`Job request redirected to ${finalUrl.hostname}`, false);
+            }
+
+            const html = await response.text();
+            const parsed = globalThis.MphDescriptionParser?.extractDescriptionFromHtml(html);
+            const description = parsed?.text?.replace(/\n{3,}/g, '\n\n').trim() || '';
+
+            if (!description || !parsed?.hasDescription) {
+                const looksLikeLogin = /type=["']password["']|sign\s*in|log\s*in/i.test(html);
+                throw createDescriptionFetchError(
+                    looksLikeLogin
+                        ? 'Avature returned a login page instead of job details.'
+                        : 'Avature response did not contain a job description.',
+                    !looksLikeLogin
+                );
+            }
+
+            return description;
         } catch (error) {
-            console.error('Error opening tab for job:', error);
-            failedDescriptionCount++;
-            currentJobIndex++;
-            setTimeout(() => processNextJob(), 1500);
+            if (error.name === 'AbortError') {
+                throw createDescriptionFetchError(`Request timed out after ${DESCRIPTION_REQUEST_TIMEOUT_MS / 1000} seconds.`);
+            }
+            throw error;
+        } finally {
+            clearTimeout(timeoutId);
         }
     }
 
-    // Listen for description saved messages from background.js
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.action === 'descriptionSaved') {
-            chrome.storage.local.get(['scrapedJobs'], (data) => {
+    async function fetchJobDescriptionDirectly(queueItem) {
+        const url = validateDescriptionUrl(queueItem.link);
+        let lastError = null;
+
+        for (let attempt = 1; attempt <= DESCRIPTION_FETCH_ATTEMPTS; attempt++) {
+            try {
+                return await fetchDescriptionAttempt(url);
+            } catch (error) {
+                lastError = error;
+                if (error.retryable === false || attempt === DESCRIPTION_FETCH_ATTEMPTS) break;
+                console.warn(`Retrying ${queueItem.jobId || queueItem.link} after attempt ${attempt}:`, error.message);
+                await waitForDescriptionRetry(attempt);
+            }
+        }
+
+        throw lastError || new Error('Description request failed.');
+    }
+
+    function scheduleDescriptionStorageFlush(force = false) {
+        const unscheduledCount = descriptionUpdates.size - descriptionLastScheduledCount;
+        if (!force && unscheduledCount < DESCRIPTION_SAVE_BATCH_SIZE) return;
+
+        const snapshot = Array.from(descriptionUpdates.values());
+        if (snapshot.length === 0) return;
+        descriptionLastScheduledCount = descriptionUpdates.size;
+
+        descriptionStorageWriteChain = descriptionStorageWriteChain
+            .catch(() => {})
+            .then(async () => {
+                const data = await chrome.storage.local.get(['scrapedJobs']);
                 const jobs = data.scrapedJobs || [];
+
+                for (const update of snapshot) {
+                    const jobIndex = findDescriptionJobIndex(jobs, update);
+                    if (jobIndex !== -1 && jobs[jobIndex]?.link === update.link) {
+                        jobs[jobIndex].description = update.description;
+                    }
+                }
+
+                await chrome.storage.local.set({ scrapedJobs: jobs });
+                descriptionStorageError = null;
                 allJobs = jobs;
                 renderCurrentView();
-
-                if (isGettingDescriptions) {
-                    const queueItem = descriptionQueue[currentJobIndex];
-                    const isCurrentQueueMessage = message.queueIndex === undefined || message.queueIndex === currentJobIndex;
-
-                    if (!message.success) {
-                        const error = message.error || 'Description scrape failed.';
-                        const canRetry = queueItem && queueItem.attempts < 1 && !/quota|storage|save/i.test(error);
-
-                        if (canRetry && isCurrentQueueMessage) {
-                            queueItem.attempts++;
-                            console.warn(`Retrying description for job ${queueItem.jobId || queueItem.link}: ${error}`);
-                            setTimeout(() => processNextJob(), 2000);
-                            return;
-                        }
-
-                        failedDescriptionCount++;
-                        console.warn(`Description failed for job index ${message.jobIndex}: ${error}`);
-                    }
-
-                    if (isCurrentQueueMessage) {
-                        currentJobIndex++;
-                    }
-
-                    setTimeout(() => processNextJob(), 1500);
-                }
+            })
+            .catch(error => {
+                descriptionStorageError = error;
+                console.error('Could not save a description batch:', error);
             });
+    }
+
+    async function runDescriptionWorker() {
+        while (true) {
+            const queueIndex = nextDescriptionQueueIndex++;
+            if (queueIndex >= descriptionQueue.length) return;
+
+            const queueItem = descriptionQueue[queueIndex];
+            activeDescriptionRequests++;
+
+            try {
+                const description = await fetchJobDescriptionDirectly(queueItem);
+                descriptionUpdates.set(queueItem.key, { ...queueItem, description });
+                scheduleDescriptionStorageFlush();
+            } catch (error) {
+                failedDescriptionCount++;
+                console.warn(`Description failed for ${queueItem.jobId || queueItem.link}:`, error);
+            } finally {
+                activeDescriptionRequests = Math.max(0, activeDescriptionRequests - 1);
+                descriptionCompletedCount++;
+                updateDescriptionProgress();
+            }
         }
-    });
+    }
+
+    async function runDescriptionWorkers() {
+        const workerCount = Math.min(DESCRIPTION_FETCH_CONCURRENCY, descriptionQueue.length);
+        await Promise.all(Array.from({ length: workerCount }, () => runDescriptionWorker()));
+    }
 
     // ============ FETCH DETAILS ============
 
@@ -3019,24 +3536,22 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Find jobs that need details (no areaOfPractice, position, or experience)
-        // Can work with job title even if no description exists
-        const jobsToFetch = jobs.map((job, index) => ({ job, index }))
-            .filter(item => {
-                if (!item.job.title) return false;
-                const needsDetails = !item.job.areaOfPractice || !item.job.position || !item.job.experience;
-                return needsDetails;
-            });
+        // Always re-analyze every described job. A row can look "complete" while still carrying
+        // stale values (for example Hospital copied into Location or an empty Salary despite
+        // structured Base Min./Max. fields), so checking only blank AOP/Position/Experience fields
+        // caused Fetch Details to silently skip rows that needed correction.
+        detailsQueue = jobs.map((job, index) => ({
+            job,
+            index,
+            key: getJobSelectionKey(job),
+            jobId: job.jobId || '',
+            link: job.link || ''
+        }))
+            .filter(item => item.job.title && item.job.description);
 
-        if (jobsToFetch.length === 0) {
-            if (confirm('All jobs already have details. Do you want to re-analyze all jobs?')) {
-                detailsQueue = jobs.map((job, index) => ({ job, index }))
-                    .filter(item => item.job.title);
-            } else {
-                return;
-            }
-        } else {
-            detailsQueue = jobsToFetch;
+        if (detailsQueue.length === 0) {
+            showToast('No job descriptions found. Fetch descriptions first.', 'error');
+            return;
         }
 
         isFetchingDetails = true;
@@ -3112,6 +3627,27 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function findDetailJobIndex(jobs, queueItem) {
+        // A supplied link is the authoritative identity. Never fall back to a colliding Job ID
+        // when that link is missing from storage, because that could update a different record.
+        if (queueItem.link) {
+            return jobs.findIndex(job => job.link === queueItem.link);
+        }
+
+        if (queueItem.key) {
+            const keyIndex = jobs.findIndex(job => getJobSelectionKey(job) === queueItem.key);
+            if (keyIndex !== -1) return keyIndex;
+        }
+
+        const indexedJob = jobs[queueItem.index];
+        const jobId = queueItem.jobId || queueItem.job?.jobId || '';
+        if (indexedJob && (!jobId || indexedJob.jobId === jobId)) {
+            return queueItem.index;
+        }
+
+        return jobId ? jobs.findIndex(job => job.jobId === jobId) : -1;
+    }
+
     async function processNextDetail() {
         if (currentDetailsIndex >= detailsQueue.length) {
             finishDetailsFetching();
@@ -3119,7 +3655,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const queueItem = detailsQueue[currentDetailsIndex];
-        const jobId = queueItem.job.jobId;
 
         // Update progress
         const progressBar = document.getElementById('progressBar');
@@ -3128,11 +3663,13 @@ document.addEventListener('DOMContentLoaded', () => {
         progressBar.style.width = `${((currentDetailsIndex + 1) / detailsQueue.length) * 100}%`;
         fetchDetailsBtn.textContent = `Analyzing... (${currentDetailsIndex + 1}/${detailsQueue.length})`;
 
-        // Re-read jobs from storage to get the current index
-        // (indices shift when multi-location rows are inserted)
+        // Re-read storage and resolve this exact job by its unique listing link.
         const data = await chrome.storage.local.get(['scrapedJobs']);
         const currentJobs = data.scrapedJobs || [];
-        const currentIndex = currentJobs.findIndex(j => j.jobId === jobId);
+        // Match by unique link before Job ID. A Ref # applied to an earlier job can collide with
+        // a later job's listing ID, which made findIndex(jobId) repeatedly update the first match
+        // and leave the actual queued record blank.
+        const currentIndex = findDetailJobIndex(currentJobs, queueItem);
 
         if (currentIndex === -1) {
             // Job no longer found (shouldn't happen), skip it
@@ -3151,40 +3688,25 @@ document.addEventListener('DOMContentLoaded', () => {
         if (positionTitle) {
             const extracted = extractDetailsFromDescription(positionTitle, description);
 
-            // Build detailsList with ALL locations for multi-location jobs
-            if (extracted.locations && extracted.locations.length > 0) {
-                detailsList = extracted.locations.map(loc => ({
-                    areaOfPractice: extracted.areaOfPractice,
-                    position: extracted.position,
-                    salary: extracted.salary,
-                    hospitalName: extracted.hospitalName,
-                    jobType: extracted.jobType,
-                    experience: extracted.experience,
-                    description: description,
-                    city: loc.city || '',
-                    state: loc.state || '',
-                    location: loc.location || ''
-                }));
-            } else {
-                // No locations found — still create one entry with details
-                detailsList = [{
-                    areaOfPractice: extracted.areaOfPractice,
-                    position: extracted.position,
-                    salary: extracted.salary,
-                    hospitalName: extracted.hospitalName,
-                    jobType: extracted.jobType,
-                    experience: extracted.experience,
-                    description: description,
-                    city: '',
-                    state: '',
-                    location: ''
-                }];
-            }
+            // The marketplace card supplies the initial geography. A description may replace it
+            // only when the guarded extractor finds structured or explicit job-location evidence.
+            detailsList = [{
+                areaOfPractice: extracted.areaOfPractice,
+                position: extracted.position,
+                salary: extracted.salary,
+                hospitalName: extracted.hospitalName,
+                jobType: extracted.jobType,
+                experience: extracted.experience,
+                descriptionLocation: extracted.descriptionLocation,
+                streetAddress: extracted.streetAddress,
+                zipCode: extracted.zipCode,
+                description: description
+            }];
         }
 
         // Save extracted details to storage
         if (detailsList.length > 0) {
-            await saveDetailResults(detailsList, currentIndex);
+            await saveDetailResults(detailsList, queueItem);
         }
 
         // Move to next job — no delay needed since we're analyzing locally
@@ -3193,10 +3715,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Save detail extraction results to chrome storage
-    function saveDetailResults(detailsList, jobIndex) {
+    function saveDetailResults(detailsList, queueItem) {
         return new Promise((resolve) => {
             chrome.storage.local.get(['scrapedJobs'], (data) => {
                 const jobs = data.scrapedJobs || [];
+                const jobIndex = findDetailJobIndex(jobs, queueItem);
                 const originalJob = jobs[jobIndex];
 
                 if (!originalJob) {
@@ -3213,10 +3736,30 @@ document.addEventListener('DOMContentLoaded', () => {
                 const listingTitle = originalJob.title || '';
                 const detailAOP = firstDetail.areaOfPractice || '';
                 const descText = firstDetail.description || originalJob.description || '';
-                const detailLocation = firstDetail.location || originalJob.location || '';
-                const detailCity = firstDetail.city || originalJob.city || '';
-                const detailState = firstDetail.state || originalJob.state || '';
-                const resolvedHospital = resolveHospitalNameFromDetails(
+                const previousJobKey = getJobSelectionKey(originalJob);
+                const referenceJobId = getReferenceJobIdFromDescription(descText, originalJob.jobId || '');
+                if (referenceJobId && referenceJobId !== originalJob.jobId) {
+                    originalJob.jobId = referenceJobId;
+                    if (selectedJobKeys.delete(previousJobKey)) {
+                        selectedJobKeys.add(getJobSelectionKey(originalJob));
+                    }
+                }
+                const titleContext = extractTitleContext(listingTitle);
+                const descriptionLocation = firstDetail.descriptionLocation;
+                if (descriptionLocation?.city && descriptionLocation?.state) {
+                    const descriptionCity = formatCityForStorage(descriptionLocation.city);
+                    const descriptionState = formatStateForStorage(descriptionLocation.state);
+                    originalJob.city = descriptionCity;
+                    originalJob.state = descriptionState;
+                    originalJob.location = `${descriptionCity}, ${descriptionState}`;
+                }
+
+                // Use the reliable description location when available; otherwise keep the
+                // marketplace card geography collected during the first scrape.
+                const detailCity = originalJob.city || '';
+                const detailState = originalJob.state || '';
+                const detailLocation = originalJob.location || '';
+                let resolvedHospital = resolveHospitalNameFromDetails(
                     originalJob.hospital || '',
                     firstDetail.hospitalName || '',
                     descText,
@@ -3224,18 +3767,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     detailCity,
                     detailState
                 );
+                // Some descriptions expose only the parent company (for example Mission Pet
+                // Health). In those cases a clearly hospital-like title segment is more specific.
+                if ((!resolvedHospital || isGenericOrganizationHospitalName(resolvedHospital)) && titleContext.hospital) {
+                    resolvedHospital = titleContext.hospital;
+                }
                 const detailHospital = resolvedHospital || firstDetail.hospitalName || originalJob.hospital || '';
 
                 // Step 1: Determine AOP — prefer detail extractor's AOP (from page category), fall back to title
                 let finalAOP = '';
                 if (!isNonClinicalJobTitle(listingTitle)) {
-                    finalAOP = hasSpecialtyTrainingSignal(descText)
-                        ? 'Specialty Care'
-                        : (detailAOP ||
+                    finalAOP = detailAOP ||
+                        (hasSpecialtyTrainingSignal(descText)
+                            ? 'Specialty Care'
+                            : (
                             (hasUrgentCareSignal(listingTitle, detailHospital, descText) ? 'Urgent Care' : '') ||
                             (hasEmergencySignal(listingTitle, detailHospital) ? 'Emergency Care' : '') ||
                             getAOPFromTitle(listingTitle) ||
-                            'General Practice Care');
+                            'General Practice Care'
+                        ));
                 }
 
                 // Step 2: Match position from listing title
@@ -3268,66 +3818,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 originalJob.position = finalPosition || '';
                 originalJob.salary = firstDetail.salary || originalJob.salary || '';
                 originalJob.jobType = firstDetail.jobType || originalJob.jobType || 'Full-Time';
-                originalJob.experience = firstDetail.experience || originalJob.experience || '';
+                originalJob.experience = firstDetail.experience || '-';
+                if (firstDetail.streetAddress) originalJob.streetAddress = firstDetail.streetAddress;
+                if (firstDetail.zipCode) originalJob.zipCode = firstDetail.zipCode;
                 if (resolvedHospital) originalJob.hospital = resolvedHospital;
-                originalJob.city = formatCityForStorage(firstDetail.city || '');
-                if (firstDetail.state) {
-                    originalJob.state = formatStateForStorage(firstDetail.state);
-                } else if (firstDetail.city || firstDetail.location) {
-                    originalJob.state = '';
-                }
-                if (firstDetail.location) originalJob.location = firstDetail.location;
                 // Update description if we got a better one
                 if (firstDetail.description && firstDetail.description.length > (originalJob.description || '').length) {
                     originalJob.description = firstDetail.description;
-                }
-
-                // Handle multi-location jobs
-                if (detailsList.length > 1) {
-                    const currentHospital = originalJob.hospital || '';
-
-                    // Check if hospital name already has a city suffix (e.g. "The Oncology Service-Leesburg")
-                    // Only swap city suffixes if the pattern exists — don't add suffixes to names that don't have one
-                    const baseHospitalMatch = currentHospital.match(/^(.+?)\s*[-–]\s*([^-–]+)$/);
-                    const hasCitySuffix = false;
-                    const baseHospitalName = '';
-
-                    // Update parent job's hospital name with first location's city (only if it already had a suffix)
-                    if (hasCitySuffix) {
-                        const firstLocCity = detailsList[0].city || '';
-                        if (firstLocCity) {
-                            void firstLocCity;
-                        }
-                    }
-
-                    originalJob.isNewLocation = true;
-                    const newJobs = [];
-                    for (let i = 1; i < detailsList.length; i++) {
-                        const loc = detailsList[i];
-                        const baseJobId = originalJob.jobId.split('-')[0];
-                        // Only build city-specific hospital name if the original had a city suffix
-                        let childHospital = currentHospital;
-                        if (hasCitySuffix) {
-                            const childCity = loc.city || '';
-                            if (childCity) {
-                                childHospital = `${baseHospitalName}-${childCity}`;
-                            }
-                        }
-                        const newJob = {
-                            ...originalJob,
-                            jobId: `${baseJobId}-${i + 1}`,
-                            hospital: currentHospital,
-                            city: formatCityForStorage(loc.city || ''),
-                            state: formatStateForStorage(loc.state || ''),
-                            location: loc.location || `${loc.city}, ${loc.state}`,
-                            streetAddress: '',
-                            zipCode: '',
-                            isNewLocation: true,
-                            sourceLink: originalJob.link || ''
-                        };
-                        newJobs.push(newJob);
-                    }
-                    jobs.splice(jobIndex + 1, 0, ...newJobs);
                 }
 
                 chrome.storage.local.set({ scrapedJobs: jobs }, () => {
@@ -3355,14 +3852,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============ FETCH ADDRESSES ============
 
     function normalizeAddressCacheValue(value) {
-        return (value || '')
-            .toLowerCase()
-            .replace(/&/g, ' and ')
-            .replace(/\([^)]*\)/g, ' ')
-            .replace(/[-–—]/g, ' ')
-            .replace(/\b(?:hospital|clinic|center|centre|veterinary|animal|pet)\b/g, ' ')
-            .replace(/[^a-z0-9]+/g, ' ')
-            .trim();
+        return addressQuality?.normalizeAddressCacheValue(value) || normalizeLookupValue(value);
     }
 
     function makeAddressCacheKey(hospital, location) {
@@ -3372,17 +3862,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getAddressCacheKeys(hospital, location, originalHospital = '') {
-        const keys = new Set();
-        const names = [hospital, originalHospital].filter(Boolean);
-        for (const name of names) {
-            const key = makeAddressCacheKey(name, location);
-            if (key) keys.add(key);
-        }
-        return [...keys];
+        return addressQuality?.getAddressCacheKeys(hospital, location, originalHospital)
+            || [makeAddressCacheKey(originalHospital || hospital, location)].filter(Boolean);
     }
 
     function hasUsableCachedAddress(data) {
-        return !!(data && data.streetAddress && data.zipCode && data.streetAddress !== 'TBD' && data.zipCode !== '00000');
+        return !!(data && data.streetAddress && data.zipCode && data.phone && data.website
+            && data.streetAddress !== 'TBD' && data.zipCode !== '00000');
     }
 
     function parseLocationParts(location) {
@@ -3478,24 +3964,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function primeAddressCache(jobs) {
+        // Start each run with a clean cache. Rows saved by an older extension build
+        // may contain a cross-branch address bundle; only results verified during
+        // this run may be reused by another identical hospital/location row.
         addressCache = new Map();
-        for (const job of jobs) {
-            if (!job.hospital || !job.location || !job.streetAddress || !job.zipCode) continue;
-            if (!canFetchAddressForHospital(job.hospital, job.location, job.city, job.state)) continue;
-            if (jobLocationMismatch(job)) continue;
-            if (savedAddressStateMismatch(job)) continue;
-            if (savedAddressBrandMismatch(job)) continue;
-            const cached = {
-                streetAddress: job.streetAddress || '',
-                zipCode: job.zipCode || '',
-                city: job.city || '',
-                state: job.state || '',
-                fullAddress: [job.streetAddress, job.city, [job.state, job.zipCode].filter(Boolean).join(' ')].filter(Boolean).join(', '),
-                website: job.website || '',
-                phone: job.phone || ''
-            };
-            rememberAddressData(getAddressCacheKeys(job.hospital, job.location), cached);
-        }
     }
 
     fetchAddressesBtn.addEventListener('click', async () => {
@@ -3548,13 +4020,10 @@ document.addEventListener('DOMContentLoaded', () => {
             renderCurrentView();
         }
 
-        // Find jobs that need address/contact data (using LOCATION column)
+        // Re-check every lookup-capable hospital on each run. This corrects complete-
+        // looking rows created by older builds, including wrong but populated phones.
         const jobsNeedingAddresses = jobs.map((job, index) => ({ job, index }))
-            .filter(item => {
-                // Jobs missing any core location/contact field
-                return canLookupAddressForJob(item.job) &&
-                    (!item.job.streetAddress || !item.job.zipCode || hasDefaultAddress(item.job) || jobLocationMismatch(item.job) || savedAddressStateMismatch(item.job) || savedAddressBrandMismatch(item.job) || isMissionPetHealthHospital(item.job.hospital));
-            });
+            .filter(item => canLookupAddressForJob(item.job));
 
         if (jobsNeedingAddresses.length === 0) {
             if (confirm('All jobs already have addresses. Do you want to re-fetch addresses for all jobs?')) {
@@ -3675,8 +4144,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const fetchedZip = addressData?.zipCode || extractZipFromAddressText(fetchedAddressText);
             const fetchedState = addressData?.state || extractStateFromAddressText(fetchedAddressText);
             const fetchedCity = addressData?.city || extractCityFromAddressText(fetchedAddressText);
-            const allowsPostalCityMismatch = !!addressData?.allowPostalCityMismatch &&
-                !!getOfficialWebsiteAddressFallbackConfig(searchHospital, job.hospital || '');
+            const allowsPostalCityMismatch = !!addressData?.allowPostalCityMismatch;
             const fetchedLocationMismatch =
                 (searchCity && !allowsPostalCityMismatch && (!fetchedCity || !cityMatchesExpected(searchCity, fetchedCity))) ||
                 (searchState && !fetchedState && !fetchedZip) ||
@@ -3698,8 +4166,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (jobs[index]) {
                 const zipFromFull = addressData.fullAddress?.match(/\b(\d{5}(?:-\d{4})?)\b/);
-                jobs[index].streetAddress = addressData.streetAddress || 'TBD';
-                jobs[index].zipCode = addressData.zipCode || zipFromFull?.[1] || '00000';
+                const hasVerifiedAddress = !!(addressData.verified && addressData.streetAddress && (addressData.zipCode || zipFromFull?.[1]));
+                jobs[index].streetAddress = hasVerifiedAddress ? addressData.streetAddress : (jobs[index].streetAddress || '');
+                jobs[index].zipCode = hasVerifiedAddress ? (addressData.zipCode || zipFromFull?.[1] || '') : (jobs[index].zipCode || '');
 
                 // Prefer the accepted address city/state so Google can correct row typos
                 // like "Narrangansett" -> "Narragansett". The address was already
@@ -3714,11 +4183,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 jobs[index].state = formatStateForStorage(acceptedState || jobs[index].state || '');
 
                 // Website and phone from Google Maps
-                jobs[index].website = resolveWebsiteForHospital(jobs[index].hospital || searchHospital, addressData.website || '');
-                if (addressData.phone) {
-                    jobs[index].phone = addressData.phone;
-                } else {
-                    jobs[index].phone = '';
+                if (hasVerifiedAddress) {
+                    jobs[index].website = resolveWebsiteForHospital(jobs[index].hospital || searchHospital, addressData.website || '');
+                    jobs[index].phone = addressData.phone || '';
                 }
 
                 await chrome.storage.local.set({ scrapedJobs: jobs });

@@ -403,7 +403,7 @@
       border: 1px solid rgba(46, 134, 171, 0.12);
     }
 
-    /* Wrapper handles horizontal scroll — sticky bottom keeps scrollbar visible on screen */
+    /* Wrapper handles horizontal scroll â€” sticky bottom keeps scrollbar visible on screen */
     .table-scroll-wrapper {
       overflow-x: auto;
       max-height: calc(100vh - 146px);
@@ -461,6 +461,8 @@
 
     th {
       color: white;
+      background: linear-gradient(135deg, #2E86AB 0%, #1f5f83 100%);
+      background-clip: padding-box;
       font-weight: 700;
       text-align: left;
       padding: 6px 7px;
@@ -485,11 +487,11 @@
     }
 
     th:first-child:hover {
-      background: transparent;
+      background: linear-gradient(135deg, #2E86AB 0%, #1f5f83 100%);
     }
 
     th:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: linear-gradient(135deg, #3a91b5 0%, #246b91 100%);
     }
 
     th.sort-asc::after {
@@ -1199,6 +1201,8 @@
   </div>
 
   <div id="toastContainer"></div>
+  <script src="hospital-resolver.js"></script>
+  <script src="salary-resolver.js"></script>
   <script src="records.js"></script>
 </body>
 </html>

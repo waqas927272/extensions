@@ -297,12 +297,13 @@
 
         const signalPattern = /\bboard[-\s]+certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b|\bdiplomate\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b/i;
         const optionalPattern = /\b(?:open to|preferred|a plus|plus but not required|not required|interested in|welcome|consider|considering|ideal|bonus)\b/i;
+        const thirdPartyPattern = /\b(?:our|the)\s+(?:team|staff|doctors?|specialists?)\b|\bteam\s+(?:includes|has|of)\b|\bstaff\s+(?:includes|has)\b|\bwork(?:ing)?\s+(?:with|alongside)\b|\bcollaborat(?:e|ing)\s+with\b|\baccess\s+to\b|\bnetwork\s+of\b/i;
 
         return requirementText
             .split(/\r?\n/)
             .map(line => line.trim())
             .filter(Boolean)
-            .some(line => signalPattern.test(line) && !optionalPattern.test(line));
+            .some(line => signalPattern.test(line) && !optionalPattern.test(line) && !thirdPartyPattern.test(line));
     }
 
     function isNonClinicalJobTitle(title) {
@@ -351,12 +352,7 @@
         const roleText = `${title || ''} ${(description || '').slice(0, 1800)}`;
         if (!/\bmedical director\b/i.test(roleText)) return false;
         if (/\bspecialty\s+medical\s+director\b/i.test(roleText)) return true;
-        if (hasSpecialtyTrainingSignal(description)) return true;
-
-        const requiredSpecialtyPattern = /\b(?:board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|dacv(?:ecc|im|r|s|d|o|aa)?|dacvr[-\s]?ro|davdc|dabvp)\b/i;
-        const optionalPattern = /\b(?:open to|preferred|a plus|plus but not required|not required|interested in|welcome|consider|considering|ideal|bonus)\b/i;
-        const mdNearRequirement = /\bmedical director\b[\s\S]{0,240}\b(?:board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|dacv(?:ecc|im|r|s|d|o|aa)?|dacvr[-\s]?ro|davdc|dabvp)\b|\b(?:board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|dacv(?:ecc|im|r|s|d|o|aa)?|dacvr[-\s]?ro|davdc|dabvp)\b[\s\S]{0,240}\bmedical director\b/i;
-        return requiredSpecialtyPattern.test(roleText) && mdNearRequirement.test(roleText) && !optionalPattern.test(roleText);
+        return hasSpecialtyTrainingSignal(description);
     }
 
     function getAOPParts(aop) {
@@ -440,20 +436,35 @@
         return '';
     }
 
-    // ===== Determine Area of Practice =====
+    function getRoleScopedDescriptionText(descriptionText) {
+        const text = descriptionText || '';
+        const requirements = extractCandidateRequirementSection(text);
+        const opening = text.slice(0, 1800);
+        const casesMatch = text.match(/^\s*(?:cases?|caseload|practice focus)\s*:?\s*\n([\s\S]{0,900}?)(?=^\s*(?:schedule|who|qualifications?|requirements?|compensation|total rewards|benefits?|about)\b|$)/im);
+        return [opening, requirements, casesMatch ? casesMatch[1] : ''].filter(Boolean).join('\n');
+    }
+
+    // ===== Determine Area of Practice: recognizable title first, role-specific description second =====
     function determineAreaOfPractice(title, category, descriptionText, hospitalName = '') {
-        const titleLower = title.toLowerCase();
+        const titleLower = (title || '').toLowerCase();
         if (isNonClinicalJobTitle(titleLower)) return '';
+
+        const titlePosition = matchPositionFromTitle(title);
+        // A generic Medical Director is always General Practice. Only an explicit
+        // qualifier in the title itself can place that role in another care area.
+        if (titlePosition === 'Medical Director') {
+            if (/\bspecialty\s+medical\s+director\b/i.test(titleLower) ||
+                /\b(?:oncolog|cardiolog|neurolog|neurosurg|dermatolog|ophthalmolog|anesthes|internal medicine|radiolog|critical care)\w*\b/i.test(titleLower)) {
+                return 'Specialty Care';
+            }
+            if (/\burgent care\b/i.test(titleLower)) return 'Urgent Care';
+            if (/\bemergency\b|\ber\b/i.test(titleLower)) return 'Emergency Care';
+            return 'General Practice Care';
+        }
+
+        if (VALID_POSITIONS_BY_AOP['Specialty Care'].includes(titlePosition) && titlePosition !== 'Medical Director') return 'Specialty Care';
         if (hasSpecialtyMedicalDirectorRequirement(title, descriptionText)) return 'Specialty Care';
-        if (hasUrgentCareSignal(titleLower, hospitalName)) return 'Urgent Care';
-        if (/\b(?:oncologist|cardiologist|neurologist|neurosurgeon|dermatologist|ophthalmologist|anesthesiologist|theriogenologist|radiologist|internist|criticalist|ecc specialist|oncology|cardiology|neurology|dermatology|ophthalmology|anesthesia|theriogenology|radiology)\b/i.test(titleLower)) return 'Specialty Care';
-        if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
-        if (hasEmergencySignal(titleLower, hospitalName)) return 'Emergency Care';
-        if (/\b(?:founding partner|medical lead|lead veterinarian|lead vet|medical director|regional medical director)\b/i.test(titleLower)) return 'General Practice Care';
-        // STEP 1: Use category from page (most reliable — directly from jobvite)
-        const aopFromCategory = categoryToAOP(category);
-        if (aopFromCategory) return aopFromCategory;
-        // STEP 2: Check title for clear specialty position names
+        if (/\burgent care\b/i.test(titleLower)) return 'Urgent Care';
         const specialtyNames = ['oncologist', 'cardiologist', 'neurologist', 'neurosurgeon',
             'dermatologist', 'ophthalmologist', 'anesthesiologist', 'theriogenologist',
             'radiologist', 'internist', 'criticalist',
@@ -474,24 +485,26 @@
         if (titleLower.includes('specialist') && !titleLower.includes('technician specialist')) return 'Specialty Care';
         if (/\bspecialty\s+(?:veterinarian|vet|doctor|dvm)\b/.test(titleLower)) return 'Specialty Care';
         if (titleLower.match(/\bsurgeon\b/)) return 'Specialty Care';
-
-        // STEP 3: Emergency from title
         if (titleLower.includes('emergency') || titleLower.match(/\ber\b/) ||
             titleLower.includes('er vet') || titleLower.includes('er dvm')) {
             return 'Emergency Care';
         }
-
-        // STEP 4: Urgent Care from title
-        if (titleLower.includes('urgent care')) return 'Urgent Care';
-
-        // STEP 5: Equine/Bovine/Exotics from title
         if (titleLower.includes('equine') || titleLower.includes('bovine') || titleLower.includes('large animal') ||
             titleLower.includes('avian') || titleLower.includes('exotics')) {
             return 'General Practice Care / Emergency Care / Urgent Care';
         }
+        if (/\bgeneral practice\b|\bprimary care\b|\(gp\)/.test(titleLower)) return 'General Practice Care';
 
-        // STEP 6: Check qualifications section for specialty requirements
+        const aopFromCategory = categoryToAOP(category);
+        if (aopFromCategory) return aopFromCategory;
+
         if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
+
+        const roleText = getRoleScopedDescriptionText(descriptionText);
+        const mixedGeneralUrgent = /\b(?:mix|combination)\s+of\s+(?:small animal\s+)?general practice\s+and\s+urgent care\b|\bgeneral practice\s+and\s+urgent care\s+(?:exposure|cases?|caseload)\b/i.test(roleText);
+        if (mixedGeneralUrgent) return 'General Practice Care';
+        if (/\bjoin\s+us\s+as\b[\s\S]{0,240}\bat\b[^.\n]{0,160}\burgent care\b|\b(?:this|the|our)\s+(?:position|role|caseload)\b[^.\n]{0,180}\burgent care\b|\b(?:practice|caseload)\s+(?:focuses|consists|includes|is)\b[^.\n]{0,160}\burgent care\b|\burgent care\s+(?:position|role|veterinarian|practice|caseload)\b/i.test(roleText)) return 'Urgent Care';
+        if (/\b(?:this|the|our)\s+(?:position|role|caseload)\b[^.\n]{0,180}\bemergency\b|\b(?:practice|caseload)\s+(?:focuses|consists|includes|is)\b[^.\n]{0,160}\bemergency\b|\bemergency\s+(?:position|role|veterinarian|vet|dvm|practice|caseload)\b/i.test(roleText)) return 'Emergency Care';
 
         return 'General Practice Care';
     }
@@ -513,7 +526,7 @@
         if (!text) return '';
 
         const rolePattern = /\b(?:medical director|medical lead(?:\s+veterinarian)?|lead veterinarian|lead vet|board certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
-        const blockedPattern = /\b(?:our services|services include|specialties include|benefits|medical(?:,\s*|\s+)dental|dental insurance|our hospital|our team has|state[-\s]?of[-\s]?the[-\s]?art|we offer|years of experience in specialty and emergency services)\b/i;
+        const blockedPattern = /\b(?:our services|services include|specialties include|benefits|medical(?:,\s*|\s+)dental|dental insurance|our hospital|our team|our staff|team includes|staff includes|work(?:ing)? (?:with|alongside)|collaborat(?:e|ing) with|access to|network of|state[-\s]?of[-\s]?the[-\s]?art|we offer|years of experience in specialty and emergency services)\b/i;
         const qualificationsSection = extractQualificationsSection(text);
         const collected = [];
         const seen = new Set();
@@ -560,7 +573,7 @@
         if (t.includes('internist') || t.includes('internal medicine')) return 'Internal Medicine Specialist';
         if (t.includes('criticalist') || t.match(/\becc\b/) || t.includes('emergency medicine')) return 'ECC Specialist';
         if (t.includes('dabvp')) return 'DABVP Specialist';
-        if (/\b(?:avian|exotics?|zoo med|zoological medicine)\b/.test(t)) return 'DABVP Specialist';
+        if (/\b(?:avian|exotics?|zoo med|zoological medicine)\s+specialist\b/.test(t)) return 'DABVP Specialist';
         if ((t.includes('dental') || t.includes('dentist') || t.includes('dentistry')) && !t.includes('assistant')) return 'Dental Specialist';
         // For surgeon, be more specific - check it's not part of neurosurgeon (which we already handled)
         if ((t.includes('surgeon') || t.includes('surgery')) && !t.includes('neurosurgeon') && !t.includes('neurology') && !t.includes('dental') && !t.includes('dentistry')) return 'Surgeon';
@@ -582,7 +595,7 @@
     }
 
     // ===== Determine Position =====
-    // Valid positions per AOP (from CorrectJobNames.txt):
+    // Valid positions per Area of Practice:
     //   Emergency Care: Associate Veterinarian
     //   General Practice Care: Associate Veterinarian, Lead Veterinarian, Medical Lead Veterinarian, Medical Director, Partner Veterinarian
     //   Specialty Care: Anesthesiologist, Cardiologist, Credentialed Veterinary Technician Specialist,
@@ -710,6 +723,9 @@
 
     // ===== Extract salary =====
     function extractSalary(jsonLd, descriptionText) {
+        if (globalThis.VcaSalaryResolver?.extractSalary) {
+            return globalThis.VcaSalaryResolver.extractSalary(descriptionText, jsonLd);
+        }
         // 1. Try JSON-LD baseSalary (check values are not empty)
         if (jsonLd?.baseSalary?.value) {
             const s = jsonLd.baseSalary.value;

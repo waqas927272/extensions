@@ -185,12 +185,12 @@
     }
 
     function validateAddressCandidate(candidate, context) {
-        const result = candidate || emptyAddressResult();
         const expectedHospital = normalizeHospitalName(
             context?.hospitalName || '',
             context?.location || '',
             context?.originalHospitalName || ''
         );
+        const result = candidate || emptyAddressResult();
         const expectedBrand = getBrand(expectedHospital);
         const expectedLocation = parseLocation(context?.location || '');
         const sourceType = result.sourceType || context?.sourceType || '';
@@ -258,13 +258,35 @@
     function extractExplicitHospitalName(description, location, currentHospital = '') {
         const locationParts = parseLocation(location);
         const city = locationParts.city;
-        if (!city || !description) return '';
+        if (!description) return '';
 
         const body = normalizeDescriptionBrandBoundaries(description || '')
             .split(/===\s*FULL JOB DESCRIPTION\s*===/i)
             .pop()
             .replace(/\s+/g, ' ')
             .trim();
+
+        // Prefer an explicitly named facility even when the listing city is a
+        // neighboring municipality (for example, WestVet Boise in Garden City).
+        // Requiring a hiring statement or facility heading avoids generic brand
+        // mentions in company boilerplate.
+        const explicitPatterns = [
+            /\b((?:Med\s*Vet|WestVet)\s+[A-Za-z0-9&'.-]+(?:\s+[A-Za-z0-9&'.-]+){0,3}?)\s+(?:is|has|will|seeks?|seeking|looks?|looking)\b/ig,
+            /\bWhy\s+(?:join\s+the\s+team\s+at|join|choose|work\s+at|will\s+you\s+love\s+working\s+at)\s+((?:Med\s*Vet|WestVet)\s+[A-Z][A-Za-z0-9&'.-]*(?:\s+[A-Z][A-Za-z0-9&'.-]*){0,3})\s*[?!]/ig,
+            /\bLearn\s+more\s+about\s+((?:Med\s*Vet|WestVet)\s+[A-Z][A-Za-z0-9&'.-]*(?:\s+[A-Z][A-Za-z0-9&'.-]*){0,3})\b/ig
+        ];
+
+        for (const pattern of explicitPatterns) {
+            const match = pattern.exec(body);
+            if (!match) continue;
+            const candidate = collapseRepeatedBrand(match[1])
+                .replace(/^Med\s*Vet\b/i, 'MedVet')
+                .replace(/\s+/g, ' ')
+                .trim();
+            if (candidate && !hasSuspiciousHospitalSuffix(candidate)) return candidate;
+        }
+
+        if (!city) return '';
         const escapedCity = city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const namedPattern = new RegExp(`\\b(Med\\s*Vet|WestVet)\\s+${escapedCity}\\b`, 'i');
         const namedMatch = body.match(namedPattern);
@@ -282,6 +304,64 @@
         }
 
         return '';
+    }
+
+    function getDescriptionBody(description) {
+        return normalizeDescriptionBrandBoundaries(description || '')
+            .split(/===\s*FULL JOB DESCRIPTION\s*===/i)
+            .pop()
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function getSpecialtyRole(text) {
+        const source = text || '';
+        const rules = [
+            ['Radiation Oncologist', /\bradiation\s+oncolog(?:ist|y)\b/i],
+            ['Medical Oncologist', /\b(?:medical\s+)?oncolog(?:ist|y)\b/i],
+            ['Neurologist & Neurosurgeon', /\b(?:neurologist|neurosurgeon|neurology)\b/i],
+            ['Internal Medicine Specialist', /\b(?:veterinary\s+)?internist\b|\binternal\s+medicine\s+specialist\b/i],
+            ['Anesthesiologist', /\b(?:veterinary\s+)?anesthesiologist\b/i],
+            ['Cardiologist', /\b(?:veterinary\s+)?cardiologist\b/i],
+            ['Dental Specialist', /\b(?:veterinary\s+dentist|dental\s+specialist|oral\s+surgeon)\b/i],
+            ['Dermatologist', /\b(?:veterinary\s+)?dermatologist\b/i],
+            ['ECC Specialist', /\b(?:criticalist|ecc\s+specialist)\b/i],
+            ['Ophthalmologist', /\b(?:veterinary\s+)?ophthalmologist\b/i],
+            ['Radiologist', /\b(?:veterinary\s+)?radiologist\b|\bdiagnostic\s+imaging\s+specialist\b/i],
+            ['Surgeon', /\b(?:veterinary\s+)?surgeon\b/i],
+            ['Avian and Exotic Specialist', /\bavian\s+and\s+exotic\s+specialist\b/i],
+            ['Sports Medicine & Rehabilitation Specialist', /\b(?:sports\s+medicine\s+(?:and|&)\s+rehabilitation|rehabilitation)\s+specialist\b/i]
+        ];
+
+        let best = null;
+        for (const [position, pattern] of rules) {
+            const match = pattern.exec(source);
+            if (!match) continue;
+            if (!best || match.index < best.index) best = { position, index: match.index };
+        }
+        return best?.position || '';
+    }
+
+    function hasSpecialtyTitleDescriptionConflict(title, description) {
+        if (/\bmedical\s+director\b/i.test(title || '')) return false;
+        const titleRole = getSpecialtyRole(title || '');
+        if (!titleRole) return false;
+
+        const body = getDescriptionBody(description);
+        const hiringMatch = body.match(/\b(?:is|are|we\s+are)\s+(?:currently\s+)?(?:seeking|looking\s+for|hiring)\b.{0,260}/i);
+        if (!hiringMatch) return false;
+
+        const descriptionRole = getSpecialtyRole(hiringMatch[0]);
+        return Boolean(descriptionRole && descriptionRole !== titleRole);
+    }
+
+    function classifyJobType(description) {
+        const text = description || '';
+        const hasPartTime = /\bpart[\s-]?time\b/i.test(text);
+        const hasFullTime = /\bfull[\s-]?time\b/i.test(text);
+
+        if (hasPartTime && !hasFullTime) return 'Part-Time';
+        return 'Full-Time';
     }
 
     function structuredLocationKeys(description) {
@@ -419,6 +499,7 @@
     }
 
     return {
+        classifyJobType,
         emptyAddressResult,
         extractExplicitHospitalName,
         getAddressCacheKeys,
@@ -429,6 +510,7 @@
         normalizeState,
         parseLocation,
         placeNameMatchScore,
+        hasSpecialtyTitleDescriptionConflict,
         reconcileGenericHospitalNames,
         removeStaleGeneratedLocationRows,
         selectAtomicAddress,

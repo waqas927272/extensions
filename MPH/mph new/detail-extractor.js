@@ -272,7 +272,7 @@
             'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
             'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
             'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
-            'Radiologist', 'Surgeon'
+            'Radiologist', 'Surgeon', 'Partner Veterinarian'
         ],
         'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
     };
@@ -404,10 +404,13 @@
         const titleLower = title.toLowerCase();
         if (isNonClinicalJobTitle(titleLower)) return '';
         if (hasUrgentCareSignal(titleLower, hospitalName)) return 'Urgent Care';
+        if (/\bfounding specialist\b/i.test(titleLower)) return 'Specialty Care';
         if (/\b(?:oncologist|cardiologist|neurologist|neurosurgeon|dermatologist|ophthalmologist|anesthesiologist|theriogenologist|radiologist|internist|criticalist|ecc specialist|oncology|cardiology|neurology|dermatology|ophthalmology|anesthesia|theriogenology|radiology)\b/i.test(titleLower)) return 'Specialty Care';
-        if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
-        if (hasEmergencySignal(titleLower, hospitalName)) return 'Emergency Care';
+        if (/\b(?:emergency|er)\b/i.test(titleLower)) return 'Emergency Care';
         if (/\b(?:founding partner|medical lead|lead veterinarian|lead vet|medical director|regional medical director)\b/i.test(titleLower)) return 'General Practice Care';
+        if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
+        if (/\b(?:small[-\s]animal general practice|strong general practice foundation|general practice medicine|dynamic gp\s*\+\s*urgent care)\b/i.test(descriptionText)) return 'General Practice Care';
+        if (hasEmergencySignal(titleLower, hospitalName)) return 'Emergency Care';
         // STEP 1: Use category from page (most reliable — directly from jobvite)
         const aopFromCategory = categoryToAOP(category);
         if (aopFromCategory) return aopFromCategory;
@@ -444,7 +447,7 @@
         // STEP 5: Equine/Bovine/Exotics from title
         if (titleLower.includes('equine') || titleLower.includes('bovine') || titleLower.includes('large animal') ||
             titleLower.includes('avian') || titleLower.includes('exotics')) {
-            return 'General Practice Care / Emergency Care / Urgent Care';
+            return 'General Practice Care';
         }
 
         // STEP 6: Check qualifications section for specialty requirements
@@ -501,7 +504,7 @@
         // Medical Director, NOT Medical Oncologist. The specialty word is the service name, not the role.
         if (t.includes('regional medical director')) return 'Medical Director';
         if (t.includes('medical director')) return 'Medical Director';
-        if (t.includes('founding partner')) return 'Partner Veterinarian';
+        if (t.includes('founding partner') || t.includes('founding specialist')) return 'Partner Veterinarian';
         if (t.includes('medical lead')) return 'Medical Lead Veterinarian';
         if (t.includes('lead veterinarian') || t.includes('lead vet')) return 'Lead Veterinarian';
 
@@ -519,7 +522,8 @@
         if (t.includes('dabvp')) return 'DABVP Specialist';
         if ((t.includes('dental') || t.includes('dentist') || t.includes('dentistry')) && !t.includes('assistant')) return 'Dental Specialist';
         // For surgeon, be more specific - check it's not part of neurosurgeon (which we already handled)
-        if ((t.includes('surgeon') || t.includes('surgery')) && !t.includes('neurosurgeon') && !t.includes('neurology') && !t.includes('dental') && !t.includes('dentistry')) return 'Surgeon';
+        if ((/\b(?:veterinary\s+)?surgeon\b/.test(t) || /\b(?:veterinary\s+)?surgery\s+(?:specialist|diplomate)\b/.test(t)) &&
+            !t.includes('neurosurgeon') && !t.includes('neurology') && !t.includes('dental') && !t.includes('dentistry')) return 'Surgeon';
 
         // === VTS/CREDENTIALED SPECIALIST (check before generic technician) ===
         if (t.includes('technician specialist') || (t.match(/\bvts\b/) && t.includes('specialist'))) return 'Credentialed Veterinary Technician Specialist';
@@ -538,7 +542,7 @@
     }
 
     // ===== Determine Position =====
-    // Valid positions per AOP (from CorrectJobNames.txt):
+    // Valid positions per area of practice:
     //   Emergency Care: Associate Veterinarian
     //   General Practice Care: Associate Veterinarian, Lead Veterinarian, Medical Lead Veterinarian, Medical Director, Partner Veterinarian
     //   Specialty Care: Anesthesiologist, Cardiologist, Credentialed Veterinary Technician Specialist,
@@ -579,7 +583,7 @@
                 'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
                 'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
                 'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
-                'Radiologist', 'Surgeon'
+                'Radiologist', 'Surgeon', 'Partner Veterinarian'
             ],
             'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian'],
         };
@@ -711,11 +715,12 @@
         const yearToken = '(?:years?|yrs?\\.?)';
         const qualificationsSection = extractQualificationsSection(descriptionText);
         const candidateLines = [];
+        const splitExperienceSegments = value => (value || '').split(/\r?\n|\s+[•▪]\s*|\s+-\s+/);
 
         if (qualificationsSection) {
-            candidateLines.push(...qualificationsSection.split('\n'));
+            candidateLines.push(...splitExperienceSegments(qualificationsSection));
         }
-        candidateLines.push(...descriptionText.split('\n'));
+        candidateLines.push(...splitExperienceSegments(descriptionText));
 
         const prioritizedLines = candidateLines
             .map(line => line.trim())
@@ -728,10 +733,10 @@
             new RegExp(`\\b(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
             new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
             new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\b`, 'i'),
-            new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
+            new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(?:of\\s+)?(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
             new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
             new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
-            new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
+            new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(?:of\\s+)?(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
             new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:in\\s+(?:practice|a\\s+practice\\s+setting)|practice\\s+setting)\\b`, 'i')
         ];
 

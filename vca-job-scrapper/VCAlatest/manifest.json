@@ -11,8 +11,6 @@
   ],
   "host_permissions": [
     "https://www.vcacareers.com/*",
-    "https://sheets.googleapis.com/*",
-    "https://www.googleapis.com/*",
     "<all_urls>"
   ],
   "background": {
@@ -21,7 +19,7 @@
   "content_scripts": [
     {
       "matches": ["https://www.vcacareers.com/*"],
-      "js": ["content.js"]
+      "js": ["salary-resolver.js", "content.js"]
     }
   ],
   "action": {
@@ -32,6 +30,7 @@
     {
       "resources": [
         "detail-extractor.js",
+        "salary-resolver.js",
         "google-maps-scraper.js",
         "google-search-scraper.js"
       ],

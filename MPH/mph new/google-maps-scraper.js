@@ -119,6 +119,10 @@
 
         const queryNorm = normalize(searchQuery);
         const queryWords = queryNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w) && !facilityWords.has(w));
+        const branchWords = [...searchQuery.matchAll(/\(([^)]+)\)/g)]
+            .flatMap(match => normalize(match[1]).split(' '))
+            .filter(word => word.length > 2 && !stopWords.has(word) && !facilityWords.has(word));
+        const requiredLeadWord = queryWords[0] || '';
         const queryHasFacilityWord = queryNorm.split(' ').some(w => facilityWords.has(w));
 
         let bestLink = null;
@@ -135,6 +139,8 @@
             const haystack = `${labelNorm} ${cardText}`.trim();
             const haystackWords = new Set(haystack.split(' ').filter(w => w.length > 2 && !stopWords.has(w)));
             const haystackHasFacilityWord = haystack.split(' ').some(w => facilityWords.has(w));
+            if (requiredLeadWord && !haystackWords.has(requiredLeadWord)) continue;
+            if (branchWords.some(word => !haystackWords.has(word))) continue;
 
             // Count how many query words appear in the label
             let matchCount = 0;
@@ -156,7 +162,7 @@
             }
         }
 
-        return bestScore >= 0.34 ? bestLink : null;
+        return bestScore >= 0.6 ? bestLink : null;
     }
 
     function isLivewellQuery(value) {
