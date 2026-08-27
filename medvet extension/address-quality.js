@@ -29,6 +29,15 @@
         'internal', '24', '7'
     ]);
 
+    const CITY_MUNICIPALITY_WORDS = new Set([
+        'borough', 'city', 'municipality', 'town', 'township', 'village'
+    ]);
+
+    const CITY_AREA_MODIFIERS = new Set([
+        'central', 'east', 'eastern', 'north', 'northeast', 'northern', 'northwest',
+        'south', 'southeast', 'southern', 'southwest', 'west', 'western'
+    ]);
+
     function normalizeCompact(value) {
         return (value || '')
             .toLowerCase()
@@ -44,6 +53,27 @@
             .replace(/[^a-z0-9]+/g, ' ')
             .replace(/\s+/g, ' ')
             .trim();
+    }
+
+    function normalizeCityCore(value) {
+        const normalized = normalizeWords(value)
+            .replace(/^(?:borough|city|municipality|town|township|village)\s+of\s+/, '');
+        const tokens = normalized
+            .split(' ')
+            .filter(token => token && !CITY_MUNICIPALITY_WORDS.has(token));
+        const coreTokens = tokens.filter(token => !CITY_AREA_MODIFIERS.has(token));
+        return (coreTokens.length > 0 ? coreTokens : tokens).join('');
+    }
+
+    function areCitiesCompatible(expectedCity, candidateCity) {
+        if (!expectedCity) return true;
+        if (!candidateCity) return false;
+
+        if (normalizeCompact(expectedCity) === normalizeCompact(candidateCity)) return true;
+
+        const expectedCore = normalizeCityCore(expectedCity);
+        const candidateCore = normalizeCityCore(candidateCity);
+        return Boolean(expectedCore && candidateCore && expectedCore === candidateCore);
     }
 
     function normalizeDescriptionBrandBoundaries(value) {
@@ -219,18 +249,17 @@
             return { accepted: false, reason: 'state-mismatch', result: emptyAddressResult() };
         }
 
-        const cityMatches = !expectedLocation.city
+        const exactCityMatch = !expectedLocation.city
             || normalizeCompact(result.city) === normalizeCompact(expectedLocation.city);
-        const nameScore = placeNameMatchScore(expectedHospital, result.placeName);
-        const namedHospital = !isGenericHospitalName(expectedHospital);
+        const cityMatches = areCitiesCompatible(expectedLocation.city, result.city);
 
-        if (!cityMatches && (!namedHospital || nameScore < 0.6)) {
-            return { accepted: false, reason: 'city-and-name-mismatch', result: emptyAddressResult() };
+        if (!cityMatches) {
+            return { accepted: false, reason: 'city-mismatch', result: emptyAddressResult() };
         }
 
         return {
             accepted: true,
-            reason: cityMatches ? 'verified' : 'verified-mailing-city-mismatch',
+            reason: exactCityMatch ? 'verified' : 'verified-city-variant',
             result: {
                 streetAddress: result.streetAddress || '',
                 zipCode: result.zipCode || '',
@@ -241,7 +270,7 @@
                 phone: result.phone || '',
                 placeName: result.placeName || '',
                 sourceType,
-                locationMismatch: !cityMatches,
+                locationMismatch: false,
                 verified: true
             }
         };
@@ -329,7 +358,7 @@
             ['Ophthalmologist', /\b(?:veterinary\s+)?ophthalmologist\b/i],
             ['Radiologist', /\b(?:veterinary\s+)?radiologist\b|\bdiagnostic\s+imaging\s+specialist\b/i],
             ['Surgeon', /\b(?:veterinary\s+)?surgeon\b/i],
-            ['Avian and Exotic Specialist', /\bavian\s+and\s+exotic\s+specialist\b/i],
+            ['Avian & Exotic Specialist', /\bavian\s+(?:and|&)\s+exotic\s+specialist\b/i],
             ['Sports Medicine & Rehabilitation Specialist', /\b(?:sports\s+medicine\s+(?:and|&)\s+rehabilitation|rehabilitation)\s+specialist\b/i]
         ];
 
@@ -499,6 +528,7 @@
     }
 
     return {
+        areCitiesCompatible,
         classifyJobType,
         emptyAddressResult,
         extractExplicitHospitalName,

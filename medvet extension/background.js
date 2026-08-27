@@ -2,6 +2,7 @@ let isScraping = false;
 let sessionScrapedCount = 0;
 let totalOnPage = 0;
 let uniqueJobLinks = new Set();
+let scrapeSessionId = '';
 const MEDVET_AGGREGATOR = 'MedVet Emergency & Specialty Veterinary Care (Parent Client)';
 
 let offscreenCreating; // A global promise to avoid race conditions and ensure the offscreen document is only created once.
@@ -78,34 +79,62 @@ async function setupOffscreenDocument(path) {
   }
 }
 
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+function registerRuntimeMessageListener() {
+  const runtime = globalThis.chrome?.runtime;
+  if (!runtime?.onMessage?.addListener) {
+    console.warn('MedVet background listener was not registered because the extension runtime is unavailable.');
+    return false;
+  }
+
+  runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.command === 'start' || request.action === 'startScraping') {
     isScraping = true;
+    scrapeSessionId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
     sessionScrapedCount = 0;
     totalOnPage = 0;
     uniqueJobLinks = new Set();
     sendScrapingStatus('scraping', 'Starting MedVet listing scrape...', 0);
-    chrome.storage.local.set({ scrapedJobs: [], records: [] });
-    // Inject content script into the current tab to start scraping
-    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-      if (tabs[0] && tabs[0].id) {
-        chrome.scripting.executeScript({
-          target: { tabId: tabs[0].id },
-          files: ['content.js'],
-        }).catch(err => console.error("Error injecting content script:", err));
-      }
+    chrome.storage.local.set({
+      scrapedJobs: [],
+      records: [],
+      scrapeSessionState: { isScraping: true, sessionId: scrapeSessionId }
+    }).then(() => {
+      // Inject only after the previous session's records have been cleared.
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        if (tabs[0] && tabs[0].id) {
+          chrome.scripting.executeScript({
+            target: { tabId: tabs[0].id },
+            files: ['content.js'],
+          }).catch(err => console.error("Error injecting content script:", err));
+        }
+      });
+    }).catch(error => {
+      isScraping = false;
+      console.error('Error starting scrape:', error);
+      sendScrapingStatus('error', 'Could not initialize the scraping session.', 0);
     });
     sendResponse({ status: 'started' });
   } else if (request.command === 'stop' || request.action === 'stopScraping') {
     isScraping = false;
+    chrome.storage.local.set({
+      scrapeSessionState: { isScraping: false, sessionId: scrapeSessionId }
+    });
     sendRuntimeMessage({ command: 'scraping_finished' }); // Inform popup
     sendScrapingStatus('stopped', 'Scraping stopped.', sessionScrapedCount);
     sendResponse({ status: 'stopped' });
   } else if (request.command === 'get-status') {
-    chrome.storage.local.get({ scrapedJobs: [], records: [] }, (result) => {
+    chrome.storage.local.get({ scrapedJobs: [], records: [], scrapeSessionState: null }, (result) => {
       const jobs = result.scrapedJobs.length ? result.scrapedJobs : result.records;
+      const storedSession = result.scrapeSessionState || {};
+      if (!isScraping && storedSession.isScraping === true && storedSession.sessionId) {
+        isScraping = true;
+        scrapeSessionId = storedSession.sessionId;
+        sessionScrapedCount = jobs.length;
+        uniqueJobLinks = new Set(jobs.map(job => job?.link).filter(Boolean));
+      }
       sendResponse({
         isScraping,
+        sessionId: scrapeSessionId || storedSession.sessionId || '',
         sessionCount: sessionScrapedCount,
         pageTotal: totalOnPage,
         totalRecords: jobs.length
@@ -117,31 +146,57 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendRuntimeMessage({ command: 'page-total-update', count: totalOnPage });
     sendResponse({ status: 'ok' });
   } else if (request.command === 'finished') {
-    // Content script finished on a page; if isScraping is still true, it means it was the last page
+    if (request.isLastPage !== true) {
+      console.warn('Ignoring an unverified finished message from the content script.');
+      sendResponse({ status: 'ignored-nonfinal' });
+      return false;
+    }
+
+    // The content script verified the displayed page range before declaring completion.
     if (isScraping) { // If scraping was active, it means this was the final page
       isScraping = false; // Stop the scraping process
+      chrome.storage.local.set({
+        scrapeSessionState: { isScraping: false, sessionId: scrapeSessionId }
+      });
       sendRuntimeMessage({ command: 'scraping_finished' });
       sendScrapingStatus('completed', `Scraping completed! Found ${sessionScrapedCount} jobs. Use "View Records", then "Get Descriptions" or "Fetch Details" for enrichment.`, sessionScrapedCount);
     }
     sendResponse({ status: 'ok' });
+  } else if (request.command === 'pagination-error') {
+    isScraping = false;
+    chrome.storage.local.set({
+      scrapeSessionState: { isScraping: false, sessionId: scrapeSessionId }
+    });
+    sendScrapingStatus('error', request.message || 'Could not verify the next jobs page.', sessionScrapedCount);
+    sendResponse({ status: 'pagination-error' });
   } else if (request.command === 'add-records') {
-    if (isScraping) { // Only add records if scraping is active
-      chrome.storage.local.get({ scrapedJobs: [] }, (result) => {
-        const allRecords = result.scrapedJobs || [];
-        for (const record of request.records || []) {
-          if (shouldSkipIncomingJobTitle(record?.title || '')) continue;
-          if (!hasUsableCityAndState(record)) continue;
-          if (!record.link || uniqueJobLinks.has(record.link)) continue;
-          uniqueJobLinks.add(record.link);
-          allRecords.push(record);
+    if (!isScraping) {
+      sendResponse({ status: 'ignored' });
+    } else {
+      chrome.storage.local.get({ scrapedJobs: [] }, async (result) => {
+        try {
+          const allRecords = result.scrapedJobs || [];
+          const existingLinks = new Set(allRecords.map(record => record?.link).filter(Boolean));
+          for (const record of request.records || []) {
+            if (shouldSkipIncomingJobTitle(record?.title || '')) continue;
+            if (!hasUsableCityAndState(record)) continue;
+            if (!record.link || uniqueJobLinks.has(record.link) || existingLinks.has(record.link)) continue;
+            uniqueJobLinks.add(record.link);
+            existingLinks.add(record.link);
+            allRecords.push(record);
+          }
+          sessionScrapedCount = allRecords.length;
+          await chrome.storage.local.set({ scrapedJobs: allRecords, records: allRecords });
+          sendRuntimeMessage({ command: 'session-update', count: sessionScrapedCount });
+          sendScrapingStatus('in_progress', `Scraped ${sessionScrapedCount} jobs so far...`, sessionScrapedCount);
+          sendResponse({ status: 'stored', count: sessionScrapedCount });
+        } catch (error) {
+          console.error('Error storing scraped records:', error);
+          sendResponse({ status: 'error', error: error?.message || 'Could not store scraped records.' });
         }
-        sessionScrapedCount = allRecords.length;
-        sendRuntimeMessage({ command: 'session-update', count: sessionScrapedCount });
-        sendScrapingStatus('in_progress', `Scraped ${sessionScrapedCount} jobs so far...`, sessionScrapedCount);
-        chrome.storage.local.set({ scrapedJobs: allRecords, records: allRecords });
       });
+      return true;
     }
-    sendResponse({ status: 'queued' });
   } else if (request.command === 'fetch-job-description') {
     (async () => {
       try {
@@ -261,14 +316,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ status: 'ignored' });
   }
   return false;
-});
+  });
+  return true;
+}
+
+const runtimeListenerRegistered = registerRuntimeMessageListener();
 
 // Listener for tab updates to reinject content.js if scraping is active
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+if (runtimeListenerRegistered && globalThis.chrome?.tabs?.onUpdated?.addListener) {
+  chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url && isScraping) {
     chrome.scripting.executeScript({
       target: { tabId: tabId },
       files: ['content.js'],
     }).catch(err => console.error("Error injecting content script on tab update:", err));
   }
-});
+  });
+}

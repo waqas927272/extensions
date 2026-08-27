@@ -1,5 +1,6 @@
 (() => {
-  let isScraping = true;
+  const PAGE_SESSION_GUARD = '__medVetScraperPageSession';
+  const STOP_REQUESTED_FLAG = '__medVetScraperStopRequested';
   const excludedJobTitlePatterns = [
     /\bmentorship\b/,
     /\blocum\b/,
@@ -58,14 +59,53 @@
     return !invalidValues.has(normalizedCity) && !invalidValues.has(normalizedState);
   }
 
-  function scrapeData() {
-    if (!isScraping) {
+  function wait(milliseconds) {
+    return new Promise(resolve => setTimeout(resolve, milliseconds));
+  }
+
+  function parsePaginationRange() {
+    const text = document.querySelector('.jv-pagination-text')?.textContent || '';
+    const match = text.match(/([\d,]+)\s*-\s*([\d,]+)\s+of\s+([\d,]+)/i);
+    if (!match) return null;
+    return {
+      start: Number(match[1].replace(/,/g, '')),
+      end: Number(match[2].replace(/,/g, '')),
+      total: Number(match[3].replace(/,/g, ''))
+    };
+  }
+
+  function findNextPageButton() {
+    return document.querySelector('.jv-pagination-next') ||
+      document.querySelector('a.next-page') ||
+      document.querySelector('a[rel="next"]') ||
+      document.querySelector('button.next') ||
+      document.querySelector('.pagination .next-link') ||
+      document.querySelector('.pagination a:last-child:not(.active)');
+  }
+
+  async function waitForPaginationState(timeoutMs = 8000) {
+    const deadline = Date.now() + timeoutMs;
+    let nextPageButton = null;
+    let pageRange = null;
+
+    do {
+      nextPageButton = findNextPageButton();
+      pageRange = parsePaginationRange();
+      if (nextPageButton || (pageRange && pageRange.end >= pageRange.total)) break;
+      await wait(150);
+    } while (Date.now() < deadline && !globalThis[STOP_REQUESTED_FLAG]);
+
+    return { nextPageButton, pageRange };
+  }
+
+  async function scrapeData() {
+    if (globalThis[STOP_REQUESTED_FLAG]) {
       return;
     }
 
     const jobRows = document.querySelectorAll('table.jv-job-list tbody tr');
     const totalOnPage = jobRows.length;
-    chrome.runtime.sendMessage({ command: 'page-total', count: totalOnPage });
+    await chrome.runtime.sendMessage({ command: 'page-total', count: totalOnPage }).catch(() => {});
 
     const pageRecords = [];
     jobRows.forEach(row => {
@@ -127,23 +167,35 @@
       }
     });
 
-    chrome.runtime.sendMessage({ command: 'add-records', records: pageRecords });
+    await chrome.runtime.sendMessage({ command: 'add-records', records: pageRecords }).catch(() => {});
     
-    // Pagination logic
-    const nextPageButton = document.querySelector('.jv-pagination-next') || // Specific selector provided by user
-                           document.querySelector('a.next-page') || // Common selector
-                           document.querySelector('a[rel="next"]') || // Common selector
-                           document.querySelector('button.next') || // Common selector
-                           document.querySelector('.pagination .next-link') || // Example for specific site
-                           document.querySelector('.pagination a:last-child:not(.active)'); // Generic last link that's not active
+    if (globalThis[STOP_REQUESTED_FLAG]) return;
+
+    const { nextPageButton, pageRange } = await waitForPaginationState();
 
     if (nextPageButton) {
-      nextPageButton.click(); // Simulate click to navigate to the next page
-      // No 'finished' message here, as content.js will be re-injected on the next page
-    } else {
-      // No more pages, so signal that scraping is finished
-      chrome.runtime.sendMessage({ command: 'finished' });
+      const rawHref = nextPageButton.getAttribute?.('href') || nextPageButton.href || '';
+      if (rawHref) {
+        const nextUrl = new URL(rawHref, window.location.href).href;
+        if (nextUrl !== window.location.href) {
+          window.location.assign(nextUrl);
+          return;
+        }
+      }
+
+      nextPageButton.click();
+      return;
     }
+
+    if (pageRange && pageRange.end >= pageRange.total) {
+      await chrome.runtime.sendMessage({ command: 'finished', isLastPage: true, pageRange }).catch(() => {});
+      return;
+    }
+
+    await chrome.runtime.sendMessage({
+      command: 'pagination-error',
+      message: 'The jobs page still contains more records, but its Next link could not be verified.'
+    }).catch(() => {});
   }
 
   chrome.runtime.sendMessage({ command: 'get-status' }, (response) => {
@@ -151,18 +203,24 @@
       return;
     }
     if (response.isScraping) {
-      scrapeData();
-    } else {
-      // If not scraping, but content.js is injected (e.g., after a navigation),
-      // then we should consider this page as not part of an ongoing scrape
-      chrome.runtime.sendMessage({ command: 'finished' });
+      const pageSessionKey = `${response.sessionId || 'legacy'}|${window.location.href}`;
+      if (globalThis[PAGE_SESSION_GUARD] === pageSessionKey) return;
+      globalThis[PAGE_SESSION_GUARD] = pageSessionKey;
+      globalThis[STOP_REQUESTED_FLAG] = false;
+      scrapeData().catch(error => {
+        chrome.runtime.sendMessage({
+          command: 'pagination-error',
+          message: error?.message || 'The jobs page could not be processed.'
+        }).catch(() => {});
+      });
     }
   });
   
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.command === 'stop') {
-      isScraping = false;
-    }
-  });
+  if (!globalThis.__medVetScraperStopListenerRegistered) {
+    chrome.runtime.onMessage.addListener((request) => {
+      if (request.command === 'stop') globalThis[STOP_REQUESTED_FLAG] = true;
+    });
+    globalThis.__medVetScraperStopListenerRegistered = true;
+  }
 
 })();

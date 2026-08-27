@@ -527,7 +527,7 @@
         'Medical Oncologist',
         'Neurologist & Neurosurgeon',
         'Ophthalmologist',
-        'Avian and Exotic Specialist',
+        'Avian & Exotic Specialist',
         'Radiation Oncologist',
         'Radiologist',
         'Sports Medicine & Rehabilitation Specialist',
@@ -542,7 +542,7 @@
             'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
             'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
             'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
-            'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Avian and Exotic Specialist', 'Radiation Oncologist',
+            'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Avian & Exotic Specialist', 'Radiation Oncologist',
             'Radiologist', 'Sports Medicine & Rehabilitation Specialist', 'Surgeon'
         ],
         'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
@@ -584,7 +584,7 @@
             ['Anesthesiologist', [/\banesthesiologist\b/i, /\bboard[-\s]+certified\b.*\banesth/i, /\bresidency[-\s]+trained\b.*\banesth/i, /\bdacvaa\b/i]],
             ['Internal Medicine Specialist', [/\binternist\b/i, /\binternal medicine specialist\b/i, /\bboard[-\s]+certified\b.*\binternal medicine\b/i, /\bresidency[-\s]+trained\b.*\binternal medicine\b/i, /\bdacvim\b(?!.*oncology)(?!.*cardiology)(?!.*neurology)/i]],
             ['ECC Specialist', [/\bcriticalist\b/i, /\becc specialist\b/i, /\bemergency\s*(?:&|and)?\s*critical care specialist\b/i, /\bboard[-\s]+certified\b.*\bcritical/i, /\bresidency[-\s]+trained\b.*\bcritical/i, /\bdacvecc\b/i]],
-            ['Avian and Exotic Specialist', [/\bavian\b/i, /\bexotics?\b/i]],
+            ['Avian & Exotic Specialist', [/\bavian\b/i, /\bexotics?\b/i]],
             ['DABVP Specialist', [/\bdabvp\b/i]],
             ['Dental Specialist', [/\bdental specialist\b/i, /\bveterinary dentist\b/i, /\boral surgeon\b/i, /\bboard[-\s]+certified\b.*\bdent/i, /\bresidency[-\s]+trained\b.*\bdent/i, /\bdavdc\b/i]],
             ['Sports Medicine & Rehabilitation Specialist', [/\brehabilitation veterinarian\b/i, /\bsports medicine\b/i, /\brehabilitation specialist\b/i, /\bboard[-\s]+certified\b.*\brehabilitation\b/i, /\bresidency[-\s]+trained\b.*\brehabilitation\b/i]],
@@ -632,7 +632,7 @@
         if (t.includes('rehabilitation') || t.includes('sports medicine')) return 'Sports Medicine & Rehabilitation Specialist';
         if (t.includes('radiologist') || t.includes('diagnostic imaging') || t.includes('radiology')) return 'Radiologist';
         if (t.includes('ophthalmologist') || t.includes('ophthalmology')) return 'Ophthalmologist';
-        if (t.includes('avian') || t.includes('exotic')) return 'Avian and Exotic Specialist';
+        if (t.includes('avian') || t.includes('exotic')) return 'Avian & Exotic Specialist';
         if (t.includes('anesthesiologist') || t.includes('anesthesia')) return 'Anesthesiologist';
         if (t.includes('internist') || t.includes('internal medicine')) return 'Internal Medicine Specialist';
         if (t.includes('criticalist') || t.match(/\becc\b/) || t.includes('emergency medicine')) return 'ECC Specialist';
@@ -959,7 +959,7 @@
             if (t.includes('rehabilitation') || t.includes('sports medicine')) return 'Sports Medicine & Rehabilitation Specialist';
             if (t.includes('radiologist') || t.includes('diagnostic imaging') || t.includes('radiology')) return 'Radiologist';
             if (t.includes('ophthalmologist') || t.includes('ophthalmology')) return 'Ophthalmologist';
-            if (t.includes('avian') || t.includes('exotic')) return 'Avian and Exotic Specialist';
+            if (t.includes('avian') || t.includes('exotic')) return 'Avian & Exotic Specialist';
             if (t.includes('anesthesiologist') || t.includes('anesthesia')) return 'Anesthesiologist';
             if (t.includes('internist') || t.includes('internal medicine')) return 'Internal Medicine Specialist';
             if (t.includes('criticalist') || t.match(/\becc\b/) || t.includes('emergency medicine')) return 'ECC Specialist';
@@ -993,7 +993,7 @@
                     'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
                     'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
                     'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
-                    'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Avian and Exotic Specialist', 'Radiation Oncologist',
+                    'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Avian & Exotic Specialist', 'Radiation Oncologist',
                     'Radiologist', 'Sports Medicine & Rehabilitation Specialist', 'Surgeon'
                 ],
                 'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian'],
@@ -1929,6 +1929,7 @@
         );
         const removedExcludedJobs = loadedJobs.length - allJobs.length;
         let normalizedExistingSalary = false;
+        let normalizedExistingPosition = false;
         let restoredCincinnatiCities = 0;
         allJobs = allJobs.map(job => {
             const originalSalary = job.salary || '';
@@ -1937,6 +1938,10 @@
                 ? normalizeSalaryText(extractDetailsFromDescription(job.title || job.jobTitle || '', job.description).salary)
                 : normalizedSalary;
             if (originalSalary !== repairedSalary) normalizedExistingSalary = true;
+            const normalizedPosition = job.position === 'Avian and Exotic Specialist'
+                ? 'Avian & Exotic Specialist'
+                : job.position;
+            if (job.position !== normalizedPosition) normalizedExistingPosition = true;
             const preserveCincinnati = isMedVetCincinnatiAddress(job);
             const needsCincinnatiRestore = preserveCincinnati && (
                 normalizedLocationPart(job.city) !== 'cincinnati' ||
@@ -1949,6 +1954,7 @@
                 ...job,
                 hospital: job.hospital || job.hospitalName || 'MedVet',
                 salary: repairedSalary,
+                position: normalizedPosition,
                 city: preserveCincinnati ? 'Cincinnati' : job.city,
                 state: preserveCincinnati ? 'Ohio' : job.state,
                 addressLocationMismatch: preserveCincinnati ? false : Boolean(job.addressLocationMismatch),
@@ -1956,7 +1962,7 @@
                 location: job.location || [preserveCincinnati ? 'Cincinnati' : job.city, preserveCincinnati ? 'Ohio' : job.state].filter(Boolean).join(', ')
             };
         });
-        if (normalizedExistingSalary || removedExcludedJobs > 0 || restoredCincinnatiCities > 0) {
+        if (normalizedExistingSalary || normalizedExistingPosition || removedExcludedJobs > 0 || restoredCincinnatiCities > 0) {
             chrome.storage.local.set({ scrapedJobs: allJobs, records: allJobs });
         }
         displayRecords(allJobs);
@@ -2758,7 +2764,7 @@
     function jobLocationMismatch(job) {
         const expected = parseLocationParts(job.location);
         return !!(
-            (expected.city && job.city && normalizedLocationPart(job.city) !== normalizedLocationPart(expected.city)) ||
+            (expected.city && job.city && !addressQuality.areCitiesCompatible(expected.city, job.city)) ||
             (expected.state && job.state && normalizedLocationPart(getFullStateName(job.state)) !== normalizedLocationPart(getFullStateName(expected.state)))
         );
     }
@@ -2783,7 +2789,7 @@
         for (const job of jobs) {
             if (!job.hospital || !job.location || !job.streetAddress || !job.zipCode) continue;
             if (job.addressVerified !== true || !job.addressPlaceName) continue;
-            if (jobLocationMismatch(job) && !job.addressLocationMismatch) continue;
+            if (jobLocationMismatch(job)) continue;
             const cached = {
                 streetAddress: job.streetAddress || '',
                 zipCode: job.zipCode || '',
@@ -2829,7 +2835,7 @@
                 // Jobs missing any core location/contact field
                 return item.job.hospital && item.job.location &&
                     (!item.job.streetAddress || !item.job.zipCode || item.job.addressVerified !== true ||
-                        (jobLocationMismatch(item.job) && !item.job.addressLocationMismatch));
+                        jobLocationMismatch(item.job));
             });
 
         if (jobsNeedingAddresses.length === 0) {
@@ -2902,10 +2908,6 @@
             // Keep location only for validating that Google returned the right city/state.
             const searchLocation = [searchCity, searchState].filter(Boolean).join(', ');
             const normalizeLocationValue = (value) => (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-            const existingLocationMismatch =
-                (searchCity && job.city && normalizeLocationValue(job.city) !== normalizeLocationValue(searchCity)) ||
-                (searchState && job.state && normalizeLocationValue(getFullStateName(job.state)) !== normalizeLocationValue(getFullStateName(searchState)));
-
             const cacheKeys = getAddressCacheKeys(searchHospital, searchLocation, job.hospital || '');
             let addressData = getRememberedAddress(cacheKeys);
             if (addressData) {
@@ -2942,7 +2944,7 @@
                         : (addressData.city || searchCity || jobs[index].city || '');
                     const physicalCityDiffers = Boolean(
                         searchCity && savedAddressCity &&
-                        normalizeLocationValue(savedAddressCity) !== normalizeLocationValue(searchCity)
+                        !addressQuality.areCitiesCompatible(searchCity, savedAddressCity)
                     );
                     jobs[index].addressLocationMismatch = preserveCincinnati
                         ? false
@@ -2967,6 +2969,7 @@
                     jobs[index].phone = '';
                     jobs[index].website = '';
                     jobs[index].addressLocationMismatch = false;
+                    jobs[index].addressCityOverwritten = false;
                     jobs[index].addressVerified = false;
                     jobs[index].addressPlaceName = '';
                     jobs[index].addressSource = '';
