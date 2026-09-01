@@ -5,10 +5,74 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 const VCA_DIRECTORY_URL = 'https://vcahospitals.com/find-a-hospital/location-directory';
+const VCA_DIRECTORY_BUNDLED_PATH = 'vca-directory.json';
+const VCA_DIRECTORY_STORAGE_KEY = 'vcaOfficialDirectoryCacheV1';
+const VCA_DIRECTORY_MIN_ENTRIES = 800;
 const VCA_DIRECTORY_TTL_MS = 6 * 60 * 60 * 1000;
 let vcaDirectoryEntries = [];
 let vcaDirectoryExpiresAt = 0;
 let vcaDirectoryRequest = null;
+
+function normalizeVcaDirectorySnapshot(value, fallbackSource = '') {
+  const entries = Array.isArray(value) ? value : value?.entries;
+  if (!Array.isArray(entries) || entries.length < VCA_DIRECTORY_MIN_ENTRIES) return null;
+  return {
+    version: Number(value?.version || 1),
+    source: value?.source || fallbackSource || VCA_DIRECTORY_URL,
+    capturedAt: value?.capturedAt || '',
+    entries
+  };
+}
+
+async function loadPersistedVcaDirectorySnapshot() {
+  try {
+    const stored = await chrome.storage.local.get([VCA_DIRECTORY_STORAGE_KEY]);
+    return normalizeVcaDirectorySnapshot(stored?.[VCA_DIRECTORY_STORAGE_KEY], 'chrome-storage');
+  } catch (error) {
+    console.warn(`[VCA directory] Unable to read persistent cache: ${error.message || error}`);
+    return null;
+  }
+}
+
+async function loadBundledVcaDirectorySnapshot() {
+  try {
+    const response = await fetch(chrome.runtime.getURL(VCA_DIRECTORY_BUNDLED_PATH), { cache: 'no-store' });
+    if (!response.ok) throw new Error(`Bundled directory request failed with HTTP ${response.status}`);
+    return normalizeVcaDirectorySnapshot(await response.json(), 'bundled-directory');
+  } catch (error) {
+    console.warn(`[VCA directory] Unable to read bundled directory: ${error.message || error}`);
+    return null;
+  }
+}
+
+async function persistVcaDirectorySnapshot(snapshot) {
+  const normalized = normalizeVcaDirectorySnapshot(snapshot);
+  if (!normalized) return false;
+  try {
+    await chrome.storage.local.set({
+      [VCA_DIRECTORY_STORAGE_KEY]: {
+        ...normalized,
+        savedAt: new Date().toISOString()
+      }
+    });
+    console.log(`[VCA directory] Persisted ${normalized.entries.length} official hospitals.`);
+    return true;
+  } catch (error) {
+    console.warn(`[VCA directory] Unable to persist directory cache: ${error.message || error}`);
+    return false;
+  }
+}
+
+function chooseNewestVcaDirectorySnapshot(...snapshots) {
+  return snapshots
+    .filter(Boolean)
+    .sort((left, right) => {
+      const leftTime = Date.parse(left.capturedAt || '') || 0;
+      const rightTime = Date.parse(right.capturedAt || '') || 0;
+      if (rightTime !== leftTime) return rightTime - leftTime;
+      return right.entries.length - left.entries.length;
+    })[0] || null;
+}
 
 function fetchVcaDirectoryThroughBrowserTab() {
   return new Promise((resolve, reject) => {
@@ -85,6 +149,21 @@ async function loadVcaDirectoryEntries() {
   if (vcaDirectoryRequest) return vcaDirectoryRequest;
 
   vcaDirectoryRequest = (async () => {
+    const [persistedSnapshot, bundledSnapshot] = await Promise.all([
+      loadPersistedVcaDirectorySnapshot(),
+      loadBundledVcaDirectorySnapshot()
+    ]);
+    const localSnapshot = chooseNewestVcaDirectorySnapshot(persistedSnapshot, bundledSnapshot);
+    if (localSnapshot) {
+      vcaDirectoryEntries = localSnapshot.entries;
+      vcaDirectoryExpiresAt = Date.now() + VCA_DIRECTORY_TTL_MS;
+      console.log(`[VCA directory] Loaded ${vcaDirectoryEntries.length} hospitals from the saved official directory.`);
+      if (localSnapshot === bundledSnapshot && localSnapshot !== persistedSnapshot) {
+        await persistVcaDirectorySnapshot(localSnapshot);
+      }
+      return vcaDirectoryEntries;
+    }
+
     let html = '';
     let entries = [];
     try {
@@ -102,7 +181,7 @@ async function loadVcaDirectoryEntries() {
         if (!response.ok) throw new Error(`VCA directory request failed with HTTP ${response.status}`);
         html = await response.text();
         entries = VcaHospitalResolver.parseVcaDirectory(html);
-        if (entries.length < 100) {
+        if (entries.length < VCA_DIRECTORY_MIN_ENTRIES) {
           throw new Error(`VCA background response contained only ${entries.length} usable locations`);
         }
       } finally {
@@ -114,10 +193,16 @@ async function loadVcaDirectoryEntries() {
       entries = VcaHospitalResolver.parseVcaDirectory(html);
     }
 
-    if (entries.length < 100) throw new Error(`VCA directory returned only ${entries.length} usable locations`);
+    if (entries.length < VCA_DIRECTORY_MIN_ENTRIES) throw new Error(`VCA directory returned only ${entries.length} usable locations`);
     console.log(`[VCA directory] Loaded ${entries.length} official locations.`);
     vcaDirectoryEntries = entries;
     vcaDirectoryExpiresAt = Date.now() + VCA_DIRECTORY_TTL_MS;
+    await persistVcaDirectorySnapshot({
+      version: 1,
+      source: VCA_DIRECTORY_URL,
+      capturedAt: new Date().toISOString(),
+      entries
+    });
     return entries;
   })().finally(() => {
     vcaDirectoryRequest = null;

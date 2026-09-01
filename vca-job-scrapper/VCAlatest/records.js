@@ -2785,8 +2785,8 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // Address lookup order is enforced by processNextAddress: verified cache,
-    // official VCA directory, Google Search, then Google Maps.
+    // Address lookup order is enforced by processNextAddress: saved official
+    // VCA directory, verified row cache, Google Search, then Google Maps.
     function fetchOfficialVcaHospital(job = {}, hospitalName = '', location = '') {
         return new Promise((resolve) => {
             const requestedLocation = location || job.location || '';
@@ -5478,13 +5478,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const cacheKeys = getAddressCacheKeys(searchHospital, searchLocation, job.hospital || '');
             let addressData = null;
             const cachedAddress = getRememberedAddress(cacheKeys);
-            if (cachedAddress) {
-                addressData = validateLookupCandidate(cachedAddress, 'verified address cache');
-                if (addressData) {
-                    console.log(`Using cached verified address for "${searchHospital}, ${searchLocation}"`);
-                }
-            }
-
             const useOfficialVcaDirectory = shouldUseOfficialVcaDirectory(job, searchHospital);
             if (!addressData && (lookupTarget.directResult || useOfficialVcaDirectory)) {
                 const directoryJob = (missingHospitalAtLookup || isFallbackHospitalName(job.hospital || job.hospitalName || ''))
@@ -5496,6 +5489,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 addressData = validateLookupCandidate(officialAddress, 'official VCA directory');
                 if (addressData) {
                     console.log(`Using verified VCA directory address for "${addressData.businessName}"`);
+                }
+            }
+
+            if (!addressData && cachedAddress) {
+                addressData = validateLookupCandidate(cachedAddress, 'verified address cache');
+                if (addressData) {
+                    console.log(`Using cached verified address for "${searchHospital}, ${searchLocation}"`);
                 }
             }
 

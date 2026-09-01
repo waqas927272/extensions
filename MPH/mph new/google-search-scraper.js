@@ -31,7 +31,9 @@
 
         // Never scan the whole page for a loose address: that can join the title
         // of one business with an address from another result. One Google card only.
-        return extractLeftSideResult() || emptyResult(panel ? 'no_panel_or_left_address' : 'no_panel_or_left_match');
+        return extractLeftSideResult()
+            || extractOfficialWebsiteCandidate()
+            || emptyResult(panel ? 'no_panel_or_left_address' : 'no_panel_or_left_match');
     } catch (error) {
         return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: error.message };
     }
@@ -177,6 +179,60 @@
         }
 
         return best;
+    }
+
+    // Google often shows the hospital's official website without repeating its
+    // full address in the result card. Return that official-site candidate so
+    // the extension can inspect the same hospital website for its structured
+    // branch address instead of incorrectly falling back to TBD.
+    function extractOfficialWebsiteCandidate() {
+        const expected = getExpectedSearchParts();
+        const candidates = getLeftSideCandidates();
+        let best = null;
+
+        for (const element of candidates) {
+            const text = cleanText(element.innerText || element.textContent || '');
+            const heading = element.querySelector('h3, [role="heading"]');
+            const businessName = cleanText(heading?.innerText || heading?.textContent || '');
+            if (!businessName) continue;
+
+            const links = [...element.querySelectorAll('a[href]')];
+            const website = links
+                .map(link => unwrapGoogleUrl(link.href || ''))
+                .find(href => /^https?:\/\//i.test(href) && !isBlockedUrl(href));
+            if (!website) continue;
+
+            const score = scoreWebsiteCandidate({ businessName, text, expected });
+            if (score < 4) continue;
+
+            const result = {
+                ...emptyResult('official_website_candidate'),
+                businessName,
+                website,
+                category: extractFacilityCategory(`${businessName} ${text}`),
+                panelText: text,
+                source: 'google_official_website',
+                branchQueryResolved: /\([^)]*\)|\s[-–—]\s/.test(expected.name || ''),
+                score
+            };
+            if (!best || score > best.score) best = result;
+        }
+
+        return best;
+    }
+
+    function scoreWebsiteCandidate({ businessName, text, expected }) {
+        const expectedTokens = normalizeName(expected.name)
+            .split(' ')
+            .filter(token => token.length > 2 && !['the', 'and', 'for', 'with', 'of', 'at', 'hospital', 'clinic', 'veterinary', 'animal', 'pet', 'care'].includes(token));
+        const candidate = normalizeName(`${businessName} ${text}`);
+        const matched = expectedTokens.filter(token => candidate.includes(token)).length;
+        const coverage = expectedTokens.length ? matched / expectedTokens.length : 0;
+        let score = coverage * 6;
+        if (expectedTokens.length && matched === expectedTokens.length) score += 3;
+        if (requiredFacilityPhraseMatches(expected.name, `${businessName} ${text}`)) score += 1;
+        if (expected.city && candidate.includes(normalizeName(expected.city))) score += 1;
+        return score;
     }
 
     function extractWholePageResult() {
@@ -548,6 +604,7 @@
             category: '',
             panelText: '',
             source: '',
+            branchQueryResolved: false,
             reason
         };
     }
