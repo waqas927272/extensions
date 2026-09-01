@@ -266,6 +266,7 @@
     const APPROVED_POSITION_SET = new Set(APPROVED_POSITIONS);
     const VALID_POSITIONS_BY_AOP = {
         'Emergency Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
+        'Exotic Pet Medicine': ['Associate Veterinarian'],
         'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Lead Veterinarian', 'Medical Director', 'Partner Veterinarian'],
         'Specialty Care': [
             'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
@@ -304,6 +305,32 @@
             .map(line => line.trim())
             .filter(Boolean)
             .some(line => signalPattern.test(line) && !optionalPattern.test(line) && !thirdPartyPattern.test(line));
+    }
+
+    function hasRequiredBoardOrResidencyCredential(text) {
+        const source = text || '';
+        const requirementText = extractCandidateRequirementSection(source);
+        const signalPattern = /\bboard[-\s]+certif(?:ied|ication)\b|\bresiden(?:cy|tial)[-\s]+trained\b/i;
+        const optionalPattern = /\b(?:open to|preferred|preference|a plus|plus but not required|not required|interested in|welcome|consider|considering|ideal|bonus|eligible)\b/i;
+        const thirdPartyPattern = /\b(?:our|the)\s+(?:team|staff|doctors?|specialists?)\b|\bteam\s+(?:includes|has|of)\b|\bstaff\s+(?:includes|has)\b|\bwork(?:ing)?\s+(?:with|alongside)\b|\bcollaborat(?:e|ing)\s+with\b|\baccess\s+to\b|\bnetwork\s+of\b|\bincluding\s+(?:a|an|our|the)\s+board[-\s]+certified\b|\b\d+\s+board[-\s]+certified\s+specialists?\b/i;
+        const requiredCandidatePattern = /\b(?:must|required|requirement|requires?|seeking|looking\s+for|candidate|applicant|we\s+need|you\s+(?:are|must|will\s+be))\b/i;
+        const isRequiredCandidateLine = line => signalPattern.test(line) &&
+            !optionalPattern.test(line) &&
+            !thirdPartyPattern.test(line);
+
+        if (requirementText && requirementText
+            .split(/\r?\n/)
+            .map(line => line.trim())
+            .filter(Boolean)
+            .some(isRequiredCandidateLine)) {
+            return true;
+        }
+
+        return source
+            .split(/\r?\n|(?<=[.!?])\s+/)
+            .map(line => line.trim())
+            .filter(Boolean)
+            .some(line => isRequiredCandidateLine(line) && requiredCandidatePattern.test(line));
     }
 
     function isNonClinicalJobTitle(title) {
@@ -382,7 +409,7 @@
             return 'Partner Veterinarian';
         }
 
-        if (aopParts.some(part => ['General Practice Care', 'Emergency Care', 'Urgent Care'].includes(part))) {
+        if (aopParts.some(part => ['General Practice Care', 'Emergency Care', 'Exotic Pet Medicine', 'Urgent Care'].includes(part))) {
             return 'Associate Veterinarian';
         }
 
@@ -444,22 +471,43 @@
         return [opening, requirements, casesMatch ? casesMatch[1] : ''].filter(Boolean).join('\n');
     }
 
+    function hasExoticPetMedicineRoleSignal(descriptionText) {
+        const roleText = getRoleScopedDescriptionText(descriptionText);
+
+        // Optional or incidental exposure to exotic patients remains a
+        // general-practice role. Exotic Pet Medicine requires a role or
+        // caseload that is explicitly focused on exotic/avian medicine.
+        const incidentalOrOptionalExotics =
+            /\b(?:occasionally?|occasional|some|limited|minimal)\b[^.\n]{0,120}\b(?:exotics?|exotic pets?|avian|exotic patients?)\b/i.test(roleText) ||
+            /\b(?:exotics?|exotic pets?|avian|exotic patients?)\b[^.\n]{0,140}\b(?:optional|not required|if interested|occasionally?|limited|minimal|(?:is|are) a plus)\b/i.test(roleText) ||
+            /\b(?:open to|opportunity to|ability to|interested in|interest in)\b[^.\n]{0,120}\b(?:see|seeing|work(?:ing)? with|treat(?:ing)?)?\s*(?:exotics?|exotic pets?|avian|exotic patients?)\b/i.test(roleText) ||
+            /\bprimarily\b[^.\n]{0,100}\b(?:dogs?|cats?|small animals?|companion animals?)\b[^.\n]{0,140}\b(?:exotics?|exotic pets?|avian|pocket pets?)\b/i.test(roleText) ||
+            /\b(?:comprehensive care|care)\s+for\b[^.\n]{0,100}\b(?:dogs?|cats?|companion animals?)\b[^.\n]{0,100}\b(?:exotics?|exotic pets?|avian|pocket pets?)\b/i.test(roleText);
+        const dedicatedExotics =
+            /\b(?:practice|hospital|position|role|caseload)\b[^.\n]{0,100}\b(?:dedicated to|focus(?:ed|es)? (?:primarily|exclusively) on|specializ(?:e|es|ed|ing) in)\b[^.\n]{0,100}\b(?:exotics?|exotic pets?|avian)\b/i.test(roleText) ||
+            /\b(?:exclusively|solely)\b[^.\n]{0,80}\b(?:exotics?|exotic pets?|avian)\b/i.test(roleText) ||
+            /\bdedicated\s+(?:exotics?|exotic pets?|avian)\s+(?:hospital|practice|position|role|caseload)\b/i.test(roleText) ||
+            /\b(?:exotics?|exotic pets?|avian)\s+(?:only|exclusive)\b/i.test(roleText);
+
+        if (incidentalOrOptionalExotics && !dedicatedExotics) return false;
+
+        return /\b(?:seeking|looking\s+for|hiring|join\s+us\s+as)\b[^.\n]{0,220}\b(?:associate\s+)?(?:veterinarian|vet|dvm)\b[^.\n]{0,160}\b(?:exotics?|exotic pets?|avian)\b/i.test(roleText) ||
+            /\b(?:seeking|looking\s+for|hiring|join\s+us\s+as)\b[^.\n]{0,220}\b(?:exotics?|exotic pets?|avian)\b[^.\n]{0,160}\b(?:veterinarian|vet|dvm)\b/i.test(roleText) ||
+            /\b(?:this|the|our)\s+(?:position|role|caseload|practice focus)\b[^.\n]{0,180}\b(?:exotics?|exotic pets?|avian)\b/i.test(roleText) ||
+            dedicatedExotics;
+    }
+
     // ===== Determine Area of Practice: recognizable title first, role-specific description second =====
     function determineAreaOfPractice(title, category, descriptionText, hospitalName = '') {
         const titleLower = (title || '').toLowerCase();
         if (isNonClinicalJobTitle(titleLower)) return '';
 
         const titlePosition = matchPositionFromTitle(title);
-        // A generic Medical Director is always General Practice. Only an explicit
-        // qualifier in the title itself can place that role in another care area.
+        // Medical Director rows are classified only from required candidate credentials.
         if (titlePosition === 'Medical Director') {
-            if (/\bspecialty\s+medical\s+director\b/i.test(titleLower) ||
-                /\b(?:oncolog|cardiolog|neurolog|neurosurg|dermatolog|ophthalmolog|anesthes|internal medicine|radiolog|critical care)\w*\b/i.test(titleLower)) {
-                return 'Specialty Care';
-            }
-            if (/\burgent care\b/i.test(titleLower)) return 'Urgent Care';
-            if (/\bemergency\b|\ber\b/i.test(titleLower)) return 'Emergency Care';
-            return 'General Practice Care';
+            return hasRequiredBoardOrResidencyCredential(descriptionText)
+                ? 'Specialty Care'
+                : 'General Practice Care';
         }
 
         if (VALID_POSITIONS_BY_AOP['Specialty Care'].includes(titlePosition) && titlePosition !== 'Medical Director') return 'Specialty Care';
@@ -489,11 +537,15 @@
             titleLower.includes('er vet') || titleLower.includes('er dvm')) {
             return 'Emergency Care';
         }
-        if (titleLower.includes('equine') || titleLower.includes('bovine') || titleLower.includes('large animal') ||
-            titleLower.includes('avian') || titleLower.includes('exotics')) {
+        if (/\b(?:exotics?|exotic pet(?:s| medicine)?|avian(?:\s*(?:&|and)\s*exotics?)?)\b/.test(titleLower)) {
+            return 'Exotic Pet Medicine';
+        }
+        if (titleLower.includes('equine') || titleLower.includes('bovine') || titleLower.includes('large animal')) {
             return 'General Practice Care / Emergency Care / Urgent Care';
         }
         if (/\bgeneral practice\b|\bprimary care\b|\(gp\)/.test(titleLower)) return 'General Practice Care';
+
+        if (hasExoticPetMedicineRoleSignal(descriptionText)) return 'Exotic Pet Medicine';
 
         const aopFromCategory = categoryToAOP(category);
         if (aopFromCategory) return aopFromCategory;
@@ -503,6 +555,10 @@
         const roleText = getRoleScopedDescriptionText(descriptionText);
         const mixedGeneralUrgent = /\b(?:mix|combination)\s+of\s+(?:small animal\s+)?general practice\s+and\s+urgent care\b|\bgeneral practice\s+and\s+urgent care\s+(?:exposure|cases?|caseload)\b/i.test(roleText);
         if (mixedGeneralUrgent) return 'General Practice Care';
+        const mixedGeneralEmergency =
+            /\b(?:general practice|primary care)\s*(?:\/|and|&)\s*emergency\b|\bemergency\s*(?:\/|and|&)\s*(?:general practice|primary care)\b/i.test(roleText) ||
+            /\b(?:routine|general practice|primary care|wellness|preventive)\s+(?:veterinary\s+)?services?\s+(?:and|&)\s+emergency care\b/i.test(roleText);
+        if (mixedGeneralEmergency) return 'General Practice Care';
         if (/\bjoin\s+us\s+as\b[\s\S]{0,240}\bat\b[^.\n]{0,160}\burgent care\b|\b(?:this|the|our)\s+(?:position|role|caseload)\b[^.\n]{0,180}\burgent care\b|\b(?:practice|caseload)\s+(?:focuses|consists|includes|is)\b[^.\n]{0,160}\burgent care\b|\burgent care\s+(?:position|role|veterinarian|practice|caseload)\b/i.test(roleText)) return 'Urgent Care';
         if (/\b(?:this|the|our)\s+(?:position|role|caseload)\b[^.\n]{0,180}\bemergency\b|\b(?:practice|caseload)\s+(?:focuses|consists|includes|is)\b[^.\n]{0,160}\bemergency\b|\bemergency\s+(?:position|role|veterinarian|vet|dvm|practice|caseload)\b/i.test(roleText)) return 'Emergency Care';
 
@@ -604,6 +660,12 @@
     //     Neurologist & Neurosurgeon, Ophthalmologist, Radiation Oncologist, Radiologist, Surgeon
     //   Urgent Care: Associate Veterinarian, Partner Veterinarian
     function determinePosition(title, areaOfPractice, descriptionText) {
+        if (matchPositionFromTitle(title) === 'Medical Director') {
+            return areaOfPractice === 'Specialty Care'
+                ? 'Medical Director'
+                : 'Associate Veterinarian';
+        }
+
         if (areaOfPractice === 'Specialty Care' &&
             !isMedicalDirectorRole(title, descriptionText) &&
             hasSpecialtyEccSignal(title, descriptionText)) {
@@ -636,6 +698,7 @@
     function validatePositionForAOP(position, aop) {
         const validPositions = {
             'Emergency Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
+            'Exotic Pet Medicine': ['Associate Veterinarian'],
             'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Lead Veterinarian', 'Medical Director', 'Partner Veterinarian'],
             'Specialty Care': [
                 'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
@@ -800,25 +863,42 @@
         const candidateLines = [];
 
         if (qualificationsSection) {
-            candidateLines.push(...qualificationsSection.split('\n'));
+            candidateLines.push(...qualificationsSection.split('\n').map(line => ({ line, inQualifications: true })));
         }
-        candidateLines.push(...descriptionText.split('\n'));
+        candidateLines.push(...descriptionText.split('\n').map(line => ({ line, inQualifications: false })));
+
+        function isNonCandidateExperience(line) {
+            return /\b(?:sign(?:ing|-on)\s+bonus|bonus\s+eligibility|relocation\s+bonus|retention\s+bonus|commitment)\b/i.test(line) ||
+                /\b(?:residency|internship|fellowship)\b/i.test(line) ||
+                /\b(?:our|the|existing|current)\s+(?:team|staff|doctors?|veterinarians?|associates?|clinicians?)\b/i.test(line) ||
+                /\b(?:team|staff|doctors?|veterinarians?|associates?|clinicians?)\s+(?:has|have|with|includes?|bring|offers?|average|combined)\b/i.test(line) ||
+                /\b(?:staff|team)\s+(?:members?|tenure|longevity)\b|\blong[\s-]*time\s+(?:staff|team|doctors?|veterinarians?)\b|\bcombined experience\b|\bserving\s+the\s+community\b/i.test(line) ||
+                /\byears?\s+(?:with|at)\s+(?:VCA|the hospital|our hospital|this hospital|the practice|our practice)\b/i.test(line) ||
+                /\b(?:hospital|practice|facility)\s+(?:has|have|opened|established|serving)\b/i.test(line) ||
+                /\b(?:we offer|benefits|medical(?:,\s*|\s+)dental)\b/i.test(line);
+        }
+
+        function hasCandidateRequirementContext(line, inQualifications) {
+            if (inQualifications) return true;
+            return /\b(?:candidate|applicant|you|your|must|required|requires?|requirement|minimum|min\.?|at least|preferred|qualification|prior|previous|seeking|looking for)\b/i.test(line);
+        }
 
         const prioritizedLines = candidateLines
-            .map(line => line.trim())
-            .filter(Boolean)
-            .filter(line => /\b(?:experience|experienced|minimum|min\.?|at least|required|requirements?|qualifications?|practice setting|years in practice)\b/i.test(line))
-            .filter(line => !/\b(?:our team has|over\s+\d+\s+years of experience|years of experience in specialty and emergency services|serving\s+the\s+community|we offer|benefits|medical(?:,\s*|\s+)dental)\b/i.test(line));
+            .map(entry => ({ line: entry.line.trim(), inQualifications: entry.inQualifications }))
+            .filter(entry => entry.line)
+            .filter(entry => /\b(?:experience|experienced|minimum|min\.?|at least|required|requires|requirements?|qualifications?|practice setting|years in practice)\b/i.test(entry.line))
+            .filter(entry => !isNonCandidateExperience(entry.line))
+            .filter(entry => hasCandidateRequirementContext(entry.line, entry.inQualifications));
 
         const patterns = [
             new RegExp(`\\b(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
             new RegExp(`\\b(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
             new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
             new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\b`, 'i'),
-            new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
+            new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?(?:clinical\\s+|veterinary\\s+|work\\s+)?experience\\b`, 'i'),
             new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
             new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
-            new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
+            new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\+?\\s*${yearToken}\\s+(?:of\\s+)?(?:clinical\\s+|veterinary\\s+|work\\s+)?experience\\b`, 'i'),
             new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:in\\s+(?:practice|a\\s+practice\\s+setting)|practice\\s+setting)\\b`, 'i')
         ];
 
@@ -839,7 +919,7 @@
             return `${years} ${years === '1' ? 'year' : 'years'}`;
         }
 
-        for (const source of prioritizedLines) {
+        for (const { line: source } of prioritizedLines) {
             for (const pattern of patterns) {
                 const match = source.match(pattern);
                 if (match) return formatExperience(match);
@@ -943,7 +1023,9 @@
     // Determine AOP and Position
     const areaOfPractice = determineAreaOfPractice(positionTitle, category, fullDescription, hospitalName);
     const position = determinePosition(positionTitle, areaOfPractice, fullDescription);
-    const salary = extractSalary(jsonLd, fullDescription);
+    const structuredSalary = globalThis.VcaSalaryResolver?.extractSalaryFromJsonLd?.(jsonLd) || '';
+    const salaryReviewIssue = structuredSalary ? '' : (globalThis.VcaSalaryResolver?.getSalaryReviewIssue?.(fullDescription) || '');
+    const salary = salaryReviewIssue ? '' : (structuredSalary || extractSalary(jsonLd, fullDescription));
     const experience = extractExperience(fullDescription);
     const locations = extractLocations(jsonLd, domData);
 
@@ -952,6 +1034,7 @@
         areaOfPractice,
         position,
         salary,
+        salaryReviewIssue,
         experience,
         hospitalName,
         description: fullDescription

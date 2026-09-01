@@ -14,6 +14,12 @@
         const MAX_WAIT = 15000;   // 15 seconds max total
         const POLL = 500;         // Check every 500ms
         const startTime = Date.now();
+        const mapsContext = {
+            expectedHospital: document.documentElement.dataset.mphExpectedHospital || '',
+            descriptionAddressSearch: document.documentElement.dataset.mphDescriptionAddressSearch === 'true'
+        };
+        const descriptionAddressStartTime = Date.now();
+        let attemptedAddressOccupant = false;
 
         // Helper: wait ms
         const wait = (ms) => new Promise(r => setTimeout(r, ms));
@@ -27,7 +33,28 @@
         while (Date.now() - startTime < MAX_WAIT) {
             // Check if we're on a single place page (address button exists)
             addressData = tryExtractFromPlaceDetail();
-            if (addressData) return addressData;
+            if (addressData) {
+                // An exact address can open a generic building page. When Google
+                // lists businesses "At this place", open only the occupant whose
+                // name matches the expected hospital, then extract all fields from
+                // that same place listing.
+                if (mapsContext.descriptionAddressSearch && mapsContext.expectedHospital
+                    && !businessNameMatchesExpected(addressData.businessName, mapsContext.expectedHospital)) {
+                    if (!attemptedAddressOccupant) {
+                        const occupant = findExpectedBusinessAtAddress(mapsContext.expectedHospital);
+                        if (occupant) {
+                            attemptedAddressOccupant = true;
+                            occupant.click();
+                        }
+                    }
+                    if (Date.now() - descriptionAddressStartTime > 6000) return emptyResult();
+                    await wait(POLL);
+                    continue;
+                }
+                addressData.uniquePlaceMatch = true;
+                addressData.descriptionAddressResolved = mapsContext.descriptionAddressSearch;
+                return addressData;
+            }
 
             // Check if search results list has loaded
             const resultLinks = document.querySelectorAll('a.hfpxzc');
@@ -62,7 +89,7 @@
             return emptyResult();
         }
 
-        const targetLink = bestMatch;
+        const targetLink = bestMatch.link;
         console.log(`Clicking result: "${targetLink.getAttribute('aria-label')}"`);
 
         // Click the matching result to open place details
@@ -79,11 +106,16 @@
             await wait(POLL);
 
             addressData = tryExtractFromPlaceDetail();
-            if (addressData) return addressData;
+            if (addressData) {
+                addressData.uniquePlaceMatch = bestMatch.uniquePlaceMatch;
+                addressData.branchQueryResolved = bestMatch.branchQueryResolved;
+                return addressData;
+            }
         }
 
-        // Last resort: try extracting from whatever is on the page now
-        return tryExtractFromPageBody() || emptyResult();
+        // Do not scan the whole results page. Only a structured place-detail
+        // address is safe to associate with its phone and website.
+        return emptyResult();
 
     } catch (e) {
         return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: e.message };
@@ -117,16 +149,22 @@
             .replace(/\s+/g, ' ')
             .trim();
 
-        const queryNorm = normalize(searchQuery);
-        const queryWords = queryNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w) && !facilityWords.has(w));
-        const branchWords = [...searchQuery.matchAll(/\(([^)]+)\)/g)]
-            .flatMap(match => normalize(match[1]).split(' '))
+        const branchSegments = [...searchQuery.matchAll(/\(([^)]+)\)/g)].map(match => match[1]);
+        const livewellBranch = searchQuery.match(/\blive\s*well\s+animal\s+(?:hospital|urgent\s+care)\s+(?:of\s+)?(.+)$/i);
+        if (livewellBranch) branchSegments.push(livewellBranch[1]);
+        const branchWords = branchSegments
+            .flatMap(segment => normalize(segment).split(' '))
             .filter(word => word.length > 2 && !stopWords.has(word) && !facilityWords.has(word));
+        const branchWordSet = new Set(branchWords);
+        const queryNorm = normalize(searchQuery);
+        const queryWords = queryNorm.split(' ')
+            .filter(w => w.length > 2 && !stopWords.has(w) && !facilityWords.has(w) && !branchWordSet.has(w));
         const requiredLeadWord = queryWords[0] || '';
         const queryHasFacilityWord = queryNorm.split(' ').some(w => facilityWords.has(w));
 
         let bestLink = null;
         let bestScore = 0;
+        let acceptableMatchCount = 0;
 
         for (const link of links) {
             const label = (link.getAttribute('aria-label') || '').replace(/·.*$/, '').trim();
@@ -140,7 +178,9 @@
             const haystackWords = new Set(haystack.split(' ').filter(w => w.length > 2 && !stopWords.has(w)));
             const haystackHasFacilityWord = haystack.split(' ').some(w => facilityWords.has(w));
             if (requiredLeadWord && !haystackWords.has(requiredLeadWord)) continue;
-            if (branchWords.some(word => !haystackWords.has(word))) continue;
+            // A branch label may be absent from Google's displayed business name.
+            // The exact city/state and core hospital identity are validated after
+            // the place detail opens, so do not reject the result at this stage.
 
             // Count how many query words appear in the label
             let matchCount = 0;
@@ -156,13 +196,25 @@
             if (labelNorm.startsWith(queryNorm) || queryNorm.startsWith(labelNorm)) score += 0.2;
             if (queryHasFacilityWord && haystackHasFacilityWord) score += 0.1;
 
+            if (score >= 0.6) acceptableMatchCount++;
+
             if (score > bestScore) {
                 bestScore = score;
                 bestLink = link;
             }
         }
 
-        return bestScore >= 0.6 ? bestLink : null;
+        return bestScore >= 0.6
+            ? {
+                link: bestLink,
+                uniquePlaceMatch: acceptableMatchCount === 1,
+                // When Google omits a parenthetical branch from its title, its
+                // branch-targeted search ranking selects the location. The place
+                // detail address is still checked against the requested city and
+                // state before this result can be saved.
+                branchQueryResolved: branchWords.length > 0
+            }
+            : null;
     }
 
     function isLivewellQuery(value) {
@@ -183,6 +235,65 @@
             if (text) return text;
         }
 
+        return '';
+    }
+
+    function normalizeBusinessName(value) {
+        return String(value || '')
+            .replace(/&/g, ' and ')
+            .replace(/\bcentre\b/gi, 'center')
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function expectedHospitalBase(value) {
+        return String(value || '')
+            .replace(/\([^)]*\)/g, ' ')
+            .replace(/\s[-–—]\s.*$/, ' ')
+            .replace(/\b((?:animal\s+)?(?:hospital|clinic|center|centre|care))\s+of\s+.*$/i, '$1')
+            .replace(/\s+/g, ' ')
+            .trim();
+    }
+
+    function businessNameMatchesExpected(candidateName, expectedHospital) {
+        const candidate = normalizeBusinessName(candidateName).replace(/\s+/g, '');
+        const expected = normalizeBusinessName(expectedHospitalBase(expectedHospital)).replace(/\s+/g, '');
+        if (!candidate || !expected) return false;
+        return candidate.includes(expected) || expected.includes(candidate);
+    }
+
+    function findExpectedBusinessAtAddress(expectedHospital) {
+        const candidates = document.querySelectorAll(
+            'article button, article a, [role="article"] button, [role="article"] a'
+        );
+        for (const candidate of candidates) {
+            const label = (
+                candidate.getAttribute('aria-label') ||
+                candidate.innerText ||
+                candidate.textContent ||
+                ''
+            ).split('\n')[0].trim();
+            if (businessNameMatchesExpected(label, expectedHospital)) return candidate;
+        }
+        return null;
+    }
+
+    function tryExtractCategory() {
+        const selectors = [
+            'button.DkEaL',
+            '[data-item-id="category"]',
+            'button[jsaction*="category"]',
+            '[role="main"] button[aria-label*="Veterinar"]',
+            '[role="main"] button[aria-label*="Animal hospital"]'
+        ];
+        for (const selector of selectors) {
+            for (const element of document.querySelectorAll(selector)) {
+                const text = (element.textContent || element.getAttribute('aria-label') || '').trim();
+                if (/\b(?:veterinar|animal hospital|animal clinic|pet hospital|pet clinic|emergency vet)/i.test(text)) return text;
+            }
+        }
         return '';
     }
 
@@ -257,11 +368,12 @@
         if (addressButton) {
             const ariaLabel = addressButton.getAttribute('aria-label') || '';
             const textContent = addressButton.textContent.trim();
-            let fullAddress = ariaLabel.replace(/^Address:\s*/i, '').trim() || textContent;
+            let fullAddress = cleanAddressText(ariaLabel || textContent);
             if (fullAddress && /\d/.test(fullAddress)) {
                 const result = { fullAddress };
                 Object.assign(result, parseAddress(fullAddress));
                 result.businessName = tryExtractBusinessName();
+                result.category = tryExtractCategory();
                 // Also extract website and phone while we're on the detail panel
                 result.website = tryExtractWebsite();
                 result.phone = tryExtractPhone();
@@ -284,6 +396,7 @@
                     const result = { fullAddress: text };
                     Object.assign(result, parseAddress(text));
                     result.businessName = tryExtractBusinessName();
+                    result.category = tryExtractCategory();
                     result.website = tryExtractWebsite();
                     result.phone = tryExtractPhone();
                     if (result.streetAddress) return result;
@@ -296,10 +409,11 @@
         for (const el of allAria) {
             const label = el.getAttribute('aria-label') || '';
             if (/\d+\s+[\w\s]+,\s*[\w\s]+,\s*[A-Z]{2}\s+\d{5}/.test(label)) {
-                const clean = label.replace(/^Address:\s*/i, '').trim();
+                const clean = cleanAddressText(label);
                 const result = { fullAddress: clean };
                 Object.assign(result, parseAddress(clean));
                 result.businessName = tryExtractBusinessName();
+                result.category = tryExtractCategory();
                 result.website = tryExtractWebsite();
                 result.phone = tryExtractPhone();
                 if (result.streetAddress) return result;
@@ -327,7 +441,7 @@
 
     // ===== Empty result helper =====
     function emptyResult() {
-        return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
+        return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', category: '', uniquePlaceMatch: false, branchQueryResolved: false, descriptionAddressResolved: false };
     }
 
     // ===== Parse a full US address string into components =====
@@ -340,7 +454,7 @@
         if (!fullAddress) return { streetAddress: '', city: '', state: '', zipCode: '' };
 
         // Strip trailing ", United States" or ", USA"
-        let addr = fullAddress
+        let addr = cleanAddressText(fullAddress)
             .replace(/,?\s*United States\s*$/i, '')
             .replace(/,?\s*USA\s*$/i, '')
             .trim();
@@ -397,6 +511,17 @@
 
         // ---- Fallback: return the raw address as street ----
         return { streetAddress: addr, city: '', state: '', zipCode: '' };
+    }
+
+    function cleanAddressText(value) {
+        let clean = String(value || '')
+            .replace(/\u00a0/g, ' ')
+            .replace(/\s+/g, ' ')
+            .replace(/^\s*(?:Address|Located in)\s*:\s*/i, '')
+            .trim();
+        const repeatedLabel = clean.search(/\s+(?:Address|Located in)\s*:\s*/i);
+        if (repeatedLabel > 0) clean = clean.slice(0, repeatedLabel).trim();
+        return clean;
     }
 
 })();

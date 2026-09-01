@@ -605,7 +605,7 @@
         if (!raw) return '';
 
         // Check if it's hourly
-        const isHourly = /(?:per\s+)?(?:hour|hr|\/hr)/i.test(raw);
+        const isHourly = /(?:per\s+)?(?:hour|hourly|hr|\/hr)/i.test(raw);
 
         // Extract all dollar amounts from the string
         const amounts = [];
@@ -674,6 +674,7 @@
         const text = descriptionText;
 
         const salaryPatterns = [
+            /(?:total\s+)?compensation\s+package[^\n]{0,120}?\b(?:range|ranges|ranging)\s+from\s+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|–|—|to)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
             /(?:salary|pay|compensation)\s+range\s+can\s+vary\s+from\s+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+(?:to|-|–|—)\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
             /(?:salary|pay|compensation)\s+range\s*[-:]\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|–|—|to)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
             /(?:range\s+for\s+a\s+)?base\s+salary\s+(?:is|of|from|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|–|—|to)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
@@ -699,6 +700,7 @@
             /\$[\d,]+(?:\.\d{2})?\s*(?:annually|per\s*year|per\s*annum)/i,
             // "$95 per hour" or "$95/hr"
             /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hour|hr|\/hr)/i,
+            /(?:^|\n)\s*-?\s*compensation:\s*(?:from\s+)?USD\s*[\d,]+(?:\.\d{2})?(?:\s*[-–—]\s*USD\s*[\d,]+(?:\.\d{2})?)?\s*[-–—]\s*(?:yearly|annual|hourly)/i,
         ];
         for (const pattern of salaryPatterns) {
             const m = text.match(pattern);
@@ -723,17 +725,24 @@
             .map(line => line.trim())
             .filter(Boolean)
             .filter(line => /\b(?:experience|experienced|minimum|min\.?|at least|required|requirements?|qualifications?|practice setting|years in practice)\b/i.test(line))
-            .filter(line => !/\b(?:our team has|over\s+\d+\s+years of experience|years of experience in specialty and emergency services|serving\s+the\s+community|we offer|benefits|medical(?:,\s*|\s+)dental)\b/i.test(line));
+            .filter(line => !/\b(?:our team|team of|staff|mentor network|mentorship|veterinarians? ranging|access to a dvm mentor|years of combined experience|over\s+\d+\s+years of experience|years of experience in specialty and emergency services|performing\b.{0,80}\bfor over|has been\b.{0,80}\bfor|serving\s+the\s+community|we offer|benefits|medical(?:,\s*|\s+)dental)\b/i.test(line));
+
+        const experienceWords = '(?:(?:of\\s+)?(?:(?:veterinarian|veterinary|clinical|professional|medicine|small\\s+animal|emergency|urgent\\s+care)\\s+){0,2})';
+        const wordYears = {
+            one: '1', two: '2', three: '3', four: '4', five: '5',
+            six: '6', seven: '7', eight: '8', nine: '9', ten: '10'
+        };
 
         const patterns = [
-            new RegExp(`\\b(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
-            new RegExp(`\\b(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
+            new RegExp(`\\b(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\s+${experienceWords}experience\\b`, 'i'),
+            new RegExp(`\\b(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\s+${experienceWords}experience\\b`, 'i'),
             new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
             new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\b`, 'i'),
-            new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
-            new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
+            new RegExp(`\\b(?:minimum(?:\\s+of)?|min\\.?|at\\s+least)\\s+(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
+            new RegExp(`\\b(?:minimum(?:\\s+of)?|min\\.?|at\\s+least)\\s+(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
+            new RegExp(`\\b(\\d+)\\s+or\\s+more\\s*${yearToken}\\s+${experienceWords}experience\\b`, 'i'),
+            new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+${experienceWords}experience\\b`, 'i'),
             new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
-            new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
             new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:in\\s+(?:practice|a\\s+practice\\s+setting)|practice\\s+setting)\\b`, 'i')
         ];
 
@@ -747,7 +756,7 @@
             const years = minYears || maxYears;
             if (!years) return '';
 
-            if (/\+/.test(match[0]) || /\b(?:minimum|min\.?|at least)\b/i.test(match[0])) {
+            if (/\+/.test(match[0]) || /\b(?:minimum|min\.?|at least|or more)\b/i.test(match[0])) {
                 return `${years}+ years`;
             }
 
@@ -755,6 +764,14 @@
         }
 
         for (const source of prioritizedLines) {
+            const writtenMinimum = source.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+or\s+more\s+years?\s+(?:of\s+)?(?:\w+\s+){0,3}experience\b/i);
+            if (writtenMinimum) return `${wordYears[writtenMinimum[1].toLowerCase()]}+ years`;
+
+            const severalYears = source.match(/\bseveral\s+years?\s+(?:of\s+)?(?:\w+\s+){0,3}experience\b/i);
+            if (severalYears && /\b(?:required|seeking|must|ideal candidate|not suitable)\b|^[-•·]/i.test(source)) {
+                return 'Several years';
+            }
+
             for (const pattern of patterns) {
                 const match = source.match(pattern);
                 if (match) return formatExperience(match);
@@ -775,7 +792,7 @@
                 if (loc.address) {
                     const city = loc.address.addressLocality || '';
                     const state = loc.address.addressRegion || '';
-                    if (city && state) {
+                    if (city && state && !/^TBD$/i.test(city) && !/^(?:USA|United States|US)$/i.test(state)) {
                         locations.push({ city, state, location: `${city}, ${state}` });
                     }
                 }
@@ -833,70 +850,7 @@
     }
 
     function extractCompleteAddress(text) {
-        const lines = getDescriptionLines(text);
-
-        function parseAddressLine(rawLine) {
-            let line = rawLine.replace(/^\s*-\s*/, '').replace(/\s+/g, ' ').replace(/\s+,/g, ',').trim();
-            if (!line) return null;
-            if (/\||\blocations?\s+(?:and\s+locations?\s+)?(?:coming\s+soon\s+)?include\b/i.test(line)) return null;
-
-            const parts = line.split(',').map(part => part.trim()).filter(Boolean);
-            const last = parts[parts.length - 1] || '';
-            if (/^(?:USA|United States)$/i.test(last)) parts.pop();
-            if (parts.length === 2 && /^TBD$/i.test(parts[0]) && /^TBD$/i.test(parts[1])) {
-                return {
-                    streetAddress: 'TBD',
-                    city: 'TBD',
-                    state: 'TBD',
-                    stateAbbrev: '',
-                    zipCode: '',
-                    location: 'TBD'
-                };
-            }
-            if (parts.length < 3) return null;
-
-            const statePart = parts[parts.length - 1];
-            let stateAbbrev = '';
-            let stateFull = '';
-            let zipCode = '';
-            const abbrevZip = statePart.match(/^([A-Z]{2})(?:\s+(\d{5}(?:-\d{4})?))?$/);
-            if (abbrevZip) {
-                stateAbbrev = abbrevZip[1];
-                stateFull = getFullStateName(stateAbbrev);
-                zipCode = abbrevZip[2] || '';
-            } else {
-                const fullStateZip = statePart.match(/^([A-Za-z][A-Za-z\s.]+?)(?:\s+(\d{5}(?:-\d{4})?))?$/);
-                if (!fullStateZip) return null;
-                if (/^[A-Za-z]{2}$/.test(fullStateZip[1]) && !/^TBD$/i.test(fullStateZip[1])) return null;
-                stateAbbrev = getStateAbbrev(fullStateZip[1]);
-                if (!stateAbbrev && !/^TBD$/i.test(fullStateZip[1])) return null;
-                stateFull = /^TBD$/i.test(fullStateZip[1]) ? 'TBD' : getFullStateName(fullStateZip[1]);
-                zipCode = fullStateZip[2] || '';
-            }
-
-            const city = parts[parts.length - 2] || '';
-            let street = parts.slice(0, -2).join(', ').trim();
-            street = street.replace(/^TBD-?$/i, 'TBD');
-            if (!street || !city || !/^(?:TBD|[A-Za-z][A-Za-z\s.'-]*)$/i.test(city)) return null;
-            if (/\bto\b/i.test(city)) return null;
-            if (!/\d/.test(street) && !/^TBD$/i.test(street) && street.split(/\s+/).length > 6) return null;
-
-            return {
-                streetAddress: street,
-                city,
-                state: stateFull,
-                stateAbbrev,
-                zipCode,
-                location: stateAbbrev ? `${city}, ${stateAbbrev}` : city
-            };
-        }
-
-        for (let i = lines.length - 1; i >= 0; i--) {
-            const parsed = parseAddressLine(lines[i]);
-            if (parsed) return parsed;
-        }
-
-        return { streetAddress: '', city: '', state: '', stateAbbrev: '', zipCode: '', location: '' };
+        return globalThis.AAHDescriptionAddress.extractCompleteAddress(text);
     }
 
     // ===== MAIN EXTRACTION =====

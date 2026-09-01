@@ -105,6 +105,12 @@ async function handleFetchDetails(request) {
     }).catch(() => {});
 }
 
+// Reloading/updating an unpacked extension can leave an interrupted scrape flag
+// behind. Stop that stale process without touching any saved job records.
+chrome.runtime.onInstalled.addListener(() => {
+    chrome.storage.local.set({ scraping: false });
+});
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (request.action === 'startScraping') {
         handleStartScraping(sendResponse);

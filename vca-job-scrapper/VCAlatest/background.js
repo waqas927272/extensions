@@ -10,6 +10,74 @@ let vcaDirectoryEntries = [];
 let vcaDirectoryExpiresAt = 0;
 let vcaDirectoryRequest = null;
 
+function fetchVcaDirectoryThroughBrowserTab() {
+  return new Promise((resolve, reject) => {
+    let tabId = null;
+    let listener = null;
+    let settled = false;
+    let extractionStarted = false;
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      if (listener) chrome.tabs.onUpdated.removeListener(listener);
+      if (tabId !== null) chrome.tabs.remove(tabId).catch(() => {});
+    };
+
+    const finish = (error, html = '') => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve(html);
+    };
+
+    const extractDirectoryHtml = () => {
+      if (extractionStarted || tabId === null) return;
+      extractionStarted = true;
+      if (listener) {
+        chrome.tabs.onUpdated.removeListener(listener);
+        listener = null;
+      }
+
+      setTimeout(() => {
+        chrome.scripting.executeScript({
+          target: { tabId },
+          func: () => ({
+            html: document.documentElement?.outerHTML || '',
+            title: document.title || '',
+            pageText: (document.body?.innerText || '').slice(0, 500)
+          })
+        }).then(results => {
+          const page = results?.[0]?.result || {};
+          if (!page.html) {
+            throw new Error(`VCA directory browser tab returned no HTML (${page.title || 'untitled page'})`);
+          }
+          finish(null, page.html);
+        }).catch(error => finish(error));
+      }, 1200);
+    };
+
+    const timeout = setTimeout(() => {
+      finish(new Error('VCA directory browser-tab lookup timed out'));
+    }, 30000);
+
+    console.log('[VCA directory] Opening browser-tab fallback.');
+    chrome.tabs.create({ url: VCA_DIRECTORY_URL, active: false }, tab => {
+      if (chrome.runtime.lastError || !tab?.id) {
+        finish(new Error(chrome.runtime.lastError?.message || 'Unable to open the VCA directory tab'));
+        return;
+      }
+
+      tabId = tab.id;
+      listener = (updatedTabId, info) => {
+        if (updatedTabId === tabId && info.status === 'complete') extractDirectoryHtml();
+      };
+      chrome.tabs.onUpdated.addListener(listener);
+      if (tab.status === 'complete') extractDirectoryHtml();
+    });
+  });
+}
+
 async function loadVcaDirectoryEntries() {
   if (vcaDirectoryEntries.length && Date.now() < vcaDirectoryExpiresAt) {
     return vcaDirectoryEntries;
@@ -17,16 +85,37 @@ async function loadVcaDirectoryEntries() {
   if (vcaDirectoryRequest) return vcaDirectoryRequest;
 
   vcaDirectoryRequest = (async () => {
-    const response = await fetch(VCA_DIRECTORY_URL, {
-      cache: 'no-store',
-      credentials: 'omit',
-      redirect: 'follow',
-      headers: { Accept: 'text/html,application/xhtml+xml' }
-    });
-    if (!response.ok) throw new Error(`VCA directory request failed with HTTP ${response.status}`);
-    const html = await response.text();
-    const entries = VcaHospitalResolver.parseVcaDirectory(html);
+    let html = '';
+    let entries = [];
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      try {
+        console.log('[VCA directory] Trying background request.');
+        const response = await fetch(VCA_DIRECTORY_URL, {
+          cache: 'no-store',
+          credentials: 'omit',
+          redirect: 'follow',
+          signal: controller.signal,
+          headers: { Accept: 'text/html,application/xhtml+xml' }
+        });
+        if (!response.ok) throw new Error(`VCA directory request failed with HTTP ${response.status}`);
+        html = await response.text();
+        entries = VcaHospitalResolver.parseVcaDirectory(html);
+        if (entries.length < 100) {
+          throw new Error(`VCA background response contained only ${entries.length} usable locations`);
+        }
+      } finally {
+        clearTimeout(timeout);
+      }
+    } catch (error) {
+      console.warn(`[VCA directory] Background request unavailable: ${error.message || error}`);
+      html = await fetchVcaDirectoryThroughBrowserTab();
+      entries = VcaHospitalResolver.parseVcaDirectory(html);
+    }
+
     if (entries.length < 100) throw new Error(`VCA directory returned only ${entries.length} usable locations`);
+    console.log(`[VCA directory] Loaded ${entries.length} official locations.`);
     vcaDirectoryEntries = entries;
     vcaDirectoryExpiresAt = Date.now() + VCA_DIRECTORY_TTL_MS;
     return entries;
@@ -136,7 +225,22 @@ async function resolveOfficialWebsiteAddress(request) {
     const similarity = expectedName && parsed.businessName
       ? VcaHospitalResolver.nameSimilarity(expectedName, parsed.businessName)
       : 0;
-    if (expectedName && parsed.businessName && similarity < 0.34) continue;
+    const normalizeIdentity = value => String(value || '')
+      .toLowerCase()
+      .replace(/&/g, ' and ')
+      .replace(/[^a-z0-9]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const expectedIdentity = normalizeIdentity(expectedName);
+    const parsedIdentity = normalizeIdentity(parsed.businessName);
+    const exactCityMatch = expected.city && parsed.city &&
+      normalizeIdentity(expected.city) === normalizeIdentity(parsed.city);
+    const containedIdentity = expectedIdentity.length >= 12 &&
+      (parsedIdentity.includes(expectedIdentity) || expectedIdentity.includes(parsedIdentity));
+    // Generic advertised names can be shortened (for example "VCA Animal
+    // Care Center" vs "VCA Animal Care Center of Sonoma County"). Accept
+    // that only when the independently parsed official-site city also matches.
+    if (expectedName && parsed.businessName && similarity < 0.34 && !(exactCityMatch && containedIdentity)) continue;
     candidates.push({
       ...parsed,
       website: website,
@@ -223,11 +327,11 @@ function extractDirectJobPostingJsonLd(html) {
 }
 
 function formatDirectEmploymentType(value) {
-  const firstValue = Array.isArray(value) ? value[0] : value;
-  return cleanDirectJobText(firstValue || '')
-    .replace(/_/g, ' ')
-    .toLowerCase()
-    .replace(/\b\w/g, char => char.toUpperCase());
+  const text = cleanDirectJobText(Array.isArray(value) ? value.join(' ') : (value || ''))
+    .replace(/[-_]/g, ' ');
+  const hasPartTime = /\bpart\s*time\b/i.test(text);
+  const hasFullTime = /\bfull\s*time\b/i.test(text);
+  return hasPartTime && !hasFullTime ? 'Part time' : 'Full time';
 }
 
 function uniqueDirectValues(values) {
@@ -296,6 +400,7 @@ function formatDirectJobPostingResult(jobPosting, expectedJobId, pageCategories 
   ]);
   const fields = {
     title: cleanDirectJobText(jobPosting.title || ''),
+    hospitalName: cleanDirectJobText(jobPosting.hiringOrganization?.name || ''),
     location: [address.city, address.state, address.country].filter(Boolean).join(', '),
     allLocations: locations,
     category: categories.join(' / '),
@@ -319,6 +424,7 @@ function formatDirectJobPostingResult(jobPosting, expectedJobId, pageCategories 
   const lines = [
     '=== JOB INFO ===',
     `Title: ${fields.title}`,
+    `Hiring Organization: ${fields.hospitalName}`,
     `Location: ${fields.location}`,
     `Category: ${fields.category}`,
     `Job ID: ${fields.jobId}`,
@@ -358,6 +464,12 @@ function formatDirectJobPostingResult(jobPosting, expectedJobId, pageCategories 
   };
 }
 
+function hasDirectJobDescriptionPayload(result) {
+  const description = cleanDirectJobText(result?.jobInfo?.jobDescription || '');
+  if (!description) return false;
+  return !/^(?:job info not found|description not found|error fetching description|timeout fetching description)$/i.test(description);
+}
+
 async function fetchJobDescriptionDirectly(request) {
   const response = await fetch(request.url, {
     cache: 'no-store',
@@ -374,6 +486,9 @@ async function fetchJobDescriptionDirectly(request) {
   const pageCategories = extractDirectJobCategoriesFromHtml(html);
   const result = formatDirectJobPostingResult(jobPosting, request.jobId || request.departmentId || '', pageCategories);
   if (!result) throw new Error('Direct fetch did not find JobPosting JSON-LD');
+  if (!result.mismatch && !hasDirectJobDescriptionPayload(result)) {
+    throw new Error('Direct fetch found job metadata but no usable description');
+  }
   return result;
 }
 
@@ -385,6 +500,7 @@ function sendDescriptionFetched(request, extractionResult) {
       : (extractionResult?.description || 'Error fetching description'),
     jobInfo: typeof extractionResult === 'object' ? extractionResult?.jobInfo || null : null,
     mismatch: typeof extractionResult === 'object' ? !!extractionResult?.mismatch : false,
+    unavailable: typeof extractionResult === 'object' ? !!extractionResult?.unavailable : false,
     jobIndex: request.jobIndex,
     jobKey: request.jobKey,
     jobLink: request.jobLink || request.url
@@ -420,7 +536,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendDescriptionFetched(request, extractionResult);
       })
       .catch((error) => {
-        console.warn('Direct job description fetch failed, falling back to tab scraping:', error);
+        console.log('Direct job description fetch unavailable; using browser-tab extraction:', error.message || error);
         chrome.tabs.create({ url: request.url, active: false }, (tab) => {
       chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
         if (tabId === tab.id && info.status === 'complete') {
@@ -437,6 +553,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               func: async (expected = {}) => {
                 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
                 const expectedJobId = (expected.expectedJobId || '').trim();
+
+                function findFilledJobMessage() {
+                  const pageText = (document.body?.innerText || document.body?.textContent || '')
+                    .replace(/\u00a0/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+                  const match = pageText.match(/we['’]?re\s+sorry(?:\s*(?:…|\.{3}))?\s*the\s+job\s+you\s+are\s+trying\s+to\s+apply\s+for\s+has\s+been\s+filled\.?/i);
+                  return match ? match[0].trim() : '';
+                }
 
                 function cleanSelectedJobInfoText(value) {
                   return (value || '')
@@ -508,11 +633,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 }
 
                 function formatEmploymentType(value) {
-                  const firstValue = Array.isArray(value) ? value[0] : value;
-                  return cleanSelectedJobInfoText(firstValue || '')
-                    .replace(/_/g, ' ')
-                    .toLowerCase()
-                    .replace(/\b\w/g, char => char.toUpperCase());
+                  const text = cleanSelectedJobInfoText(Array.isArray(value) ? value.join(' ') : (value || ''))
+                    .replace(/[-_]/g, ' ');
+                  const hasPartTime = /\bpart\s*time\b/i.test(text);
+                  const hasFullTime = /\bfull\s*time\b/i.test(text);
+                  return hasPartTime && !hasFullTime ? 'Part time' : 'Full time';
                 }
 
                 function uniqueSelectedValues(values) {
@@ -671,7 +796,27 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   return !!(title || jobId);
                 }
 
-                function formatSelectedJobInfo(root) {
+                function getSelectedJobDescription() {
+                  const descriptionElement = document.querySelector('.jd-info[data-ph-at-id="jobdescription-text"], [data-ph-at-id="jobdescription-text"]');
+                  let renderedDescription = '';
+                  if (descriptionElement) {
+                    const clone = descriptionElement.cloneNode(true);
+                    clone.querySelectorAll('.sr-only, [aria-hidden="true"]').forEach(node => node.remove());
+                    renderedDescription = (clone.innerText || clone.textContent || '')
+                      .replace(/\u00a0/g, ' ')
+                      .replace(/\r/g, '')
+                      .replace(/[ \t]+\n/g, '\n')
+                      .replace(/[ \t]{2,}/g, ' ')
+                      .replace(/\n{3,}/g, '\n\n')
+                      .trim();
+                  }
+                  if (renderedDescription) return renderedDescription;
+
+                  const jobPosting = getSelectedJobPostingJsonLd();
+                  return selectedJobInfoHtmlToText(jobPosting?.description || '');
+                }
+
+                function formatSelectedJobInfo(root, selectedJobDescription = '') {
                   const categories = uniqueSelectedValues([
                     ...extractSelectedJobCategoriesFromPage(),
                     selectedJobInfoField(root, '.job-category', 'data-ph-at-job-category-text')
@@ -686,7 +831,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                     industry: cleanSelectedJobInfoText(root.getAttribute('data-ph-at-job-industry-text') || ''),
                     postDate: cleanSelectedJobInfoText(root.getAttribute('data-ph-at-job-post-date-text') || ''),
                     seqNo: cleanSelectedJobInfoText(root.getAttribute('data-ph-at-job-seqno-text') || ''),
-                    selectorText: selectedJobInfoTextWithoutHiddenLabels(root)
+                    selectorText: selectedJobInfoTextWithoutHiddenLabels(root),
+                    jobDescription: selectedJobDescription || getSelectedJobDescription()
                   };
 
                   if (expectedJobId && fields.jobId && fields.jobId !== expectedJobId) {
@@ -715,7 +861,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       ] : []),
                       '',
                       '=== JOB INFO TEXT ===',
-                      fields.selectorText
+                      fields.selectorText,
+                      ...(fields.jobDescription ? [
+                        '',
+                        '=== JOB DESCRIPTION ===',
+                        fields.jobDescription
+                      ] : [])
                     ].join('\n').trim(),
                     jobInfo: fields,
                     mismatch: false
@@ -741,12 +892,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                 const selectedJobInfoWaitUntil = Date.now() + 15000;
                 let selectedJobInfoElement = findSelectedJobInfoElement();
+                let filledJobMessage = findFilledJobMessage();
                 while ((!selectedJobInfoElement || !hasSelectedJobInfoIdentity(selectedJobInfoElement)) && Date.now() < selectedJobInfoWaitUntil) {
                   await sleep(500);
                   selectedJobInfoElement = findSelectedJobInfoElement();
+                  filledJobMessage = findFilledJobMessage();
                 }
 
                 if (!selectedJobInfoElement || !hasSelectedJobInfoIdentity(selectedJobInfoElement)) {
+                  // Only the rendered browser page is authoritative. Direct
+                  // extension fetches can receive a false filled-job page even
+                  // while Chrome renders a valid posting.
+                  if (filledJobMessage && !getSelectedJobDescription()) {
+                    return {
+                      description: filledJobMessage,
+                      jobInfo: null,
+                      mismatch: false,
+                      unavailable: true
+                    };
+                  }
+
                   const structuredJobInfoResult = formatSelectedJobPostingFallback();
                   if (structuredJobInfoResult) {
                     return {
@@ -763,7 +928,37 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   };
                 }
 
-                const selectedJobInfoResult = formatSelectedJobInfo(selectedJobInfoElement);
+                const selectedDescriptionWaitUntil = Date.now() + 10000;
+                let selectedJobDescription = getSelectedJobDescription();
+                while (!selectedJobDescription && Date.now() < selectedDescriptionWaitUntil) {
+                  await sleep(500);
+                  selectedJobDescription = getSelectedJobDescription();
+                  filledJobMessage = findFilledJobMessage();
+                }
+
+                if (!selectedJobDescription && filledJobMessage) {
+                  return {
+                    description: filledJobMessage,
+                    jobInfo: null,
+                    mismatch: false,
+                    unavailable: true
+                  };
+                }
+
+                if (!selectedJobDescription) {
+                  const structuredJobInfoResult = formatSelectedJobPostingFallback();
+                  if (structuredJobInfoResult?.jobInfo?.jobDescription) {
+                    return structuredJobInfoResult;
+                  }
+
+                  return {
+                    description: 'Description not found',
+                    jobInfo: null,
+                    mismatch: false
+                  };
+                }
+
+                const selectedJobInfoResult = formatSelectedJobInfo(selectedJobInfoElement, selectedJobDescription);
                 return {
                   description: selectedJobInfoResult.description || 'Job info not found',
                   jobInfo: selectedJobInfoResult.jobInfo || null,
@@ -1096,6 +1291,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
                 const title = attrOrText(jobInfo, 'data-ph-at-job-title-text', '.job-info .job-title, h1.job-title') ||
                   cleanText(jobData?.title || jobData?.jobTitle || jsonLd?.title || '');
+                const hospitalName = cleanText(
+                  jobData?.hiringOrganization?.name ||
+                  jobData?.hospitalName ||
+                  jobData?.facility ||
+                  jsonLd?.hiringOrganization?.name ||
+                  ''
+                );
                 const location = attrOrText(jobInfo, 'data-ph-at-job-location-text', '.job-info .job-location, span.job-location', cleanLocation) ||
                   cleanLocation(jobData?.location || [jobData?.city, jobData?.state].filter(Boolean).join(', ') || '');
                 const category = attrOrText(jobInfo, 'data-ph-at-job-category-text', '.job-info .job-category, span.job-category') ||
@@ -1124,6 +1326,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 const infoLines = [
                   '=== JOB INFO ===',
                   `Title: ${title}`,
+                  `Hiring Organization: ${hospitalName}`,
                   `Location: ${location}`,
                   `Category: ${category}`,
                   `Industry/Category: ${category}`,
@@ -1149,6 +1352,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   : (extractionResult?.description || 'Error fetching description'),
                 jobInfo: typeof extractionResult === 'object' ? extractionResult?.jobInfo || null : null,
                 mismatch: typeof extractionResult === 'object' ? !!extractionResult?.mismatch : false,
+                unavailable: typeof extractionResult === 'object' ? !!extractionResult?.unavailable : false,
                 jobIndex: request.jobIndex,
                 jobKey: request.jobKey,
                 jobLink: request.jobLink || request.url
@@ -1247,7 +1451,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       },
                       {
                         area: 'General Practice Care / Emergency Care / Urgent Care',
-                        keywords: ['equine veterinarian', 'equine vet', 'bovine veterinarian', 'large animal', 'equine dvm', 'avian veterinarian', 'exotics veterinarian', 'avian vet', 'exotics vet', 'associate exotics veterinarian', 'avian & exotics', 'equine/bovine']
+                        keywords: ['equine veterinarian', 'equine vet', 'bovine veterinarian', 'large animal', 'equine dvm', 'equine/bovine']
+                      },
+                      {
+                        area: 'Exotic Pet Medicine',
+                        keywords: ['exotic pet medicine', 'exotic pet veterinarian', 'exotics veterinarian', 'avian veterinarian', 'avian vet', 'exotics vet', 'associate exotics veterinarian', 'avian & exotics']
                       },
                       {
                         area: 'Specialty Care',
@@ -1293,7 +1501,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                       { position: 'Credentialed Veterinary Technician Specialist', keywords: ['vts anesthesia', 'vts ecc', 'vts emergency', 'vts dentistry', 'vts internal medicine', 'vts saim', 'vts neurology', 'vts neuro', 'vts cardiology', 'vts cardio', 'vts dermatology', 'vts derm', 'vts ophthalmology', 'vts ophtho', 'vts diagnostic imaging', 'veterinary technician specialist', 'vts'] },
                       // Equine / Bovine / Exotics
                       { position: 'Equine/Bovine Veterinarian', keywords: ['equine veterinarian', 'equine vet', 'equine dvm', 'bovine veterinarian', 'large animal', 'equine/bovine', 'equine'] },
-                      { position: 'Avian & Exotics Veterinarian', keywords: ['avian veterinarian', 'exotics veterinarian', 'avian vet', 'exotics vet', 'avian & exotics', 'associate exotics'] },
+                      { position: 'Associate Veterinarian', keywords: ['avian veterinarian', 'exotics veterinarian', 'exotic pet veterinarian', 'avian vet', 'exotics vet', 'avian & exotics', 'associate exotics'] },
                       // Emergency / Urgent / General Practice
                       { position: 'Medical Director', keywords: ['medical director', 'veterinarian medical director'] },
                       { position: 'Lead Veterinarian', keywords: ['lead veterinarian', 'lead vet', 'lead dvm'] },
@@ -1343,6 +1551,60 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                         }
                       }
                       return '';
+                    }
+
+                    function hasExoticPetMedicineRoleSignal(positionText, descriptionText) {
+                      const titleText = positionText || '';
+                      if (/\b(?:exotics?|exotic pet(?:s| medicine)?|avian(?:\s*(?:&|and)\s*exotics?)?)\b/i.test(titleText) &&
+                          !/\b(?:specialist|diplomate|board[-\s]+certified|residency[-\s]+trained)\b/i.test(titleText)) {
+                        return true;
+                      }
+
+                      const roleText = (descriptionText || '').slice(0, 2200);
+                      return /\b(?:seeking|looking\s+for|hiring|join\s+us\s+as)\b[^.\n]{0,220}\b(?:associate\s+)?(?:veterinarian|vet|dvm)\b[^.\n]{0,160}\b(?:exotics?|exotic pets?|avian)\b/i.test(roleText) ||
+                        /\b(?:this|the|our)\s+(?:position|role|caseload|practice focus)\b[^.\n]{0,180}\b(?:exotics?|exotic pets?|avian)\b/i.test(roleText) ||
+                        /\b(?:exotics?|exotic pets?|avian)\s+(?:medicine|caseload|patients?)\b/i.test(roleText);
+                    }
+
+                    // A Medical Director is Specialty Care only when the candidate is
+                    // explicitly required to be board certified or residency trained.
+                    // Credentials belonging to coworkers/the hospital, and optional or
+                    // preferred credentials, must not change the classification.
+                    function hasRequiredMedicalDirectorCredential(text) {
+                      const source = text || '';
+                      const signalPattern = /\bboard[-\s]+certif(?:ied|ication)\b|\bresiden(?:cy|tial)[-\s]+trained\b/i;
+                      const optionalPattern = /\b(?:open to|preferred|preference|a plus|plus but not required|not required|interested in|welcome|consider|considering|ideal|bonus|eligible)\b/i;
+                      const thirdPartyPattern = /\b(?:our|the)\s+(?:team|staff|doctors?|specialists?|clinicians?|colleagues?|network)\b|\b(?:work(?:ing)? alongside|collaborat(?:e|ing) with|access to|supported by|includes?|comprised of|home to)\b|\b\d+\+?\s+(?:board[-\s]+certified\s+)?specialists?\b/i;
+                      const obligationPattern = /\b(?:must|required|requirement|requires|seeking|looking for|candidate|applicant|we need|you (?:are|must|will be))\b/i;
+                      const requirementHeadingPattern = /^(?:minimum\s+|basic\s+|preferred\s+)?(?:qualifications?|requirements?|what (?:you(?:'|’)ll|you will) (?:need|bring)|who (?:you are|we are looking for)|the successful candidate)\s*:?\s*$/i;
+                      const nextHeadingPattern = /^(?:benefits?|compensation|salary|schedule|hours?|responsibilities|about (?:us|the hospital)|why (?:join|vca)|location|contact)\s*:?\s*$/i;
+                      const lines = source.split(/\r?\n/).map(line => line.replace(/^[\s\u2022*\-–—]+/, '').trim());
+                      const requirementLines = [];
+                      let inRequirements = false;
+
+                      for (const line of lines) {
+                        if (requirementHeadingPattern.test(line)) {
+                          inRequirements = true;
+                          continue;
+                        }
+                        if (inRequirements && nextHeadingPattern.test(line)) {
+                          inRequirements = false;
+                        }
+                        if (inRequirements && line) requirementLines.push(line);
+                      }
+
+                      if (requirementLines.some(line => signalPattern.test(line) && !optionalPattern.test(line) && !thirdPartyPattern.test(line))) {
+                        return true;
+                      }
+
+                      return source
+                        .split(/(?<=[.!?])\s+|\r?\n/)
+                        .map(sentence => sentence.trim())
+                        .filter(Boolean)
+                        .some(sentence => signalPattern.test(sentence) &&
+                          obligationPattern.test(sentence) &&
+                          !optionalPattern.test(sentence) &&
+                          !thirdPartyPattern.test(sentence));
                     }
 
                     // Helper: extract salary from text with type identification
@@ -2304,8 +2566,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                             combinedDescription += ' ' + stripHtml(jobData.description).toLowerCase();
                         }
 
-                        if (combinedDescription.includes('board certified') || combinedDescription.includes('residency trained') || combinedDescription.includes('residence trained')) {
+                        const isMedicalDirectorTitle = /\bmedical director\b/i.test(position || '');
+                        if (isMedicalDirectorTitle) {
+                            areaOfPractice = hasRequiredMedicalDirectorCredential(combinedDescription)
+                              ? 'Specialty Care'
+                              : 'General Practice Care';
+                        } else if (combinedDescription.includes('board certified') || combinedDescription.includes('residency trained') || combinedDescription.includes('residence trained')) {
                             areaOfPractice = 'Specialty Care';
+                        } else if (hasExoticPetMedicineRoleSignal(position, combinedDescription)) {
+                            areaOfPractice = 'Exotic Pet Medicine';
                         } else {
                             const lookedUpArea = lookupAreaOfPractice(position);
                             if (lookedUpArea) {
@@ -2511,23 +2780,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                           jobType = jobInfoForType.getAttribute('data-ph-at-job-type-text') || '';
                         }
                       }
-                      // Normalize job type values
-                      if (jobType) {
-                        const typeLower = jobType.toLowerCase().replace(/[-_]/g, ' ').trim();
-                        if (/full\s*time/i.test(typeLower)) jobType = 'Full time';
-                        else if (/part\s*time/i.test(typeLower)) jobType = 'Part time';
-                        else if (/contract/i.test(typeLower)) jobType = 'Contract';
-                        else if (/temporary|temp\b/i.test(typeLower)) jobType = 'Temporary';
-                        else if (/intern/i.test(typeLower)) jobType = 'Intern';
-                        // Reject if it looks like a job title instead of a type
-                        if (jobType.length > 30 || /veterinarian|doctor|technician|surgeon/i.test(jobType)) {
-                          jobType = '';
-                        }
-                      }
+                      // Part time is used only when it is the sole schedule signal.
+                      // Full time wins when both are present and is also the default.
+                      const typeLower = String(jobType || '').toLowerCase().replace(/[-_]/g, ' ').trim();
+                      const hasPartTime = /\bpart\s*time\b/i.test(typeLower);
+                      const hasFullTime = /\bfull\s*time\b/i.test(typeLower);
+                      jobType = hasPartTime && !hasFullTime ? 'Part time' : 'Full time';
 
                       // Map position to exact docx position name
+                      const isMedicalDirectorTitle = /\bmedical director\b/i.test(position || '');
                       const mappedPosition = lookupPosition(position);
-                      if (mappedPosition) {
+                      if (isMedicalDirectorTitle) {
+                        position = areaOfPractice === 'Specialty Care'
+                          ? 'Medical Director'
+                          : 'Associate Veterinarian';
+                      } else if (mappedPosition) {
                         position = mappedPosition;
                       }
 

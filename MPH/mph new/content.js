@@ -18,9 +18,11 @@
 
         const scrapedJobIds = new Set(data.scrapedJobIds || []);
         const newScrape = scrapeCurrentPage(scrapedJobIds, pageType);
-        const allJobs = (data.scrapedJobs || [])
-            .concat(newScrape.jobs)
-            .filter(job => !hasRemoteCityOrState(job));
+        // Only validate records collected on this page. Existing records may come
+        // from an older extension version where city/state were stored differently;
+        // re-filtering them here can erase the user's saved data after a reload.
+        const validNewJobs = newScrape.jobs.filter(hasCompleteCityAndState);
+        const allJobs = (data.scrapedJobs || []).concat(validNewJobs);
         const allJobIds = Array.from(newScrape.scrapedJobIds);
 
         await chrome.storage.local.set({
@@ -135,8 +137,11 @@ function shouldSkipJobTitle(title) {
     return EXCLUDED_JOB_TITLES.has(normalizeTitleForComparison(title));
 }
 
-function hasRemoteCityOrState(job) {
-    return [job?.city, job?.state].some(value => /remote/i.test(value || ''));
+function hasCompleteCityAndState(job) {
+    const city = (job?.city || '').replace(/\s+/g, ' ').trim();
+    const state = (job?.state || '').replace(/\s+/g, ' ').trim();
+    if (!city || !state) return false;
+    return ![city, state].some(value => /\b(?:remote|nationwide)\b/i.test(value));
 }
 
 function scrapeCurrentPage(scrapedJobIds, pageType) {
@@ -162,7 +167,7 @@ function scrapeMarketplacePage(scrapedJobIds) {
             const rawJobId = extractNumericId(jobLink);
             if (!rawJobId || scrapedJobIds.has(rawJobId)) return;
             const { location, city, state, hospital } = extractLocationFromSubtitle(article);
-            if (hasRemoteCityOrState({ city, state })) return;
+            if (!hasCompleteCityAndState({ city, state })) return;
 
             scrapedJobIds.add(rawJobId);
             jobs.push({
@@ -209,7 +214,7 @@ function tryArticleStrategy(scrapedJobIds, jobs) {
             const rawJobId = extractNumericId(jobLink);
             if (!rawJobId || scrapedJobIds.has(rawJobId)) return;
             const { location, city, state, hospital } = extractLocationFromSubtitle(article);
-            if (hasRemoteCityOrState({ city, state })) return;
+            if (!hasCompleteCityAndState({ city, state })) return;
 
             scrapedJobIds.add(rawJobId);
             jobs.push({
@@ -248,7 +253,7 @@ function tryTableStrategy(scrapedJobIds, jobs) {
             const cells = Array.from(row.querySelectorAll('td'));
             const locText = cells.map(cell => cell.textContent.trim()).join(' | ');
             const parsed = parseLocationText(locText);
-            if (hasRemoteCityOrState(parsed)) return;
+            if (!hasCompleteCityAndState(parsed)) return;
 
             scrapedJobIds.add(rawJobId);
 
@@ -289,7 +294,7 @@ function tryListItemStrategy(scrapedJobIds, jobs) {
             if (!rawJobId || scrapedJobIds.has(rawJobId)) return;
             const locEl = item.querySelector('.location, .city, .jobLocation');
             const parsed = parseLocationText(locEl ? locEl.textContent : '');
-            if (hasRemoteCityOrState(parsed)) return;
+            if (!hasCompleteCityAndState(parsed)) return;
 
             scrapedJobIds.add(rawJobId);
 
@@ -327,14 +332,18 @@ function tryLinkFallbackStrategy(scrapedJobIds, jobs) {
 
             const rawJobId = extractNumericId(link.href);
             if (!rawJobId || scrapedJobIds.has(rawJobId)) return;
+            const container = link.closest('article, li, tr, .job-item, .resultItem, .openPosition, .vacancy-item');
+            const locationText = container?.querySelector('.location, .city, .jobLocation, .list-item-location')?.textContent || '';
+            const parsed = parseLocationText(locationText);
+            if (!hasCompleteCityAndState(parsed)) return;
             scrapedJobIds.add(rawJobId);
 
             jobs.push({
                 title,
                 jobId: `MPH-${rawJobId}`,
-                location: '',
-                city: '',
-                state: '',
+                location: parsed.location,
+                city: parsed.city,
+                state: parsed.state,
                 hospital: '',
                 link: link.href
             });
@@ -472,11 +481,35 @@ function extractLocationFromSubtitle(article) {
         state = parsed.state;
     }
 
+    city = removeTrailingStateFragment(city, state);
+
     if (city || state) {
         location = [city, state].filter(Boolean).join(', ');
     }
 
     return { location, city, state, hospital };
+}
+
+function removeTrailingStateFragment(city, state) {
+    const cleanCity = (city || '').replace(/\s+/g, ' ').trim();
+    const cleanState = (state || '').replace(/\s+/g, ' ').trim();
+    if (!cleanCity || !cleanState) return cleanCity;
+
+    const stateName = STATE_ABBR[cleanState.toLowerCase()]
+        ? cleanState
+        : (Object.entries(STATE_ABBR).find(([, abbreviation]) => abbreviation === cleanState.toUpperCase())?.[0] || cleanState);
+    const parts = cleanCity.split(' ');
+    const trailing = (parts[parts.length - 1] || '').toLowerCase();
+    const normalizedState = stateName.toLowerCase().replace(/[^a-z]/g, '');
+
+    // Avature occasionally appends a truncated state to City (for example,
+    // "Brunswick Mai" with State "Maine"). Remove only a 3+ character final
+    // token that is an exact prefix of the separately supplied state.
+    if (trailing.length >= 3 && trailing !== normalizedState && normalizedState.startsWith(trailing)) {
+        parts.pop();
+        return parts.join(' ').trim();
+    }
+    return cleanCity;
 }
 
 function parseLocationText(text) {

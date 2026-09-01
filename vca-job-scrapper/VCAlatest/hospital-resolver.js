@@ -70,6 +70,32 @@
         return STATE_CODES[clean.toLowerCase()] || '';
     }
 
+    function escapeRegex(value) {
+        return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    function stripTrailingLocationPhrase(value) {
+        const source = String(value || '');
+        const stateNames = Object.keys(STATE_CODES)
+            .sort((left, right) => right.length - left.length)
+            .map(escapeRegex)
+            .join('|');
+        const locationPattern = new RegExp(
+            `^\\s+in\\s+[A-Z][A-Za-z .'-]+,?\\s+(?:[A-Z]{2}|${stateNames})\\b.*$`,
+            'i'
+        );
+        const inMarkers = [...source.matchAll(/\s+in\s+/gi)];
+
+        for (let index = inMarkers.length - 1; index >= 0; index--) {
+            const marker = inMarkers[index];
+            if (locationPattern.test(source.slice(marker.index))) {
+                return source.slice(0, marker.index).trim();
+            }
+        }
+
+        return source;
+    }
+
     function normalizeName(value) {
         return cleanText(value)
             .replace(/&/g, ' and ')
@@ -150,11 +176,12 @@
             .replace(/\s+family\s*$/i, '')
             .replace(/\s+(?:may\s+be|might\s+be|is|are|has|offers?|provides?|seeks?|is\s+seeking|are\s+seeking|located|serves?)\b[\s\S]*$/i, '')
             .replace(/\s+(?:and\s+you|where(?:\s+you)?|you(?:'|\u2019)?\s*(?:ll|re)|we\s+are|our\s+team)\b[\s\S]*$/i, '')
-            .replace(/\s+in\s+[A-Z][A-Za-z .'-]+,?\s+(?:[A-Z]{2}|[A-Z][a-z]+)\b[\s\S]*$/i, '')
             .replace(/\b(Hospital|Center|Clinic|Specialists?)\s+or\s+([A-Z][A-Za-z]+)\b$/i, '$1 of $2')
             .replace(/\s+(?:an\s+d|and|&)\s*$/i, '')
             .replace(/[\]\)\s,;:.!\-]+$/, '')
             .trim();
+
+        clean = stripTrailingLocationPhrase(clean);
 
         // A VCA-prefixed candidate has already been bounded by the sentence
         // cleanup above. Keep location qualifiers such as "Center of Kalamazoo"
@@ -212,7 +239,12 @@
         let match;
         while ((match = metadata.exec(context.metadataText)) !== null) add(match[1], 260, 'metadata');
 
-        const completeName = new RegExp(`\\b((?:VCA\\s+)?[A-Z0-9][A-Za-z0-9&'\u2019()./\\-]*(?:\\s+(?:[A-Z0-9(][A-Za-z0-9&'\u2019()./\\-]*|and|of|the|for|&)){0,15}\\s+(?:${FACILITY_SUFFIX}))\\b`, 'g');
+        // The recruiting opening identifies the actual hiring hospital. It must
+        // outrank later affiliations such as "member of ... Care Alliance."
+        const roleOpening = new RegExp(`\\bJoin\\s+us\\s+as\\b[^.\\n]{0,240}?\\bat\\s+((?:VCA\\s+)?[A-Z0-9][A-Za-z0-9&'\u2019()./\\-]*(?:\\s+(?:[A-Z0-9(][A-Za-z0-9&'\u2019()./\\-]*|and|of|the|for|in|&)){0,15}\\s+(?:${FACILITY_SUFFIX}))(?=\\s+(?:in|located)\\b|[.,;\\n]|$)`, 'gi');
+        while ((match = roleOpening.exec(text)) !== null) add(match[1], 180, 'role-opening');
+
+        const completeName = new RegExp(`\\b((?:VCA\\s+)?[A-Z0-9][A-Za-z0-9&'\u2019()./\\-]*(?:\\s+(?:[A-Z0-9(][A-Za-z0-9&'\u2019()./\\-]*|and|of|the|for|in|&)){0,15}\\s+(?:${FACILITY_SUFFIX}))\\b`, 'g');
         while ((match = completeName.exec(text)) !== null) add(match[1], 35, 'complete-name');
 
         const contextualVca = /\b(?:at|with|for|to)\s+(?:the\s+)?(VCA\s+[A-Z0-9][^;\n]{1,148}?)(?=\s+(?:and\s+you|where|in\s+[A-Z][A-Za-z .'-]+(?:,\s*(?:[A-Z]{2}|[A-Z][a-z]+))?|is|are|has|offers?|provides?|seeks?|located)\b|[,;\n]|\.\s+(?:You|We|At|If|This|Why|Join|Apply)\b|\.$|$)/g;
@@ -263,6 +295,7 @@
 
     function parseVcaDirectory(html) {
         const entries = [];
+        const seenEntries = new Set();
         const itemPattern = /<li\b[^>]*>[\s\S]*?<span\b[^>]*class=["'][^"']*location-accordion__location-name[^"']*["'][^>]*>[\s\S]*?<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>[\s\S]*?<span\b[^>]*class=["'][^"']*location-accordion__location-address[^"']*["'][^>]*>([\s\S]*?)<\/span>[\s\S]*?<span\b[^>]*class=["'][^"']*location-accordion__location-phone[^"']*["'][^>]*>([\s\S]*?)<\/span>[\s\S]*?<\/li>/gi;
         let match;
         while ((match = itemPattern.exec(String(html || ''))) !== null) {
@@ -274,6 +307,17 @@
             if (!name || !streetAddress || !localityMatch) continue;
             const href = decodeHtml(match[1]);
             const website = /^https?:\/\//i.test(href) ? href : `https://vcahospitals.com${href.startsWith('/') ? '' : '/'}${href}`;
+            const entryKey = [
+                normalizeName(name),
+                normalizeName(streetAddress),
+                normalizeName(localityMatch[1]),
+                localityMatch[2].toUpperCase(),
+                localityMatch[3]
+            ].join('|');
+            // The official directory currently contains some identical duplicate
+            // rows. They are one hospital, not an ambiguous city match.
+            if (seenEntries.has(entryKey)) continue;
+            seenEntries.add(entryKey);
             entries.push({
                 name,
                 streetAddress,
@@ -305,6 +349,37 @@
         }
     }
 
+    function tokenEditDistance(left, right) {
+        const a = String(left || '');
+        const b = String(right || '');
+        if (a === b) return 0;
+        if (!a.length) return b.length;
+        if (!b.length) return a.length;
+
+        const previous = Array.from({ length: b.length + 1 }, (_, index) => index);
+        for (let row = 1; row <= a.length; row++) {
+            const current = [row];
+            for (let column = 1; column <= b.length; column++) {
+                const cost = a[row - 1] === b[column - 1] ? 0 : 1;
+                current[column] = Math.min(
+                    current[column - 1] + 1,
+                    previous[column] + 1,
+                    previous[column - 1] + cost
+                );
+            }
+            for (let column = 0; column <= b.length; column++) previous[column] = current[column];
+        }
+        return previous[b.length];
+    }
+
+    function tokensApproximatelyMatch(left, right) {
+        if (left === right) return true;
+        const longest = Math.max(left.length, right.length);
+        if (longest < 5) return false;
+        const allowedDistance = longest >= 8 ? 2 : 1;
+        return tokenEditDistance(left, right) <= allowedDistance;
+    }
+
     function nameSimilarity(a, b) {
         const normalizedA = normalizeName(a);
         const normalizedB = normalizeName(b);
@@ -314,11 +389,17 @@
         const aTokens = meaningfulTokens(a);
         const bTokens = meaningfulTokens(b);
         if (!aTokens.length || !bTokens.length) return 0;
+        // Treat harmless spacing variants as exact (for example West Creek vs
+        // Westcreek), without making different place names such as Mar Vista
+        // and Monte Vista equivalent.
+        if (aTokens.join('') === bTokens.join('')) return 1;
         const aSet = new Set(aTokens);
         const bSet = new Set(bTokens);
         let common = 0;
-        for (const token of aSet) if (bSet.has(token)) common++;
-        const union = new Set([...aSet, ...bSet]).size;
+        for (const token of aSet) {
+            if ([...bSet].some(candidate => tokensApproximatelyMatch(token, candidate))) common++;
+        }
+        const union = Math.max(1, aSet.size + bSet.size - common);
         const jaccard = union ? common / union : 0;
         const containment = common / Math.min(aSet.size, bSet.size);
         return Math.max(jaccard, containment * 0.9);
@@ -327,23 +408,42 @@
     function resolveDirectoryEntry(entries, context = {}) {
         if (!Array.isArray(entries) || !entries.length) return null;
         const expectedLocation = parseLocation(context.location, context.city, context.state);
-        const names = [context.hospitalName, ...(context.candidates || []), ...extractHospitalCandidates(context.description).map(item => item.value)]
+        // Use the same single, highest-confidence description name that Fetch
+        // Details uses. Treating every hospital mentioned in a multi-location
+        // source as equal can resolve a child row to one of its sibling hospitals.
+        const bestDescriptionName = extractBestHospitalName(context.description, context.hospitalName || '');
+        const rawNames = [context.hospitalName, ...(context.candidates || []), bestDescriptionName]
             .map(cleanHospitalCandidate)
             .filter(Boolean);
         const expectedSlug = pageSlug(context.website || '');
-        const expectsVca = names.some(name => /^VCA\b/i.test(name) || isGenericHospitalName(name));
-        const genericLocationLabel = /^VCA\s+Animal\s+Hospitals?\s*[-\u2013\u2014]/i.test(cleanText(context.hospitalName || ''));
+        const isLocationSearchLabel = value =>
+            /^VCA\s+(?:Animal\s+Hospitals?|Hospital)\s*[-\u2013\u2014]\s*.+,\s*.+(?:\s+\(Unverified\))?$/i.test(cleanText(value || ''));
+        const genericLocationLabel = isLocationSearchLabel(context.hospitalName || '');
+        // The temporary city/state label exists only to make a blank-hospital row
+        // eligible for official lookup. Exclude that label from name scoring, but
+        // keep real names extracted from the saved description. Previously the
+        // presence of the temporary label zeroed every name score, so even an exact
+        // description name could not identify the hospital in multi-hospital cities.
+        const names = rawNames.filter(name => !isLocationSearchLabel(name));
+        const hasSpecificName = names.some(name => !isGenericHospitalName(name));
+        const expectsVca = genericLocationLabel || names.some(name => /^VCA\b/i.test(name) || isGenericHospitalName(name));
 
         const ranked = entries.map(entry => {
             const slugMatch = expectedSlug && pageSlug(entry.website) === expectedSlug;
             const similarities = names.map(name => nameSimilarity(name, entry.name));
-            const bestSimilarity = genericLocationLabel ? 0 : (similarities.length ? Math.max(...similarities) : 0);
-            const exactName = !genericLocationLabel && names.some(name => normalizeName(name) === normalizeName(entry.name));
+            const bestSimilarity = similarities.length ? Math.max(...similarities) : 0;
+            const exactName = names.some(name => normalizeName(name) === normalizeName(entry.name));
             const stateMatch = expectedLocation.state && entry.state === expectedLocation.state;
             const stateMismatch = expectedLocation.state && entry.state !== expectedLocation.state;
             const cityMatch = expectedLocation.city && normalizeName(entry.city) === normalizeName(expectedLocation.city);
-            const nameEvidence = slugMatch || exactName || bestSimilarity >= 0.42;
-            const locationOnlyAllowed = expectsVca && cityMatch && stateMatch;
+            // A weak one-token overlap can point to a different hospital in the
+            // same state. Require stronger name evidence before allowing the
+            // official address to replace an advertised/nearby city.
+            const nameEvidence = slugMatch || exactName || bestSimilarity >= 0.55;
+            // City/state-only matching is for descriptions that genuinely contain
+            // no hospital identity. If a specific hospital was extracted, a
+            // different same-city VCA location must not replace it.
+            const locationOnlyAllowed = expectsVca && !hasSpecificName && cityMatch && stateMatch;
             let score = bestSimilarity * 100;
             if (exactName) score += 90;
             if (slugMatch) score += 160;
@@ -423,6 +523,23 @@
         return nodes;
     }
 
+    function extractOfficialBusinessName(html) {
+        const source = String(html || '');
+        const patterns = [
+            /\b_hospitalName\s*=\s*['"]([^'"]{3,180})['"]/i,
+            /<h1\b[^>]*>([\s\S]{3,300}?)<\/h1>/i,
+            /<meta\b[^>]*name=["']description["'][^>]*content=["'][^"']*?\b((?:VCA\s+)?[A-Z][^"'.]{2,160}?(?:Animal Hospital|Animal Medical Center|Veterinary Hospital|Veterinary Center|Veterinary Specialists?|Emergency Center|Specialty Center))\b/i
+        ];
+
+        for (const pattern of patterns) {
+            const match = source.match(pattern);
+            const candidate = cleanText(stripHtml(match?.[1] || ''));
+            if (isUsableHospitalCandidate(candidate)) return candidate;
+        }
+
+        return '';
+    }
+
     function absoluteUrl(value, baseUrl) {
         try {
             return new URL(value || baseUrl, baseUrl).href;
@@ -431,16 +548,31 @@
         }
     }
 
+    function extractOfficialPhone(html) {
+        const source = String(html || '');
+        const telLink = source.match(/href=["']tel:([^"']+)["']/i);
+        const text = stripHtml(source, true);
+        const labeled = text.match(/\b(?:Phone|Tel(?:ephone)?):?\s*(\+?1[\s.\-]?)?\(?([2-9]\d{2})\)?[\s.\-]+(\d{3})[\s.\-]+(\d{4})\b/i);
+        const raw = telLink?.[1] || labeled?.[0] || '';
+        let digits = raw.replace(/\D/g, '');
+        if (digits.length === 11 && digits.startsWith('1')) digits = digits.slice(1);
+        return digits.length === 10
+            ? `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`
+            : cleanText(raw);
+    }
+
     function parseOfficialWebsite(html, baseUrl, expectedName = '', expectedLocation = '') {
         const candidates = [];
         const expected = parseLocation(expectedLocation);
+        const officialPageName = extractOfficialBusinessName(html);
+        const officialPagePhone = extractOfficialPhone(html);
         for (const node of parseJsonLdBlocks(html)) {
             const address = parsePostalAddress(node.address || node.location?.address);
             if (!address) continue;
 
             const types = Array.isArray(node['@type']) ? node['@type'] : [node['@type'] || ''];
             const typeText = types.join(' ');
-            const businessName = cleanText(node.name || node.location?.name || expectedName);
+            const businessName = cleanText(node.name || node.location?.name || officialPageName || expectedName);
             const similarity = expectedName && businessName ? nameSimilarity(expectedName, businessName) : 0;
             let score = 100 + similarity * 100;
             if (/VeterinaryCare|AnimalHospital|Hospital|MedicalBusiness|LocalBusiness|Organization/i.test(typeText)) score += 35;
@@ -454,7 +586,7 @@
                 ...address,
                 fullAddress: `${address.streetAddress}, ${address.city}, ${address.state} ${address.zipCode}`,
                 website: absoluteUrl(node.url || baseUrl, baseUrl),
-                phone: cleanText(node.telephone || node.phone || ''),
+                phone: cleanText(node.telephone || node.phone || officialPagePhone || ''),
                 verifiedOfficial: true,
                 source: 'official-website',
                 matchConfidence: Math.max(0, Math.min(100, Math.round(score))),
@@ -473,11 +605,11 @@
                     zipCode: addressMatch[4]
                 };
                 candidates.push({
-                    businessName: cleanText(expectedName),
+                    businessName: officialPageName || cleanText(expectedName),
                     ...address,
                     fullAddress: `${address.streetAddress}, ${address.city}, ${address.state} ${address.zipCode}`,
                     website: absoluteUrl(baseUrl, baseUrl),
-                    phone: '',
+                    phone: officialPagePhone,
                     verifiedOfficial: true,
                     source: 'official-website',
                     matchConfidence: 80,
@@ -524,11 +656,37 @@
         return links;
     }
 
+    function repairBlankHospitalNamesFromDescriptions(jobs = []) {
+        let repairedCount = 0;
+
+        for (const job of jobs) {
+            if (!job || typeof job !== 'object') continue;
+            const description = String(job.description || '').trim();
+            if (!description || /^(?:description not found|error fetching description)$/i.test(description)) continue;
+
+            const currentHospital = cleanText(job.hospital || job.hospitalName || '');
+            const isFallbackLocationLabel = /^VCA\s+Animal\s+Hospitals?\s*[-\u2013\u2014]\s*[^,]+,\s*[^,]+$/i.test(currentHospital);
+            if (currentHospital && isUsableHospitalCandidate(currentHospital) && !isFallbackLocationLabel) continue;
+
+            const extractedHospital = extractBestHospitalName(description, '');
+            if (!isUsableHospitalCandidate(extractedHospital)) continue;
+
+            job.previousHospitalName = currentHospital;
+            job.hospital = extractedHospital;
+            job.hospitalName = extractedHospital;
+            job.hospitalNameUpdated = normalizeName(currentHospital) !== normalizeName(extractedHospital);
+            repairedCount++;
+        }
+
+        return repairedCount;
+    }
+
     return {
         cleanHospitalCandidate,
         getHospitalExtractionContext,
         extractHospitalCandidates,
         extractBestHospitalName,
+        repairBlankHospitalNamesFromDescriptions,
         isGenericHospitalName,
         isUsableHospitalCandidate,
         meaningfulTokens,

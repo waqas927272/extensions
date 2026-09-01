@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const extensionVersion = document.getElementById('extensionVersion');
     const startScrapingButton = document.getElementById('startScraping');
     const stopScrapingButton = document.getElementById('stopScraping');
     const viewRecordsButton = document.getElementById('viewRecords');
@@ -6,6 +7,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const spinnerText = loadingIndicator.querySelector('span');
 
     let hasShownTerminalAlert = false;
+
+    if (extensionVersion) {
+        extensionVersion.textContent = `v${chrome.runtime.getManifest().version}`;
+    }
 
     function setButtonsState({ scraping }) {
         startScrapingButton.disabled = !!scraping;

@@ -541,6 +541,33 @@
         return matchApprovedPositionFromText(extractRoleSignalText(descriptionText));
     }
 
+    function getFinalDescriptionRequirementsText(text) {
+        const source = text || '';
+        const sections = source.split(/===\s*DESCRIPTION\s*&\s*REQUIREMENTS\s*===/i);
+        return (sections.length > 1 ? sections[sections.length - 1] : source).trim();
+    }
+
+    function getExplicitDescriptionPosition(text) {
+        const finalRequirements = getFinalDescriptionRequirementsText(text);
+        if (!finalRequirements) return '';
+
+        if (
+            /(?:^|\n)\s*Your Impact as (?:a|the) Medical Lead Veterinarian\b/im.test(finalRequirements) ||
+            /(?:^|\n)\s*As (?:a|the) Medical Lead Veterinarian\b/im.test(finalRequirements)
+        ) {
+            return 'Medical Lead Veterinarian';
+        }
+
+        if (
+            /(?:^|\n)\s*Your Impact as (?:a|the) Founding Partner(?:\s*&\s*Lead Veterinarian)?\b/im.test(finalRequirements) ||
+            /\bBecome a Founding Specialist\b/i.test(finalRequirements)
+        ) {
+            return 'Partner Veterinarian';
+        }
+
+        return '';
+    }
+
     // ===== Determine Position =====
     // Valid positions per area of practice:
     //   Emergency Care: Associate Veterinarian
@@ -551,8 +578,9 @@
     //     Neurologist & Neurosurgeon, Ophthalmologist, Radiation Oncologist, Radiologist, Surgeon
     //   Urgent Care: Associate Veterinarian, Partner Veterinarian
     function determinePosition(title, areaOfPractice, descriptionText) {
-        // 1. Try to match from title
-        let position = matchPositionFromTitle(title);
+        // 1. Explicit role headings in the final requirements block outrank the title.
+        let position = getExplicitDescriptionPosition(descriptionText) ||
+            matchPositionFromTitle(title);
 
         // 2. If no match from title and AOP is Specialty Care, try qualifications
         if (!position) {
@@ -713,20 +741,7 @@
         if (!descriptionText) return '';
 
         const yearToken = '(?:years?|yrs?\\.?)';
-        const qualificationsSection = extractQualificationsSection(descriptionText);
-        const candidateLines = [];
         const splitExperienceSegments = value => (value || '').split(/\r?\n|\s+[•▪]\s*|\s+-\s+/);
-
-        if (qualificationsSection) {
-            candidateLines.push(...splitExperienceSegments(qualificationsSection));
-        }
-        candidateLines.push(...splitExperienceSegments(descriptionText));
-
-        const prioritizedLines = candidateLines
-            .map(line => line.trim())
-            .filter(Boolean)
-            .filter(line => /\b(?:experience|experienced|minimum|min\.?|at least|required|requirements?|qualifications?|practice setting|years in practice)\b/i.test(line))
-            .filter(line => !/\b(?:our team has|over\s+\d+\s+years of experience|years of experience in specialty and emergency services|serving\s+the\s+community|we offer|benefits|medical(?:,\s*|\s+)dental)\b/i.test(line));
 
         const patterns = [
             new RegExp(`\\b(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
@@ -757,14 +772,34 @@
             return `${years} ${years === '1' ? 'year' : 'years'}`;
         }
 
-        for (const source of prioritizedLines) {
-            for (const pattern of patterns) {
-                const match = source.match(pattern);
-                if (match) return formatExperience(match);
+        function extractFromSection(sectionText) {
+            const candidateLines = [];
+            const qualificationsSection = extractQualificationsSection(sectionText);
+
+            if (qualificationsSection) {
+                candidateLines.push(...splitExperienceSegments(qualificationsSection));
             }
+            candidateLines.push(...splitExperienceSegments(sectionText));
+
+            const prioritizedLines = candidateLines
+                .map(line => line.trim())
+                .filter(Boolean)
+                .filter(line => /\b(?:experience|experienced|minimum|min\.?|at least|required|requirements?|qualifications?|practice setting|years in practice)\b/i.test(line))
+                .filter(line => !/\b(?:our team has|over\s+\d+\s+years of experience|years of experience in specialty and emergency services|serving\s+the\s+community|we offer|benefits|medical(?:,\s*|\s+)dental)\b/i.test(line));
+
+            for (const source of prioritizedLines) {
+                for (const pattern of patterns) {
+                    const match = source.match(pattern);
+                    if (match) return formatExperience(match);
+                }
+            }
+
+            return '';
         }
 
-        return '';
+        const finalRequirements = getFinalDescriptionRequirementsText(descriptionText);
+        return extractFromSection(finalRequirements) ||
+            (finalRequirements !== descriptionText.trim() ? extractFromSection(descriptionText) : '');
     }
 
     // ===== Extract locations =====

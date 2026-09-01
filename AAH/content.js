@@ -50,6 +50,13 @@ function scrapeCurrentPage() {
     function getScrapedJobSkipReason(jobTitle) {
       const title = (jobTitle || '').toLowerCase();
       if (/\bmentorship\b/.test(title)) return 'mentorship';
+
+      // Employment-type exclusions must run before protected DVM roles.
+      // Otherwise titles such as "Relief Associate Veterinarian" are allowed
+      // through by the Associate Veterinarian protection below.
+      if (/\brelief\b/.test(title)) return 'relief veterinarian';
+      if (/\blocums?(?:\s+tenens)?\b/.test(title)) return 'locum veterinarian';
+
       const hasProtectedRole = /\bassociate\s+veterinarian\b/.test(title) ||
         /\bmedical\s+director\b/.test(title) ||
         /\bdvm\s+veterinary\s+partner\s*(?:&|and)\s*(?:hospital\s+)?equity\s+owner\b/.test(title);
@@ -76,7 +83,6 @@ function scrapeCurrentPage() {
         { label: 'animal care technician', pattern: /\banimal\s+care\s+technician\b/ },
         { label: 'veterinary student ambassador', pattern: /\bveterinary\s+student\s+ambassador\b/ },
         { label: 'externship', pattern: /\bexternship\b/ },
-        { label: 'relief veterinarian', pattern: /\brelief\s+veterinarian\b/ },
         { label: 'seasonal veterinarian', pattern: /\bseasonal\s+veterinarian\b/ }
       ];
 
@@ -141,6 +147,7 @@ function scrapeCurrentPage() {
             }
             const link = jobTitleEl.href;
             const locationText = locationEl.innerText.trim();
+            const parsedLocation = parseLocationText(locationText);
             const rawJobId = link ? link.split('/').pop() : '';
             const jobId = rawJobId ? 'AAH-' + rawJobId : '';
 
@@ -152,10 +159,13 @@ function scrapeCurrentPage() {
               hospitalName: hospitalName,
               hospitalRaw: hospitalListingValue,
               position: jobTitle, // As per assumption
-              city: '',
-              state: '',
+              city: parsedLocation.city,
+              state: parsedLocation.state,
               country: country,
-              location: locationText,
+              location: parsedLocation.location || locationText,
+              // Keep the card location as the permanent source of truth. Fetch Details
+              // analyzes description fields and must not replace this with prose.
+              listingLocation: parsedLocation.location || locationText,
               link: link,
               jobType: '',
               jobId: jobId

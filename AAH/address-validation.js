@@ -5,7 +5,7 @@
         module.exports = api;
     }
 })(typeof globalThis !== 'undefined' ? globalThis : this, () => {
-    const NOT_AVAILABLE_STREET = 'Not Available (TBD)';
+    const NOT_AVAILABLE_STREET = 'TBD';
     const NOT_AVAILABLE_ZIP = '00000';
 
     const stateAbbreviations = {
@@ -122,6 +122,13 @@
         return /\d/.test(street) || /\bP\.?\s*O\.?\s*Box\b/i.test(street);
     }
 
+    function isUsableStreetAddress(value) {
+        const street = String(value || '').replace(/\s+/g, ' ').trim();
+        if (!street || street.length > 90) return false;
+        if (/^(?:tbd|not available(?:\s*\(tbd\))?|n\/?a|na|unknown|pending)$/i.test(street)) return false;
+        return !/Company Description|Job Description|Qualifications|We offer|experienced veterinarian|Willingness to travel|drive practice growth/i.test(street);
+    }
+
     function isValidZipCode(value) {
         const zipCode = String(value || '').trim();
         return /^\d{5}(?:-\d{4})?$/.test(zipCode) && zipCode !== NOT_AVAILABLE_ZIP;
@@ -131,9 +138,78 @@
         return !!result && isValidStreetAddress(result.streetAddress) && isValidZipCode(result.zipCode);
     }
 
+    function hasGoogleResultData(result) {
+        return !!result && !!(
+            result.businessName || result.streetAddress || result.fullAddress ||
+            result.city || result.state || result.zipCode || result.website || result.phone
+        );
+    }
+
+    function normalizeStreetForCompare(value) {
+        const replacements = {
+            street: 'st', st: 'st', road: 'rd', rd: 'rd', avenue: 'ave', ave: 'ave',
+            boulevard: 'blvd', blvd: 'blvd', drive: 'dr', dr: 'dr', lane: 'ln', ln: 'ln',
+            court: 'ct', ct: 'ct', circle: 'cir', cir: 'cir', highway: 'hwy', hwy: 'hwy',
+            route: 'rt', rt: 'rt', parkway: 'pkwy', pkwy: 'pkwy', trail: 'trl', trl: 'trl',
+            north: 'n', south: 's', east: 'e', west: 'w'
+        };
+        let tokens = String(value || '')
+            .toLowerCase()
+            .replace(/\b(?:united states|usa)\b/g, ' ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean)
+            .map(token => replacements[token] || token);
+
+        const unitIndex = tokens.findIndex(token => /^(?:suite|ste|unit|apt|building|bldg|floor|fl)$/.test(token));
+        if (unitIndex >= 0) tokens = tokens.slice(0, unitIndex);
+
+        const leadingBuildingNumber = /^\d+[a-z]?$/.test(tokens[0] || '') ? tokens[0] : '';
+        let coreTokens = leadingBuildingNumber ? tokens.slice(1) : [...tokens];
+        return { tokens, coreTokens, leadingBuildingNumber };
+    }
+
+    function compareStreetAddresses(existingStreet, googleStreet) {
+        if (!isUsableStreetAddress(existingStreet)) return { status: 'missing', reason: 'existing-street-missing' };
+        if (!isUsableStreetAddress(googleStreet)) return { status: 'unknown', reason: 'google-street-missing' };
+
+        const existing = normalizeStreetForCompare(existingStreet);
+        const google = normalizeStreetForCompare(googleStreet);
+        if (existing.leadingBuildingNumber && google.leadingBuildingNumber && existing.leadingBuildingNumber !== google.leadingBuildingNumber) {
+            return { status: 'mismatch', reason: 'building-number-mismatch' };
+        }
+
+        // Support harmless reversed formats such as "Main Street 341" versus "341 Main St".
+        if (!existing.leadingBuildingNumber && google.leadingBuildingNumber) {
+            existing.coreTokens = existing.coreTokens.filter(token => token !== google.leadingBuildingNumber);
+        }
+        if (!google.leadingBuildingNumber && existing.leadingBuildingNumber) {
+            google.coreTokens = google.coreTokens.filter(token => token !== existing.leadingBuildingNumber);
+        }
+
+        const existingSet = new Set(existing.coreTokens);
+        const googleSet = new Set(google.coreTokens);
+        if (!existingSet.size || !googleSet.size) return { status: 'unknown', reason: 'street-not-comparable' };
+        const shared = [...existingSet].filter(token => googleSet.has(token)).length;
+        const overlap = shared / Math.min(existingSet.size, googleSet.size);
+        return overlap >= 0.67
+            ? { status: 'match', reason: 'street-match', existing, google }
+            : { status: 'mismatch', reason: 'street-name-mismatch', existing, google };
+    }
+
+    function shouldEnrichStreetAddress(existingStreet, googleStreet) {
+        if (!isUsableStreetAddress(existingStreet)) return isUsableStreetAddress(googleStreet);
+        const comparison = compareStreetAddresses(existingStreet, googleStreet);
+        if (comparison.status !== 'match') return false;
+        const existing = normalizeStreetForCompare(existingStreet);
+        const google = normalizeStreetForCompare(googleStreet);
+        return !existing.leadingBuildingNumber && !!google.leadingBuildingNumber;
+    }
+
     function validateGoogleResult(result, context = {}) {
-        if (!isCompleteAddressResult(result)) {
-            return { accepted: false, reason: 'incomplete-address', result: null };
+        if (!hasGoogleResultData(result)) {
+            return { accepted: false, reason: 'no-google-result', result: null };
         }
 
         const filterLocation = parseFilterLocation(context.location);
@@ -142,7 +218,7 @@
         if (!filterLocation.city || !expectedState || !result.city || !resultState) {
             return { accepted: false, reason: 'missing-location-signal', result: null };
         }
-        if (resultState !== expectedState) {
+        if (expectedState && resultState !== expectedState) {
             return { accepted: false, reason: 'state-mismatch', result: null };
         }
 
@@ -161,20 +237,13 @@
 
         const resultCity = normalizeCompact(result.city);
         const expectedCity = normalizeCompact(filterLocation.city);
-        const cityMatchesFilter = resultCity === expectedCity;
-        const cityMatchesHospitalName = expectedNames
-            .flatMap(getHospitalNameCityCandidates)
-            .some(candidate => normalizeCompact(candidate) === resultCity);
-        const exactBusinessMatch = expectedNames
-            .some(name => businessNamesExactlyEqual(name, result.businessName));
-
-        if (!cityMatchesFilter && !cityMatchesHospitalName && !exactBusinessMatch) {
+        if (resultCity !== expectedCity) {
             return { accepted: false, reason: 'city-mismatch', result: null };
         }
 
         return {
             accepted: true,
-            reason: cityMatchesFilter ? 'exact-location' : (cityMatchesHospitalName ? 'hospital-city-alias' : 'exact-business-same-state'),
+            reason: 'exact-city-state',
             result: {
                 ...result,
                 streetAddress: String(result.streetAddress).replace(/\s+/g, ' ').trim(),
@@ -184,16 +253,21 @@
     }
 
     function chooseCompleteAddressResult(primary, secondary) {
-        const primaryComplete = isCompleteAddressResult(primary);
-        const secondaryComplete = isCompleteAddressResult(secondary);
-        if (!primaryComplete && !secondaryComplete) return null;
-
-        const chosen = primaryComplete ? primary : secondary;
-        const other = primaryComplete && secondaryComplete ? secondary : null;
+        const primaryUsable = hasGoogleResultData(primary);
+        const secondaryUsable = hasGoogleResultData(secondary);
+        if (!primaryUsable && !secondaryUsable) return null;
+        const first = primaryUsable ? primary : secondary;
+        const second = primaryUsable && secondaryUsable ? secondary : {};
         return {
-            ...chosen,
-            website: chosen.website || other?.website || '',
-            phone: chosen.phone || other?.phone || ''
+            ...first,
+            businessName: first.businessName || second.businessName || '',
+            streetAddress: first.streetAddress || second.streetAddress || '',
+            zipCode: first.zipCode || second.zipCode || '',
+            city: first.city || second.city || '',
+            state: first.state || second.state || '',
+            fullAddress: first.fullAddress || second.fullAddress || '',
+            website: first.website || second.website || '',
+            phone: first.phone || second.phone || ''
         };
     }
 
@@ -211,18 +285,55 @@
     function applyAddressOutcome(job, validation) {
         preserveFilterCityState(job);
         if (!validation?.accepted || !validation.result) {
-            job.streetAddress = NOT_AVAILABLE_STREET;
-            job.zipCode = NOT_AVAILABLE_ZIP;
-            job.cityMismatchFlag = false;
+            if (!isUsableStreetAddress(job.streetAddress)) {
+                job.streetAddress = NOT_AVAILABLE_STREET;
+                job.addressMismatchFlag = false;
+                job.addressMismatchDetails = null;
+            }
+            // Whether the street is missing or came from the job description,
+            // an unconfirmed address must never retain a blank/invalid ZIP.
+            if (!isValidZipCode(job.zipCode)) {
+                job.zipCode = NOT_AVAILABLE_ZIP;
+            }
             job.hospitalNameUpdated = false;
             return job;
         }
 
-        job.streetAddress = validation.result.streetAddress;
-        job.zipCode = validation.result.zipCode;
-        if (validation.result.website) job.website = validation.result.website;
-        if (validation.result.phone) job.phone = validation.result.phone;
-        job.cityMismatchFlag = false;
+        const google = validation.result;
+        const streetComparison = compareStreetAddresses(job.streetAddress, google.streetAddress);
+        const zipMismatch = isValidZipCode(job.zipCode) && isValidZipCode(google.zipCode) && String(job.zipCode).trim() !== String(google.zipCode).trim();
+        if (streetComparison.status === 'mismatch' || zipMismatch) {
+            job.addressMismatchFlag = true;
+            job.addressMismatchDetails = {
+                reason: streetComparison.status === 'mismatch' ? streetComparison.reason : 'zip-code-mismatch',
+                existingStreetAddress: job.streetAddress || '',
+                existingZipCode: job.zipCode || '',
+                googleStreetAddress: google.streetAddress || '',
+                googleZipCode: google.zipCode || ''
+            };
+            // Keep the description-derived street on a mismatch, but make its
+            // unavailable ZIP explicit instead of exporting a blank value.
+            if (!isValidZipCode(job.zipCode)) {
+                job.zipCode = NOT_AVAILABLE_ZIP;
+            }
+            job.hospitalNameUpdated = false;
+            return job;
+        }
+
+        job.addressMismatchFlag = false;
+        job.addressMismatchDetails = null;
+        if (shouldEnrichStreetAddress(job.streetAddress, google.streetAddress)) {
+            job.streetAddress = google.streetAddress;
+        }
+        if (!isValidZipCode(job.zipCode) && isValidZipCode(google.zipCode)) {
+            job.zipCode = google.zipCode;
+        }
+        if (!isUsableStreetAddress(job.streetAddress)) {
+            job.streetAddress = NOT_AVAILABLE_STREET;
+            job.zipCode = NOT_AVAILABLE_ZIP;
+        }
+        if (!job.website && google.website) job.website = google.website;
+        if (!job.phone && google.phone) job.phone = google.phone;
         job.hospitalNameUpdated = false;
         return job;
     }
@@ -240,8 +351,13 @@
         businessNamesExactlyEqual,
         getHospitalNameCityCandidates,
         isValidStreetAddress,
+        isUsableStreetAddress,
         isValidZipCode,
         isCompleteAddressResult,
+        hasGoogleResultData,
+        normalizeStreetForCompare,
+        compareStreetAddresses,
+        shouldEnrichStreetAddress,
         validateGoogleResult,
         chooseCompleteAddressResult,
         preserveFilterCityState,

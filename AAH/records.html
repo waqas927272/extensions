@@ -464,6 +464,7 @@
     }
 
     th {
+      background: linear-gradient(135deg, #e4002b 0%, #003c71 100%);
       color: white;
       font-weight: 700;
       text-align: left;
@@ -489,11 +490,11 @@
     }
 
     th:first-child:hover {
-      background: transparent;
+      background: linear-gradient(135deg, #e4002b 0%, #003c71 100%);
     }
 
     th:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: linear-gradient(135deg, #c70026 0%, #002f59 100%);
     }
 
     th.sort-asc::after {
@@ -549,14 +550,17 @@
       box-shadow: inset 4px 0 0 #003c71;
     }
 
-    tbody tr.row-city-mismatch {
+    tbody tr.row-city-mismatch,
+    tbody tr.row-address-mismatch {
       background-color: #7f1d1d !important;
       color: #ffffff;
       box-shadow: inset 4px 0 0 #450a0a;
     }
 
     tbody tr.row-city-mismatch td,
-    tbody tr.row-city-mismatch a {
+    tbody tr.row-city-mismatch a,
+    tbody tr.row-address-mismatch td,
+    tbody tr.row-address-mismatch a {
       color: #ffffff !important;
     }
 
@@ -1058,6 +1062,8 @@
   </div>
 
   <div id="toastContainer"></div>
+  <script src="smartrecruiters-posting.js"></script>
+  <script src="description-address.js"></script>
   <script src="address-validation.js"></script>
   <script src="records.js"></script>
 </body>

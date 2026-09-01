@@ -22,13 +22,16 @@
                     zipCode: parsed.zipCode || '',
                     phone: extractPhoneFromPanel(panel) || extractPhone(panelText) || '',
                     website: extractWebsiteFromPanel(panel) || '',
+                    category: extractFacilityCategory(panelText),
                     panelText: panelText || '',
                     source: 'google_knowledge_panel'
                 };
             }
         }
 
-        return extractLeftSideResult() || extractWholePageResult() || emptyResult(panel ? 'no_panel_or_left_address' : 'no_panel_or_left_match');
+        // Never scan the whole page for a loose address: that can join the title
+        // of one business with an address from another result. One Google card only.
+        return extractLeftSideResult() || emptyResult(panel ? 'no_panel_or_left_address' : 'no_panel_or_left_match');
     } catch (error) {
         return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: error.message };
     }
@@ -113,6 +116,10 @@
     function extractBusinessNameFromPanel(panel) {
         if (!panel) return '';
 
+        const mapImage = panel.querySelector('img[alt^="Map of "]');
+        const mapName = cleanText(mapImage?.getAttribute('alt') || '').replace(/^Map of\s+/i, '').trim();
+        if (mapName) return mapName;
+
         const selectors = [
             '[data-attrid="title"]',
             '[data-attrid*="title"]',
@@ -124,7 +131,7 @@
         for (const selector of selectors) {
             for (const element of panel.querySelectorAll(selector)) {
                 const text = cleanText(element.innerText || element.textContent || '');
-                if (text && !/\b(?:directions|website|reviews|overview|hours)\b/i.test(text)) {
+                if (text && !/\b(?:directions|website|reviews|overview|hours|complementary results|search results|sponsored results)\b/i.test(text)) {
                     return text.replace(/\s+-\s+Google Search$/i, '').trim();
                 }
             }
@@ -160,6 +167,7 @@
                 zipCode: parsed.zipCode || '',
                 phone: extractPhone(text) || '',
                 website: extractWebsiteFromPanel(element) || '',
+                category: extractFacilityCategory(text),
                 panelText: text,
                 source: 'google_left_result',
                 score
@@ -365,12 +373,18 @@
 
         for (const selector of selectors) {
             for (const element of panel.querySelectorAll(selector)) {
-                const text = cleanText([
+                // Inspect each representation separately. Joining aria-label,
+                // innerText, and textContent duplicated some addresses as
+                // "..., United States Address: ...".
+                const candidates = [
                     element.getAttribute('aria-label') || '',
                     element.innerText || '',
                     element.textContent || ''
-                ].filter(Boolean).join('\n'));
-                if (/\d/.test(text) && /\b[A-Z]{2}\s+\d{5}/.test(text)) return text.replace(/^Address\s*[:\n]\s*/i, '');
+                ];
+                for (const candidate of candidates) {
+                    const text = normalizeAddress(candidate);
+                    if (/\d/.test(text) && /\b[A-Z]{2}\s+\d{5}/.test(text)) return text;
+                }
             }
         }
 
@@ -402,6 +416,11 @@
         const match = source.match(/(?:Phone|Call)\s*[:\n]?\s*(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/i)
             || source.match(/\b(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/);
         return match ? (match[1] || match[0]).trim() : '';
+    }
+
+    function extractFacilityCategory(text) {
+        const match = cleanText(text || '').match(/\b(?:Veterinarian|Veterinary hospital|Animal hospital|Animal clinic|Pet hospital|Pet clinic|Emergency veterinarian(?: service)?)\b/i);
+        return match ? match[0] : '';
     }
 
     function extractWebsiteFromPanel(panel) {
@@ -454,9 +473,14 @@
     }
 
     function normalizeAddress(address) {
-        return (address || '')
+        let clean = (address || '')
             .replace(/^Address\s*[:\n]\s*/i, '')
             .replace(/\s+/g, ' ')
+            .trim();
+        const repeatedLabel = clean.search(/\s+(?:Address|Located in)\s*:\s*/i);
+        if (repeatedLabel > 0) clean = clean.slice(0, repeatedLabel).trim();
+
+        return clean
             .replace(/\s*,\s*/g, ', ')
             .replace(/,?\s+(?:United States|USA)\s*$/i, '')
             .replace(/\s+(?:Website|Phone|Directions|Hours|Open|Closed).*$/i, '')
@@ -521,6 +545,7 @@
             fullAddress: '',
             website: '',
             phone: '',
+            category: '',
             panelText: '',
             source: '',
             reason

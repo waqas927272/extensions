@@ -35,6 +35,36 @@
         );
     }
 
+    function getSalaryReviewIssue(value) {
+        const lines = String(value || '')
+            .split(/\r?\n/)
+            .map(normalizeText)
+            .filter(Boolean);
+
+        for (const line of lines) {
+            const salaryContext = /\b(?:salary|compensation|pay|annual|annually|yearly|per\s+year|range)\b/i.test(line);
+            const currencyTokens = line.match(/(?:\$\s*|\bUSD\s*)\d[\d,]*(?:\.\d{1,2})?/gi) ||
+                (salaryContext ? (line.match(/\b\d[\d,]*(?:\.\d{1,2})?/g) || []) : []);
+            const malformedToken = currencyTokens.find(token => {
+                // A trailing comma can be sentence punctuation after a valid
+                // amount (for example "150,000, based on a 40-hour week").
+                const amount = token.replace(/\$|USD|\s/gi, '').replace(/,+$/, '');
+                if (!amount.includes(',')) return false;
+                return !/^\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?$/.test(amount);
+            });
+
+            if (!malformedToken) continue;
+
+            const rangeContext = /(?:\$\s*|\bUSD\s*)?\d[\d,]*(?:\.\d{1,2})?\s*(?:-|\bto\b)\s*(?:\$\s*|\bUSD\s*)?\d[\d,]*(?:\.\d{1,2})?/i.test(line);
+            if (!salaryContext && !rangeContext) continue;
+
+            const range = line.match(/(?:\$\s*|\bUSD\s*)?\d[\d,]*(?:\.\d{1,2})?\s*(?:-|\bto\b)\s*(?:\$\s*|\bUSD\s*)?\d[\d,]*(?:\.\d{1,2})?/i)?.[0] || malformedToken;
+            return `The source salary value is malformed ("${range}") and could not be verified confidently.`;
+        }
+
+        return '';
+    }
+
     function formatMoney(value) {
         if (!Number.isFinite(value)) return '';
         if (Number.isInteger(value)) return '$' + value.toLocaleString('en-US');
@@ -108,6 +138,7 @@
     }
 
     function parseSalaryCandidate(value) {
+        if (getSalaryReviewIssue(value)) return '';
         const text = normalizeMalformedThousands(value);
         if (!text) return '';
 
@@ -179,6 +210,8 @@
         if (sourceMarker.test(text)) {
             text = text.split(sourceMarker).pop() || text;
         }
+
+        if (getSalaryReviewIssue(text)) return '';
 
         const lines = text
             .split(/\r?\n/)
@@ -253,6 +286,7 @@
         extractSalary,
         extractSalaryFromJsonLd,
         extractSalaryFromText,
+        getSalaryReviewIssue,
         parseSalaryCandidate
     };
 });
