@@ -23,6 +23,7 @@
                     phone: extractPhoneFromPanel(panel) || extractPhone(panelText) || '',
                     website: extractWebsiteFromPanel(panel) || '',
                     panelText: panelText || '',
+                    permanentlyClosed: /\bpermanently\s+closed\b/i.test(panelText),
                     source: 'google_knowledge_panel'
                 };
             }
@@ -158,6 +159,7 @@
                 phone: extractPhone(text) || '',
                 website: extractWebsiteFromPanel(element) || '',
                 panelText: text,
+                permanentlyClosed: /\bpermanently\s+closed\b/i.test(text),
                 source: 'google_left_result',
                 score
             };

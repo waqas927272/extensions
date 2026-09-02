@@ -5,6 +5,7 @@ let currentIframeFrameId = null;
 let currentPage = 0;
 let allScrapedJobs = [];
 let uniqueJobLinks = new Set();
+let descriptionFetchChain = Promise.resolve();
 
 const IFRAME_ID = "jv_careersite_iframe_id";
 const IFRAME_PARTIAL_SRC = "jobs.jobvite.com/unitedveterinarycare/";
@@ -24,6 +25,164 @@ function sendStatusToPopup(status, message = '', scrapedCount = 0) {
     scrapedCount: scrapedCount,
     currentPage: currentPage
   }).catch(() => {});
+}
+
+function cleanDirectJobText(value) {
+    return String(value || '')
+        .replace(/\u00a0/g, ' ')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
+function decodeDirectHtmlEntities(value) {
+    return String(value || '')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/&#39;|&#x27;/gi, "'")
+        .replace(/&#x2F;/gi, '/')
+        .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+        .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
+}
+
+function directJobHtmlToText(value) {
+    return decodeDirectHtmlEntities(value)
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/(?:p|div|li|h[1-6]|section|ul|ol)>/gi, '\n')
+        .replace(/<li[^>]*>/gi, '- ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\u00a0/g, ' ')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/[ \t]{2,}/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
+function findJobPostingJsonLd(value) {
+    if (!value) return null;
+    if (Array.isArray(value)) {
+        for (const item of value) {
+            const found = findJobPostingJsonLd(item);
+            if (found) return found;
+        }
+        return null;
+    }
+    if (typeof value !== 'object') return null;
+
+    const type = value['@type'];
+    if (type === 'JobPosting' || (Array.isArray(type) && type.includes('JobPosting'))) {
+        return value;
+    }
+
+    if (value['@graph']) return findJobPostingJsonLd(value['@graph']);
+    return null;
+}
+
+function extractJobPostingJsonLd(html) {
+    const scriptPattern = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+    let match;
+
+    while ((match = scriptPattern.exec(html || '')) !== null) {
+        if (!/type\s*=\s*["']application\/ld\+json["']/i.test(match[1] || '')) continue;
+        try {
+            const jobPosting = findJobPostingJsonLd(JSON.parse(match[2] || ''));
+            if (jobPosting) return jobPosting;
+        } catch (_) {
+            // Ignore unrelated or malformed JSON-LD blocks.
+        }
+    }
+
+    return null;
+}
+
+function formatJobPostingDescription(jobPosting) {
+    const lines = [
+        '=== JOB POSTING DATA ===',
+        `Title: ${cleanDirectJobText(jobPosting.title)}`,
+        `Date Posted: ${cleanDirectJobText(jobPosting.datePosted)}`,
+        `Industry/Category: ${cleanDirectJobText(jobPosting.industry || jobPosting.occupationalCategory)}`,
+        `Employment Type: ${cleanDirectJobText(Array.isArray(jobPosting.employmentType) ? jobPosting.employmentType.join(' / ') : jobPosting.employmentType)}`
+    ];
+
+    const organizationName = cleanDirectJobText(jobPosting.hiringOrganization?.name);
+    if (organizationName) lines.push(`Hiring Organization: ${organizationName}`);
+
+    const locations = Array.isArray(jobPosting.jobLocation)
+        ? jobPosting.jobLocation
+        : (jobPosting.jobLocation ? [jobPosting.jobLocation] : []);
+    const formattedLocations = locations
+        .map(location => location?.address || location || {})
+        .map(address => {
+            const country = typeof address.addressCountry === 'object'
+                ? address.addressCountry?.name || address.addressCountry?.['@id'] || ''
+                : address.addressCountry || '';
+            return [address.addressLocality, address.addressRegion, country]
+                .map(cleanDirectJobText)
+                .filter(Boolean)
+                .join(', ');
+        })
+        .filter(Boolean);
+
+    if (formattedLocations.length > 0) {
+        lines.push('', 'Locations:', ...formattedLocations.map(location => `  - ${location}`));
+    }
+
+    const salary = jobPosting.baseSalary?.value;
+    if (salary) {
+        const currency = cleanDirectJobText(jobPosting.baseSalary?.currency || salary.currency || '$');
+        const minValue = cleanDirectJobText(salary.minValue);
+        const maxValue = cleanDirectJobText(salary.maxValue);
+        const unitText = cleanDirectJobText(salary.unitText);
+        if (minValue || maxValue) {
+            lines.push(`Salary Range: ${currency}${minValue}${minValue && maxValue ? ' - ' : ''}${maxValue}${unitText ? ` ${unitText}` : ''}`);
+        }
+    }
+
+    const description = directJobHtmlToText(jobPosting.description || '');
+    if (!description) throw new Error('JobPosting JSON-LD did not contain a description.');
+    lines.push('', '=== FULL JOB DESCRIPTION ===', description);
+
+    return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+async function fetchJobDescriptionDirectly(request) {
+    if (!request.url) throw new Error('Missing job URL.');
+
+    const url = new URL(request.url);
+    if (url.hostname.includes('jobvite.com')) url.searchParams.set('nl', '1');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    try {
+        const response = await fetch(url.toString(), {
+            cache: 'no-store',
+            credentials: 'omit',
+            redirect: 'follow',
+            signal: controller.signal
+        });
+        if (!response.ok) throw new Error(`Description request failed with HTTP ${response.status}.`);
+
+        const html = await response.text();
+        const jobPosting = extractJobPostingJsonLd(html);
+        if (!jobPosting) throw new Error('No JobPosting JSON-LD was found on the job page.');
+
+        return formatJobPostingDescription(jobPosting);
+    } catch (error) {
+        if (error?.name === 'AbortError') throw new Error('Description request timed out.');
+        throw error;
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+function queueJobDescriptionFetch(request) {
+    const queuedFetch = descriptionFetchChain.then(() => fetchJobDescriptionDirectly(request));
+    descriptionFetchChain = queuedFetch.catch(() => {});
+    return queuedFetch;
 }
 
 async function findIframeAndInjectContentScript(tabId) {
@@ -132,8 +291,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === 'stopScraping') {
     isScraping = false;
     sendResponse({ status: 'stopped' });
-  } else if (request.action === 'scrapeJobDescription') {
-    handleScrapeDescription(request);
+  } else if (request.action === 'fetchJobDescription') {
+    queueJobDescriptionFetch(request)
+      .then(description => sendResponse({ ok: true, description }))
+      .catch(error => sendResponse({ ok: false, description: '', error: error.message || 'Unable to fetch description.' }));
     return true;
   } else if (request.action === 'fetchJobDetails') {
     handleFetchDetails(request);
@@ -234,28 +395,6 @@ async function handleStartScraping(sendResponse) {
     }
 
     sendResponse({ status: 'scrapingStarted' });
-}
-
-function handleScrapeDescription(request) {
-    const { tabId, jobIndex } = request;
-    chrome.tabs.onUpdated.addListener(function listener(updatedTabId, info) {
-      if (updatedTabId === tabId && info.status === 'complete') {
-        chrome.tabs.onUpdated.removeListener(listener);
-        chrome.scripting.executeScript({ target: { tabId: tabId }, files: ['description-scraper.js'] }).then((results) => {
-          const description = (results && results[0] && results[0].result) ? results[0].result : '';
-          chrome.storage.local.get(['scrapedJobs'], (result) => {
-            const jobs = result.scrapedJobs || [];
-            if (jobs[jobIndex]) {
-              jobs[jobIndex].description = description;
-              chrome.storage.local.set({ scrapedJobs: jobs }, () => {
-                chrome.tabs.remove(tabId).catch(() => {});
-                chrome.runtime.sendMessage({ action: 'descriptionSaved', jobIndex: jobIndex }).catch(() => {});
-              });
-            }
-          });
-        }).catch(() => { chrome.tabs.remove(tabId).catch(() => {}); });
-      }
-    });
 }
 
 async function handleFetchDetails(request) {

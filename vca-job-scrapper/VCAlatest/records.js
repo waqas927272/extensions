@@ -1,4 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
+    const versionTag = document.querySelector('.version-tag');
+    const extensionVersion = chrome.runtime.getManifest?.().version;
+    if (versionTag && extensionVersion) versionTag.textContent = `v${extensionVersion}`;
     const tableBody = document.querySelector('#jobRecordsTable tbody');
     const tableHeaders = document.querySelectorAll('#jobRecordsTable th');
     const clearRecordsButton = document.getElementById('clearRecords');
@@ -38,6 +41,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let nextDescriptionQueueIndex = 0;
     let activeDescriptionRequests = 0;
     let descriptionCompletedCount = 0;
+    let descriptionAttemptCounts = new Map();
+    let isCheckingDescriptionCompletion = false;
     let descriptionStorageWriteChain = Promise.resolve();
     let detailsQueue = [];
     let currentDetailsIndex = 0;
@@ -46,11 +51,16 @@ document.addEventListener('DOMContentLoaded', () => {
     let addressQueue = [];
     let currentAddressIndex = 0;
     let addressCache = new Map();
+    const ADDRESS_VALIDATION_VERSION = 2;
+    let addressRunGeneration = 0;
+    let addressVerifiedCount = 0;
+    let addressUnresolvedCount = 0;
     const selectedJobKeys = new Set();
     const getDescriptionsBtn = document.getElementById('getDescriptionsBtn');
     const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
     const fetchAddressesBtn = document.getElementById('fetchAddressesBtn');
     const DESCRIPTION_FETCH_CONCURRENCY = 1;
+    const DESCRIPTION_FETCH_MAX_ATTEMPTS = 2;
     const hospitalResolverReady = new Promise((resolve) => {
         if (globalThis.VcaHospitalResolver) {
             resolve();
@@ -298,7 +308,7 @@ document.addEventListener('DOMContentLoaded', () => {
         job.hospital = hospital;
         job.hospitalName = hospital;
         job.website = website;
-        job.websiteUrl = job.websiteUrl || website;
+        job.websiteUrl = website;
         job.streetAddress = streetAddress;
         job.address = job.address || streetAddress;
         job.jobType = normalizeJobTypeValue(job.jobType || '');
@@ -306,7 +316,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // City and state are useful even before an address is verified. Preserve
         // the advertised location in these columns when the street lookup fails.
-        if ((!job.city || !job.state) && job.location) {
+        if (job.addressFieldsCleared !== true && (!job.city || !job.state) && job.location) {
             const locationText = cleanLocationText(job.location);
             const parts = locationText.split(',').map(part => part.trim()).filter(Boolean);
             if (parts.length >= 2) {
@@ -340,7 +350,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function normalizeJobRecords(jobs) {
-        return (jobs || []).map(normalizeJobRecord);
+        const normalized = (jobs || []).map(normalizeJobRecord);
+        if (!globalThis.VcaJobRules?.collapseVerifiedOfficialSplitDuplicates) return normalized;
+
+        const result = globalThis.VcaJobRules.collapseVerifiedOfficialSplitDuplicates(normalized);
+        if (result.removedJobIds.length > 0) {
+            console.log(`Removed ${result.removedJobIds.length} duplicate official split row(s): ${result.removedJobIds.join(', ')}`);
+        }
+        return result.jobs;
     }
 
     function getBaseJobId(job) {
@@ -401,6 +418,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function isGenericOrganizationHospitalName(hospitalName) {
         const clean = (hospitalName || '').trim();
+        if (globalThis.VcaJobRules?.isGenericVcaOrganizationName?.(clean)) return true;
         if (globalThis.VcaHospitalResolver?.isUsableHospitalCandidate &&
             !globalThis.VcaHospitalResolver.isUsableHospitalCandidate(clean)) {
             return true;
@@ -739,7 +757,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const locationParts = parseLocationParts(location);
             return !!(city || locationParts.city) && !!(state || locationParts.state);
         }
-        if (isLocationOnlyHospitalName(hospitalName, location, city, state)) return false;
+        if (isLocationOnlyHospitalName(hospitalName, location, city, state) &&
+            !/\b(?:hospital|clinic|veterinary|referral|emergency)\b/i.test(hospitalName)) return false;
         if (isGenericOrganizationHospitalName(hospitalName)) return false;
         return true;
     }
@@ -772,8 +791,8 @@ document.addEventListener('DOMContentLoaded', () => {
         ].filter(Boolean).join(', ');
     }
 
-    function cleanHospitalNameFromAddressLookup(value) {
-        const clean = (value || '')
+    function normalizeHospitalNameFromAddressLookup(value) {
+        return (value || '')
             .replace(/_/g, ' ')
             .replace(/\s+/g, ' ')
             .replace(/^(?:the\s+)?VCA\s+the\s+/i, 'VCA ')
@@ -781,8 +800,13 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/\s*\|.*$/i, '')
             .replace(/\s+\d+(?:\.\d+)?\s*\(\d[\d,]*\).*$/i, '')
             .replace(/\s+(?:Open|Closed|Website|Directions|Reviews|Photos|Overview)\b.*$/i, '')
+            .replace(/\s+(?:Appointments?\b|How\s+To\b|Book\s+(?:an?\s+)?Appointment\b).*$/i, '')
             .replace(/[\s,;:.!-]+$/, '')
             .trim();
+    }
+
+    function cleanHospitalNameFromAddressLookup(value) {
+        const clean = normalizeHospitalNameFromAddressLookup(value);
 
         if (!clean) return '';
         if (isFallbackHospitalName(clean)) return '';
@@ -1462,29 +1486,52 @@ document.addEventListener('DOMContentLoaded', () => {
             return false;
         }
 
-        if (/^vca\b/i.test(hospitalName || '') && website) {
-            try {
-                const host = new URL(website).hostname.replace(/^www\./i, '').toLowerCase();
-                if (host && !host.includes('vcahospitals.com') && !host.includes('vca.com')) return false;
-            } catch (_) {
-                // Ignore unparsable website labels from Maps.
-            }
+        if (/^vca\b/i.test(hospitalName || '') && !isVcaAddressResult(addressData)) return false;
+
+        // Short job-feed aliases such as "VCA Westbury" may resolve to an
+        // official facility whose legal/display name does not begin with VCA
+        // (for example, "Veterinary Referral & Emergency Center of Westbury").
+        // The directory resolver has already required a unique city/state match
+        // before setting verifiedOfficial and a high confidence score. Accept
+        // that trusted alias here; validateLookupCandidate still enforces the
+        // saved city and state immediately after this brand check.
+        const isTrustedOfficialLocationAlias =
+            addressData?.verifiedOfficial === true &&
+            Number(addressData?.matchConfidence || 0) >= 80 &&
+            isVcaAddressResult(addressData) &&
+            globalThis.VcaHospitalResolver?.isVcaLocationOnlyName?.(hospitalName, location);
+        if (isTrustedOfficialLocationAlias) return true;
+
+        if (!expected) return true;
+        // A specific hospital cannot be verified from an address-only result. A
+        // missing business name previously allowed an unrelated address through.
+        if (!actual) return false;
+
+        // Use the same identity rule as the official-directory resolver. This
+        // accepts punctuation and harmless word-boundary differences such as
+        // "West Creek" vs "Westcreek" without weakening city/state checks.
+        if (globalThis.VcaHospitalResolver?.hospitalNameIdentityMatches) {
+            return globalThis.VcaHospitalResolver.hospitalNameIdentityMatches(
+                expectedHospital,
+                addressData.businessName || '',
+                location
+            );
         }
 
-        if (!expected || !actual) return true;
-
         const weakWords = new Set(['vca', 'the', 'and', 'animal', 'pet', 'veterinary', 'hospital', 'clinic', 'center', 'centre', 'care', 'emergency', 'specialty', 'specialists', 'medical']);
-        const expectedWords = removeLocationWordsWhenSafe(
-            expected.split(' ').filter(word => word.length > 2 && !weakWords.has(word)),
-            location
-        );
-        if (expectedWords.length === 0) return true;
+        const baseExpectedWords = expected.split(' ').filter(word => word.length > 2 && !weakWords.has(word));
+        const locationWords = getLocationWordsForHospitalMatch(location);
+        const expectedWords = baseExpectedWords.filter(word => !locationWords.has(word));
+        // City-only overlap is not hospital identity. Exact/compact-equivalent
+        // names were already accepted above; anything else is ambiguous.
+        if (expectedWords.length === 0) return false;
 
         const actualWords = actual.split(' ').filter(Boolean);
         const matches = expectedWords.filter(word =>
             actualWords.some(actualWord => hospitalKeywordsApproximatelyMatch(word, actualWord))
         ).length;
-        return matches / expectedWords.length >= 0.5;
+        if (expectedWords.length === 1) return matches === 1;
+        return matches >= 2 && matches / expectedWords.length >= 0.6;
     }
 
     function getEditDistance(left, right) {
@@ -1525,15 +1572,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function isVcaAddressResult(addressData = {}) {
-        const businessName = addressData.businessName || addressData.hospitalName || '';
-        if (/^vca\b/i.test(businessName)) return true;
-
-        try {
-            const host = new URL(addressData.website || '').hostname.replace(/^www\./i, '').toLowerCase();
-            return host.includes('vcahospitals.com') || host.includes('vca.com');
-        } catch (_) {
-            return false;
+        if (globalThis.VcaJobRules?.isConfirmedVcaAddressResult) {
+            return globalThis.VcaJobRules.isConfirmedVcaAddressResult(addressData);
         }
+        return false; // Fail closed if the shared validation module did not load.
     }
 
     function shouldUseOfficialVcaDirectory(job = {}, hospitalName = '') {
@@ -1722,6 +1764,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const currentComparable = normalizeSimpleText(current);
         const candidateComparable = normalizeSimpleText(candidate);
         if (currentComparable && currentComparable === candidateComparable) return 100;
+        if (globalThis.VcaHospitalResolver?.hospitalNameIdentityMatches(current, candidate, location)) return 100;
         if (
             currentComparable.length >= 12 &&
             candidateComparable.length >= 12 &&
@@ -1750,7 +1793,32 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getAddressHospitalNameCandidate(addressData = {}) {
-        return cleanHospitalNameFromAddressLookup(addressData.businessName || addressData.hospitalName || '');
+        const rawName = addressData.businessName || addressData.hospitalName || '';
+        const regularCandidate = cleanHospitalNameFromAddressLookup(rawName);
+        if (regularCandidate) return regularCandidate;
+
+        // Official VCA facility names are authoritative even when their display
+        // name has an uncommon shape, such as "Veterinary Referral & Emergency
+        // Center of Westbury". That name is valid but the description-oriented
+        // candidate filter rejects it because the final word is a city. Keep the
+        // strict filter for Google and description text; bypass only for a
+        // high-confidence result already resolved from the official directory.
+        const trustedOfficialName = normalizeHospitalNameFromAddressLookup(rawName);
+        const isTrustedOfficialResult =
+            addressData.verifiedOfficial === true &&
+            Number(addressData.matchConfidence || 0) >= 80 &&
+            isVcaAddressResult(addressData);
+        if (
+            isTrustedOfficialResult &&
+            trustedOfficialName.length >= 4 &&
+            trustedOfficialName.length <= 150 &&
+            !isFallbackHospitalName(trustedOfficialName) &&
+            !hasDuplicateVcaPrefix(trustedOfficialName)
+        ) {
+            return trustedOfficialName;
+        }
+
+        return '';
     }
 
     function getAddressResultState(addressData = {}) {
@@ -2933,16 +3001,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         function mergeMapsData(primary, secondary, sourceLabel = '') {
             const safeSecondary = filterDataForExpectedLocation(secondary, sourceLabel);
-            return {
-                businessName: primary.businessName || safeSecondary.businessName || '',
-                streetAddress: primary.streetAddress || safeSecondary.streetAddress || '',
-                zipCode: primary.zipCode || safeSecondary.zipCode || '',
-                city: primary.city || safeSecondary.city || '',
-                state: primary.state || safeSecondary.state || '',
-                fullAddress: primary.fullAddress || safeSecondary.fullAddress || '',
-                website: primary.website || safeSecondary.website || '',
-                phone: primary.phone || safeSecondary.phone || ''
-            };
+            return globalThis.VcaJobRules.chooseAddressCandidate(primary, safeSecondary);
         }
 
         function needsMapsRetry(data) {
@@ -3099,7 +3158,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     mapsTabId = tab.id;
-                    listener = (updatedTabId, info) => {
+                    listener = (updatedTabId, info, updatedTab) => {
+                        if (updatedTab?.url === 'about:blank') return;
                         if (updatedTabId === mapsTabId && info.status === 'complete') {
                             chrome.tabs.onUpdated.removeListener(listener);
                             listener = null;
@@ -3112,6 +3172,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                 }).then((results) => {
                                     const data = results?.[0]?.result || {};
                                     finish({
+                                        source: data.source || '',
+                                        permanentlyClosed: data.permanentlyClosed === true,
                                         businessName: data.businessName || '',
                                         streetAddress: data.streetAddress || '',
                                         zipCode: data.zipCode || '',
@@ -3130,6 +3192,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     };
 
                     chrome.tabs.onUpdated.addListener(listener);
+                    // A cached/fast page may finish before the creation callback.
+                    // Re-check its status so the completion event cannot be lost.
+                    chrome.tabs.get(mapsTabId, current => {
+                        if (!chrome.runtime.lastError && listener && current?.status === 'complete' && current.url !== 'about:blank') {
+                            listener(mapsTabId, { status: 'complete' }, current);
+                        }
+                    });
                 });
             });
         }
@@ -3222,7 +3291,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     searchTabId = tab.id;
-                    listener = (updatedTabId, info) => {
+                    listener = (updatedTabId, info, updatedTab) => {
+                        if (updatedTab?.url === 'about:blank') return;
                         if (updatedTabId === searchTabId && info.status === 'complete') {
                             chrome.tabs.onUpdated.removeListener(listener);
                             listener = null;
@@ -3235,6 +3305,8 @@ document.addEventListener('DOMContentLoaded', () => {
                                 }).then((results) => {
                                     const data = results?.[0]?.result || {};
                                     finish({
+                                        source: data.source || '',
+                                        permanentlyClosed: data.permanentlyClosed === true,
                                         businessName: data.businessName || '',
                                         streetAddress: data.streetAddress || '',
                                         zipCode: data.zipCode || '',
@@ -3253,20 +3325,27 @@ document.addEventListener('DOMContentLoaded', () => {
                     };
 
                     chrome.tabs.onUpdated.addListener(listener);
+                    chrome.tabs.get(searchTabId, current => {
+                        if (!chrome.runtime.lastError && listener && current?.status === 'complete' && current.url !== 'about:blank') {
+                            listener(searchTabId, { status: 'complete' }, current);
+                        }
+                    });
                 });
             });
         }
 
         const candidateQueries = uniqueQueries(buildHospitalNameVariants());
+        const evaluateCandidate = lookupOptions.evaluateCandidate || (async candidate => candidate);
         let searchFallback = emptyAddressResult();
         if (!mapsOnly) {
             for (const query of candidateQueries.slice(0, 3)) {
                 console.log(`Google Search address lookup: "${query}"`);
                 const searchData = await scrapeGoogleSearchTabSafe(query);
-                searchFallback = mergeMapsData(searchFallback, searchData, query);
+                searchFallback = mergeMapsData(searchFallback, await evaluateCandidate(searchData), query);
 
                 if (searchFallback.streetAddress && searchFallback.zipCode) break;
-                if (!searchData.website) continue;
+                if (!searchData.website || searchData.permanentlyClosed === true) continue;
+                if (/^vca\b/i.test(hospitalName || '') && !globalThis.VcaJobRules.isVcaWebsite(searchData.website)) continue;
 
                 const officialWebsiteAddress = await fetchOfficialWebsiteAddress(
                     searchData.website,
@@ -3277,7 +3356,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 const safeOfficialAddress = filterDataForExpectedLocation(officialWebsiteAddress, searchData.website);
                 if (safeOfficialAddress.streetAddress && safeOfficialAddress.zipCode && safeOfficialAddress.verifiedOfficial) {
                     console.log(`Using verified official website address for "${hospitalName}": ${safeOfficialAddress.fullAddress}`);
-                    return safeOfficialAddress;
+                    const acceptedOfficial = await evaluateCandidate(safeOfficialAddress);
+                    if (acceptedOfficial) return acceptedOfficial;
                 }
             }
 
@@ -3285,7 +3365,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         console.log(`Google Maps address search: "${searchQuery}"`);
-        let data = mergeMapsData(emptyAddressResult(), await scrapeGoogleMapsTabSafe(mapsUrl, searchQuery), searchQuery);
+        let data = mergeMapsData(emptyAddressResult(), await evaluateCandidate(await scrapeGoogleMapsTabSafe(mapsUrl, searchQuery)), searchQuery);
 
         if (needsMapsRetry(data)) {
             for (const query of uniqueQueries(buildHospitalNameVariants()).slice(0, 6)) {
@@ -3294,7 +3374,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log(`Google Maps address candidate: "${query}"`);
                 const variantUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}`;
                 const mapsData = await scrapeGoogleMapsTabSafe(variantUrl, query);
-                data = mergeMapsData(data, mapsData, query);
+                data = mergeMapsData(data, await evaluateCandidate(mapsData), query);
             }
         }
 
@@ -4231,21 +4311,35 @@ document.addEventListener('DOMContentLoaded', () => {
     const clearAddressesBtn = document.getElementById('clearAddresses');
     clearAddressesBtn.addEventListener('click', () => {
         if (confirm('Are you sure you want to clear all address data? This will remove City, State, Street Address, and Zip Code from all jobs (Location column will be kept).')) {
+            cancelAddressFetching();
             chrome.storage.local.get(['jobs'], (data) => {
                 const jobs = normalizeJobRecords(data.jobs || []);
                 let clearedCount = 0;
 
                 jobs.forEach(job => {
-                    if (job.city || job.state || job.streetAddress || job.zipCode || job.website || job.phone) {
+                    if (job.city || job.state || job.streetAddress || job.address || job.zipCode || job.website || job.websiteUrl || job.phone) {
                         job.city = '';
                         job.state = '';
                         job.streetAddress = '';
+                        job.address = '';
+                        job.fullAddress = '';
                         job.zipCode = '';
                         job.website = '';
+                        job.websiteUrl = '';
                         job.phone = '';
+                        job.addressVerified = false;
+                        job.addressValidationVersion = 0;
+                        job.addressMatchConfidence = 0;
+                        job.addressSource = '';
+                        job.addressConfidence = '';
+                        job.addressReviewReason = '';
+                        job.addressFieldsCleared = true;
+                        updateManagedReviewState(job);
                         clearedCount++;
                     }
                 });
+
+                addressCache.clear();
 
                 chrome.storage.local.set({ jobs: jobs }, () => {
                     allJobs = jobs;
@@ -4259,11 +4353,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // Clear all records
     clearRecordsButton.addEventListener('click', () => {
         if (confirm('Are you sure you want to clear all scraped job records?')) {
+            cancelAddressFetching();
             chrome.storage.local.set({
                 jobs: [],
                 scrapedJobIds: [],
                 scrapingComplete: false,
-                scrapingStatus: ''
+                scrapingStatus: '',
+                scrapingFinalJobCount: 0
             }, () => {
                 allJobs = [];
                 renderCurrentView();
@@ -4419,16 +4515,45 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const data = await chrome.storage.local.get(['jobs']);
+        const data = await chrome.storage.local.get([
+            'jobs',
+            'scrapingState',
+            'scrapingComplete',
+            'scrapingFinalJobCount'
+        ]);
+        if (data.scrapingState?.active || data.scrapingComplete === false) {
+            showToast('Job scraping is still running. Wait for the final job count before getting descriptions.', 'error');
+            return;
+        }
         const jobs = normalizeJobRecords(data.jobs || []);
 
-        const jobsToProcess = jobs
+        const finalJobCount = Number(data.scrapingFinalJobCount);
+        if (Number.isInteger(finalJobCount) && finalJobCount > 0 && jobs.length !== finalJobCount) {
+            showToast(`The saved job list is still settling (${jobs.length}/${finalJobCount}). Try Get Descriptions again after the counts match.`, 'error');
+            return;
+        }
+
+        const linkedJobs = jobs
             .map((job, index) => ({ job, index, key: getJobSelectionKey(job) }))
             .filter(item => item.job.link || item.job.url);
 
-        if (jobsToProcess.length === 0) {
+        // Continue incomplete runs instead of fetching every completed row again.
+        // This also catches jobs appended near the end of a scrape after an
+        // earlier description queue snapshot was created.
+        const missingDescriptionJobs = linkedJobs.filter(item => !hasUsableDescription(item.job.description));
+        let jobsToProcess = missingDescriptionJobs;
+
+        if (linkedJobs.length === 0) {
             showToast('No jobs with links found.', 'error');
             return;
+        }
+
+        if (jobsToProcess.length === 0) {
+            if (confirm('All jobs already have descriptions. Do you want to re-fetch every description?')) {
+                jobsToProcess = linkedJobs;
+            } else {
+                return;
+            }
         }
 
         isGettingDescriptions = true;
@@ -4436,6 +4561,8 @@ document.addEventListener('DOMContentLoaded', () => {
         nextDescriptionQueueIndex = 0;
         activeDescriptionRequests = 0;
         descriptionCompletedCount = 0;
+        descriptionAttemptCounts = new Map();
+        isCheckingDescriptionCompletion = false;
         descriptionQueue = jobsToProcess;
 
         getDescriptionsBtn.disabled = true;
@@ -4447,7 +4574,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const progressText = document.getElementById('progressText');
         const progressLabel = document.getElementById('progressLabel');
         progressSection.classList.remove('hidden');
-        progressLabel.textContent = 'Getting Job Info';
+        progressLabel.textContent = jobsToProcess.length === jobs.length
+            ? `Getting Job Info for all ${jobs.length} jobs`
+            : `Getting ${jobsToProcess.length} missing descriptions (${jobs.length} total jobs)`;
         progressText.textContent = `0 / ${descriptionQueue.length}`;
         progressBar.style.width = '0%';
 
@@ -4463,11 +4592,19 @@ document.addEventListener('DOMContentLoaded', () => {
         progressBar.style.width = `${(descriptionCompletedCount / total) * 100}%`;
     }
 
-    function finishDescriptionFetchRun() {
+    function getDescriptionAttemptKey(job = {}) {
+        return [
+            job.jobId || job.departmentId || getBaseJobId(job) || '',
+            job.link || job.url || ''
+        ].join('||');
+    }
+
+    function finishDescriptionFetchRun(unresolvedJobs = []) {
         if (!isGettingDescriptions) return;
 
         isGettingDescriptions = false;
         activeDescriptionRequests = 0;
+        isCheckingDescriptionCompletion = false;
         getDescriptionsBtn.disabled = false;
         getDescriptionsBtn.innerHTML = `
             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
@@ -4477,7 +4614,56 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
         updateDescriptionProgress();
         document.getElementById('progressSection').classList.add('hidden');
-        showToast('All job info has been fetched!', 'success');
+        if (unresolvedJobs.length > 0) {
+            const ids = unresolvedJobs
+                .slice(0, 5)
+                .map(job => job.jobId || job.departmentId || job.title || 'Unknown job')
+                .join(', ');
+            const suffix = unresolvedJobs.length > 5 ? ', ...' : '';
+            showToast(`${unresolvedJobs.length} job description${unresolvedJobs.length === 1 ? '' : 's'} could not be saved after retrying: ${ids}${suffix}`, 'error');
+        } else {
+            showToast('All job info has been fetched and verified!', 'success');
+        }
+    }
+
+    async function finishOrExtendDescriptionFetchRun() {
+        if (!isGettingDescriptions || isCheckingDescriptionCompletion) return;
+        isCheckingDescriptionCompletion = true;
+
+        try {
+            const data = await chrome.storage.local.get(['jobs', 'scrapingState', 'scrapingComplete']);
+            if (data.scrapingState?.active || data.scrapingComplete === false) {
+                isCheckingDescriptionCompletion = false;
+                setTimeout(() => finishOrExtendDescriptionFetchRun(), 500);
+                return;
+            }
+            const jobs = normalizeJobRecords(data.jobs || []);
+            const unresolvedJobs = jobs.filter(job =>
+                (job.link || job.url) &&
+                !hasUsableDescription(job.description) &&
+                !isGeneratedLocationJob(job)
+            );
+            const retryJobs = unresolvedJobs
+                .filter(job => (descriptionAttemptCounts.get(getDescriptionAttemptKey(job)) || 0) < DESCRIPTION_FETCH_MAX_ATTEMPTS)
+                .map((job, index) => ({
+                    job,
+                    index: jobs.indexOf(job),
+                    key: getJobSelectionKey(job)
+                }));
+
+            if (retryJobs.length > 0) {
+                descriptionQueue.push(...retryJobs);
+                isCheckingDescriptionCompletion = false;
+                updateDescriptionProgress();
+                processNextJob();
+                return;
+            }
+
+            finishDescriptionFetchRun(unresolvedJobs);
+        } catch (error) {
+            console.error('Error verifying description completeness:', error);
+            finishDescriptionFetchRun([]);
+        }
     }
 
     function markDescriptionJobComplete() {
@@ -4486,7 +4672,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateDescriptionProgress();
 
         if (descriptionCompletedCount >= descriptionQueue.length && activeDescriptionRequests === 0) {
-            finishDescriptionFetchRun();
+            finishOrExtendDescriptionFetchRun();
             return;
         }
 
@@ -4506,6 +4692,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const job = jobs[jobIndex];
             const jobUrl = job.link || job.url || '';
+            const attemptKey = getDescriptionAttemptKey(job);
+            descriptionAttemptCounts.set(attemptKey, (descriptionAttemptCounts.get(attemptKey) || 0) + 1);
             chrome.runtime.sendMessage({
                 action: 'fetchJobDescription',
                 url: jobUrl,
@@ -4527,7 +4715,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isGettingDescriptions) return;
 
         if (descriptionCompletedCount >= descriptionQueue.length && activeDescriptionRequests === 0) {
-            finishDescriptionFetchRun();
+            finishOrExtendDescriptionFetchRun();
             return;
         }
 
@@ -4605,6 +4793,10 @@ document.addEventListener('DOMContentLoaded', () => {
             showToast('Already fetching details. Please wait...', 'error');
             return;
         }
+        if (isGettingDescriptions) {
+            showToast('Descriptions are still being retrieved. Wait for that run to finish before Fetch Details.', 'error');
+            return;
+        }
 
         await hospitalResolverReady;
 
@@ -4632,6 +4824,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (jobs.length === 0) {
             showToast(`Removed ${reliefJobsRemovedThisRun} relief-only ${reliefJobsRemovedThisRun === 1 ? 'job' : 'jobs'}. No jobs remain to analyze.`, 'success');
+            return;
+        }
+
+        const jobsMissingDescriptions = jobs.filter(job =>
+            job.title &&
+            !isGeneratedLocationJob(job) &&
+            !hasUsableDescription(job.description)
+        );
+        if (jobsMissingDescriptions.length > 0) {
+            const ids = jobsMissingDescriptions
+                .slice(0, 5)
+                .map(job => job.jobId || job.departmentId || job.title || 'Unknown job')
+                .join(', ');
+            const suffix = jobsMissingDescriptions.length > 5 ? ', ...' : '';
+            showToast(`${jobsMissingDescriptions.length} job${jobsMissingDescriptions.length === 1 ? '' : 's'} still need descriptions: ${ids}${suffix}. Run Get Descriptions first.`, 'error');
             return;
         }
 
@@ -5141,12 +5348,20 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function markAddressNeedsReview(job, reason) {
+        if ((!job.city || !job.state) && job.location) {
+            const locationParts = parseLocationParts(job.location);
+            if (!job.city) job.city = formatCityForStorage(locationParts.city || '');
+            if (!job.state) job.state = formatStateForStorage(locationParts.state || '');
+        }
+        delete job.addressFieldsCleared;
         // Make an unsuccessful lookup visible in both the UI and exports. Do not
         // replace a previously verified street/ZIP when only contact lookup fails.
         const hadUsableAddress = applyMissingAddressPlaceholders(job);
         if (!hadUsableAddress) {
             job.phone = '-';
             job.website = '-';
+            job.websiteUrl = '-';
+            job.fullAddress = '';
 
             const currentHospital = String(job.hospital || job.hospitalName || '').trim();
             if (!currentHospital || isFallbackHospitalName(currentHospital) || isGenericOrganizationHospitalName(currentHospital)) {
@@ -5164,6 +5379,9 @@ document.addEventListener('DOMContentLoaded', () => {
         job.addressReviewReason = reason || 'A confident address could not be verified.';
         updateManagedReviewState(job);
         job.addressVerified = false;
+        job.addressValidationVersion = 0;
+        job.addressSource = '';
+        job.addressConfidence = '';
     }
 
     function clearAddressReview(job) {
@@ -5206,8 +5424,19 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function savedAddressBrandMismatch(job) {
-        if (!isLivewellHospital(job.hospital)) return false;
-        return !!(job.streetAddress || job.zipCode || job.website || job.phone) && !isLivewellWebsite(job.website || '');
+        const hospital = job.hospital || job.hospitalName || '';
+        if (isLivewellHospital(hospital)) {
+            return !!(job.streetAddress || job.zipCode || job.website || job.phone) && !isLivewellWebsite(job.website || '');
+        }
+
+        // Never seed the verified cache from a VCA row whose saved hospital is
+        // only a corporate/fallback label. It must be resolved again from the
+        // official directory or a validated VCA search result.
+        if (shouldUseOfficialVcaDirectory(job, hospital) && isLikelyIncompleteHospitalName(hospital)) {
+            return true;
+        }
+
+        return false;
     }
 
     function rememberAddressData(keys, data) {
@@ -5232,6 +5461,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function canLookupAddressForJob(job) {
+        // Description-name validation must not prevent an address lookup of an
+        // official name such as "Veterinary Referral & Emergency Center of Westbury".
+        const location = parseLocationParts(job.location || '');
+        if (shouldUseOfficialVcaDirectory(job, getHospitalForAddressLookup(job)) &&
+            location.city && location.state && getStateAbbreviation(location.state)) return true;
         return canFetchAddressForHospital(
             getHospitalForAddressLookup(job),
             job.location,
@@ -5243,6 +5477,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function primeAddressCache(jobs) {
         addressCache = new Map();
         for (const job of jobs) {
+            if (job.addressVerified !== true || job.addressValidationVersion !== ADDRESS_VALIDATION_VERSION) continue;
+            if (needsContactLookup(job)) continue;
             if (!job.hospital || !job.location || !job.streetAddress || !job.zipCode) continue;
             if (!canFetchAddressForHospital(job.hospital, job.location, job.city, job.state)) continue;
             if (jobLocationMismatch(job)) continue;
@@ -5256,7 +5492,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 state: job.state || '',
                 fullAddress: [job.streetAddress, job.city, [job.state, job.zipCode].filter(Boolean).join(' ')].filter(Boolean).join(', '),
                 website: job.website || '',
-                phone: job.phone || ''
+                phone: job.phone || '',
+                verifiedOfficial: job.addressConfidence === 'Official',
+                source: job.addressSource || '',
+                matchConfidence: job.addressMatchConfidence || 0
             };
             rememberAddressData(getAddressCacheKeys(job.hospital, job.location), cached);
         }
@@ -5275,13 +5514,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const jobsNeedingAddresses = jobs.map((job, index) => ({ job, index, key: getJobSelectionKey(job) }))
             .filter(item => {
                 if (!canLookupAddressForJob(item.job)) {
-                    return item.job.addressVerified !== true || item.job.reviewStatus === 'Needs Review';
+                    return item.job.addressVerified !== true || item.job.addressValidationVersion !== ADDRESS_VALIDATION_VERSION || item.job.reviewStatus === 'Needs Review';
                 }
                 // Jobs missing any core location/contact field
                 return (!item.job.streetAddress ||
                         !item.job.zipCode ||
                         !(item.job.hospital || item.job.hospitalName || '').trim() ||
                         item.job.addressVerified !== true ||
+                        item.job.addressValidationVersion !== ADDRESS_VALIDATION_VERSION ||
                         needsContactLookup(item.job) ||
                         isAddressNotFoundPlaceholder(item.job.streetAddress) ||
                         isZipNotFoundPlaceholder(item.job.zipCode) ||
@@ -5309,6 +5549,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         primeAddressCache(jobs);
+        addressRunGeneration++;
+        addressVerifiedCount = 0;
+        addressUnresolvedCount = 0;
         isFetchingAddresses = true;
         currentAddressIndex = 0;
         fetchAddressesBtn.disabled = true;
@@ -5328,6 +5571,8 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     async function processNextAddress() {
+        if (!isFetchingAddresses) return;
+        const runGeneration = addressRunGeneration;
         if (currentAddressIndex >= addressQueue.length) {
             finishAddressFetching();
             return;
@@ -5335,28 +5580,31 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const queueItem = addressQueue[currentAddressIndex];
         let { job, index } = queueItem;
+        let discardSavedAddressOnFailure = false;
 
         // Update progress
         const progressBar = document.getElementById('progressBar');
         const progressText = document.getElementById('progressText');
-        progressText.textContent = `${currentAddressIndex + 1} / ${addressQueue.length}`;
-        progressBar.style.width = `${((currentAddressIndex + 1) / addressQueue.length) * 100}%`;
+        progressText.textContent = `${currentAddressIndex} / ${addressQueue.length}`;
+        progressBar.style.width = `${(currentAddressIndex / addressQueue.length) * 100}%`;
         fetchAddressesBtn.textContent = `Fetching... (${currentAddressIndex + 1}/${addressQueue.length})`;
 
         try {
             let reviewReason = '';
             if (!canLookupAddressForJob(job)) {
                 const data = await chrome.storage.local.get(['jobs']);
+                if (runGeneration !== addressRunGeneration || !isFetchingAddresses) return;
                 const jobs = normalizeJobRecords(data.jobs || []);
                 index = findJobIndexByKey(jobs, queueItem.key, job);
                 if (index !== -1) {
                     markAddressNeedsReview(jobs[index], 'The row does not contain a specific hospital and location to verify.');
+                    addressUnresolvedCount++;
                     await chrome.storage.local.set({ jobs: jobs });
                     allJobs = jobs;
                     renderCurrentView();
                 }
                 currentAddressIndex++;
-                setTimeout(() => processNextAddress(), 50);
+                setTimeout(() => { if (runGeneration === addressRunGeneration) processNextAddress(); }, 50);
                 return;
             }
 
@@ -5366,19 +5614,21 @@ document.addEventListener('DOMContentLoaded', () => {
             const latestIndex = findJobIndexByKey(latestJobs, queueItem.key, job);
             if (latestIndex === -1) {
                 currentAddressIndex++;
-                setTimeout(() => processNextAddress(), 50);
+                setTimeout(() => { if (runGeneration === addressRunGeneration) processNextAddress(); }, 50);
                 return;
             }
             job = latestJobs[latestIndex];
             index = latestIndex;
+            discardSavedAddressOnFailure = savedAddressBrandMismatch(job) ||
+                job.addressVerified !== true || job.addressValidationVersion !== ADDRESS_VALIDATION_VERSION;
 
             // Clean hospital name for search:
             // Remove trailing location suffix for child rows: "Hospital-Leesburg" → "Hospital"
             const missingHospitalAtLookup = !(job.hospital || job.hospitalName || '').trim();
             let searchHospital = getHospitalForAddressLookup(job);
-            if (job.sourceLink && searchHospital) {
-                searchHospital = searchHospital.replace(/\s*[-–]\s*[A-Z][a-zA-Z\s.'-]+$/, '').trim();
-                if (!searchHospital) searchHospital = job.hospital;
+            if (job.sourceLink && searchHospital && !isFallbackHospitalName(searchHospital)) {
+                const citySuffix = parseLocationParts(job.location || '').city;
+                if (citySuffix) searchHospital = searchHospital.replace(new RegExp(`\\s*[-–]\\s*${escapeRegex(citySuffix)}$`, 'i'), '').trim();
             }
 
             // Only append "Hospital" when the name does not already look like a veterinary facility.
@@ -5436,15 +5686,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
             function validateLookupCandidate(candidate, sourceLabel = '') {
                 const result = candidate || {};
+                if (result.permanentlyClosed === true) return null;
                 if (!hasConfidentAddressData(result)) return null;
+                if (result.verifiedOfficial !== true &&
+                    !/^(?:google_maps_place|google_knowledge_panel)$/.test(result.source || '')) return null;
                 const currentHospital = job.hospital || job.hospitalName || '';
-                const locationOnlySearch = missingHospitalAtLookup || isFallbackHospitalName(currentHospital);
+                const locationOnlySearch = missingHospitalAtLookup ||
+                    isFallbackHospitalName(currentHospital) ||
+                    isLikelyIncompleteHospitalName(currentHospital);
                 const hospitalMatches = addressMatchesExpectedHospitalBrand(
                     currentHospital || searchHospital,
                     result,
                     searchLocation
                 ) || addressResultPassesRescue(job, result, searchLocation);
-                const acceptsOfficialPhysicalCity = !locationOnlySearch &&
+                const acceptsOfficialPhysicalCity = !locationOnlySearch && !isGeneratedLocationJob(job) &&
                     result.verifiedOfficial === true &&
                     isVcaAddressResult(result) &&
                     Number(result.matchConfidence || 0) >= 80 &&
@@ -5464,6 +5719,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         console.warn(`Ignoring ${sourceLabel || 'address'} result because it is not confirmed as a VCA hospital.`);
                         return null;
                     }
+                    const resultHospitalName = result.businessName || result.hospitalName || '';
+                    if (result.verifiedOfficial !== true && isGenericOrganizationHospitalName(resultHospitalName)) {
+                        console.warn(`Ignoring ${sourceLabel || 'address'} result because it contains only a generic VCA organization title.`);
+                        return null;
+                    }
                     return result;
                 }
 
@@ -5480,9 +5740,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const cachedAddress = getRememberedAddress(cacheKeys);
             const useOfficialVcaDirectory = shouldUseOfficialVcaDirectory(job, searchHospital);
             if (!addressData && (lookupTarget.directResult || useOfficialVcaDirectory)) {
-                const directoryJob = (missingHospitalAtLookup || isFallbackHospitalName(job.hospital || job.hospitalName || ''))
-                    ? { ...job, description: '' }
-                    : job;
+                // Fetch Details already extracted the hospital. Re-reading a
+                // long multi-hospital description here can select a sibling and
+                // adds unnecessary work to every address request.
+                const directoryJob = { ...job, description: '', website: '', websiteUrl: '' };
                 const officialAddress = lookupTarget.directResult
                     ? { ...lookupTarget.directResult }
                     : await fetchOfficialVcaHospital(directoryJob, searchHospital, searchLocation);
@@ -5499,13 +5760,40 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
+            // A city-only lookup can be ambiguous until Google supplies the
+            // facility name. Resolve that candidate back to the official entry
+            // before saving; never fill contacts from a different result card.
+            async function reconcileSearchCandidate(candidate, sourceLabel) {
+                if (!candidate || candidate.permanentlyClosed === true || !candidateMatchesStrictLocation(candidate)) return null;
+                if (useOfficialVcaDirectory && (candidate.businessName || candidate.website)) {
+                    const candidateName = normalizeHospitalNameFromAddressLookup(candidate.businessName || '');
+                    const candidateJob = {
+                        hospital: candidateName, hospitalName: candidateName, description: '',
+                        website: '', location: searchLocation
+                    };
+                    let official = await fetchOfficialVcaHospital(candidateJob, candidateName, searchLocation);
+                    if (!official && candidate.website) {
+                        official = await fetchOfficialVcaHospital({ ...candidateJob, website: candidate.website }, candidateName, searchLocation);
+                    }
+                    // Reconciliation is identification by name/site, not permission
+                    // to switch to another same-city hospital or sibling location.
+                    if (official && candidateName &&
+                        globalThis.VcaHospitalResolver.hospitalNameIdentityMatches(candidateName, official.businessName, searchLocation)) {
+                        const validated = validateLookupCandidate(official, 'reconciled official VCA directory');
+                        if (validated) return validated;
+                    }
+                    if (official) return null; // Conflicting official identity/location is not a usable search result.
+                }
+                return validateLookupCandidate(candidate, sourceLabel);
+            }
+
             if (!addressData) {
                 const googleSearchAddress = await fetchAddressFromGoogleMaps(
                     searchHospital,
                     searchLocation,
                     job.hospital || '',
                     job,
-                    { searchOnly: true }
+                    { searchOnly: true, evaluateCandidate: candidate => reconcileSearchCandidate(candidate, 'Google Search') }
                 );
                 addressData = validateLookupCandidate(googleSearchAddress, 'Google Search');
                 if (addressData) {
@@ -5519,7 +5807,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     searchLocation,
                     job.hospital || '',
                     job,
-                    { mapsOnly: true }
+                    { mapsOnly: true, evaluateCandidate: candidate => reconcileSearchCandidate(candidate, 'Google Maps') }
                 );
                 addressData = validateLookupCandidate(googleMapsAddress, 'Google Maps');
                 if (addressData) {
@@ -5541,21 +5829,32 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!addressIsConfident && !reviewReason) {
                 reviewReason = 'No complete address could be verified from an official source or validated search result.';
             }
+            if (runGeneration !== addressRunGeneration || !isFetchingAddresses) return;
             if (addressIsConfident) rememberAddressData(cacheKeys, addressData);
 
             // Update the job with the first address that passed validation.
             const data = await chrome.storage.local.get(['jobs']);
+            if (runGeneration !== addressRunGeneration || !isFetchingAddresses) return;
             const jobs = normalizeJobRecords(data.jobs || []);
             index = findJobIndexByKey(jobs, queueItem.key, job);
 
             if (index !== -1) {
                 if (!addressIsConfident) {
+                    if (discardSavedAddressOnFailure) {
+                        jobs[index].streetAddress = '';
+                        jobs[index].address = '';
+                        jobs[index].zipCode = '';
+                        jobs[index].phone = '';
+                        jobs[index].website = '';
+                        jobs[index].websiteUrl = '';
+                    }
                     markAddressNeedsReview(jobs[index], reviewReason);
+                    addressUnresolvedCount++;
                     await chrome.storage.local.set({ jobs: jobs });
                     allJobs = jobs;
                     renderCurrentView();
                     currentAddressIndex++;
-                    setTimeout(() => processNextAddress(), 250);
+                    setTimeout(() => { if (runGeneration === addressRunGeneration) processNextAddress(); }, 250);
                     return;
                 }
 
@@ -5598,27 +5897,44 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 // Website and phone from Google Maps
-                if (addressData.website) jobs[index].website = contactValueOrTbd(addressData.website);
-                if (addressData.phone) jobs[index].phone = normalizeUsPhone(addressData.phone);
+                jobs[index].website = contactValueOrTbd(addressData.website) || '-';
+                jobs[index].websiteUrl = jobs[index].website;
+                jobs[index].phone = normalizeUsPhone(addressData.phone) || '-';
+                jobs[index].fullAddress = addressData.fullAddress || '';
                 jobs[index].addressSource = addressData.source || (isVerifiedOfficialAddress ? 'official-vca-directory' : 'google');
                 jobs[index].addressVerified = true;
+                jobs[index].addressValidationVersion = ADDRESS_VALIDATION_VERSION;
+                jobs[index].addressMatchConfidence = addressData.matchConfidence || 0;
                 jobs[index].addressConfidence = isVerifiedOfficialAddress ? 'Official' : 'Validated Search';
+                delete jobs[index].addressFieldsCleared;
                 clearAddressReview(jobs[index]);
 
-                await chrome.storage.local.set({ jobs: jobs });
+                const finalJobs = normalizeJobRecords(jobs);
+                await chrome.storage.local.set({ jobs: finalJobs });
 
                 // Update display
-                allJobs = jobs;
+                allJobs = finalJobs;
                 renderCurrentView();
+                addressVerifiedCount++;
             }
         } catch (error) {
+            if (runGeneration !== addressRunGeneration || !isFetchingAddresses) return;
             console.error('Error fetching address:', error);
             try {
                 const data = await chrome.storage.local.get(['jobs']);
                 const jobs = normalizeJobRecords(data.jobs || []);
                 index = findJobIndexByKey(jobs, queueItem.key, job);
                 if (index !== -1) {
+                    if (discardSavedAddressOnFailure) {
+                        jobs[index].streetAddress = '';
+                        jobs[index].address = '';
+                        jobs[index].zipCode = '';
+                        jobs[index].phone = '';
+                        jobs[index].website = '';
+                        jobs[index].websiteUrl = '';
+                    }
                     markAddressNeedsReview(jobs[index], `Address lookup failed: ${error.message || 'Unknown error'}`);
+                    addressUnresolvedCount++;
                     await chrome.storage.local.set({ jobs: jobs });
                     allJobs = jobs;
                     renderCurrentView();
@@ -5631,8 +5947,18 @@ document.addEventListener('DOMContentLoaded', () => {
         // Move to next address
         currentAddressIndex++;
 
-        // Continue processing — delay for Google Maps tab loading
-        setTimeout(() => processNextAddress(), 250);
+        // A cleared/restarted run must not launch another worker from an old timer.
+        setTimeout(() => { if (runGeneration === addressRunGeneration) processNextAddress(); }, 250);
+    }
+
+    function cancelAddressFetching() {
+        addressRunGeneration++;
+        isFetchingAddresses = false;
+        addressQueue = [];
+        addressCache.clear();
+        fetchAddressesBtn.disabled = false;
+        fetchAddressesBtn.textContent = 'Fetch Addresses';
+        document.getElementById('progressSection').classList.add('hidden');
     }
 
     function finishAddressFetching() {
@@ -5645,6 +5971,6 @@ document.addEventListener('DOMContentLoaded', () => {
             Fetch Addresses
         `;
         document.getElementById('progressSection').classList.add('hidden');
-        showToast(`Address fetching completed! Fetched ${addressQueue.length} addresses.`, 'success');
+        showToast(`Address lookup finished: ${addressVerifiedCount} verified, ${addressUnresolvedCount} unresolved.`, addressUnresolvedCount ? 'warning' : 'success');
     }
 });

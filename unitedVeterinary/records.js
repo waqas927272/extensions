@@ -10,6 +10,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchInput = document.getElementById('searchInput');
     const exportCsvButton = document.getElementById('exportCsv');
     const toastContainer = document.getElementById('toastContainer');
+    const descriptionModal = document.getElementById('descriptionModal');
+    const closeDescriptionModalBtn = document.getElementById('closeDescriptionModal');
+    const closeDescriptionModalFooterBtn = document.getElementById('closeDescriptionModalFooter');
+    const descriptionModalTitle = document.getElementById('descriptionModalTitle');
+    const descriptionModalMeta = document.getElementById('descriptionModalMeta');
+    const descriptionModalBody = document.getElementById('descriptionModalBody');
 
     let currentSortColumn = null;
     let currentSortDirection = 'asc';
@@ -18,6 +24,8 @@ document.addEventListener('DOMContentLoaded', () => {
     let isFetchingDetails = false;
     let isFetchingAddresses = false;
     let currentJobIndex = 0;
+    let descriptionQueue = [];
+    let currentDescriptionIndex = 0;
     let detailsQueue = [];
     let currentDetailsIndex = 0;
     let addressQueue = [];
@@ -103,6 +111,64 @@ document.addEventListener('DOMContentLoaded', () => {
         return stateAbbreviations[state.toUpperCase()] || state;
     }
 
+    function getStateAbbreviation(state) {
+        if (!state) return '';
+        const value = state.trim();
+        if (/^[A-Z]{2}$/i.test(value)) return value.toUpperCase();
+
+        const normalized = value.toLowerCase().replace(/[^a-z]/g, '');
+        const match = Object.entries(stateAbbreviations).find(([, fullName]) => {
+            return fullName.toLowerCase().replace(/[^a-z]/g, '') === normalized;
+        });
+        return match ? match[0] : value.toUpperCase();
+    }
+
+    function normalizeAddressRuleValue(value) {
+        return (value || '')
+            .toLowerCase()
+            .replace(/&/g, ' and ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+    }
+
+    const AUTHORITATIVE_ADDRESS_CORRECTIONS = [
+        {
+            hospitalPattern: /\bthe\s+oncology\s+service\b|\btos\b/i,
+            city: 'richmond',
+            state: 'VA',
+            streetAddress: '5711 Staples Mill Road, Suite 200',
+            zipCode: '23228',
+            website: 'https://tosvets.com/locations/oncology-service-richmond.html',
+            phone: '+18049990001'
+        }
+    ];
+
+    function applyAuthoritativeAddressCorrection(hospitalName, location, addressData = {}) {
+        const expected = parseLocationParts(location);
+        const expectedCity = normalizeAddressRuleValue(expected.city || addressData.city || '');
+        const expectedState = getStateAbbreviation(expected.state || addressData.state || '');
+        const hospital = `${hospitalName || ''} ${addressData.website || ''} ${addressData.fullAddress || ''}`;
+
+        const correction = AUTHORITATIVE_ADDRESS_CORRECTIONS.find(rule => {
+            return rule.hospitalPattern.test(hospital) &&
+                normalizeAddressRuleValue(rule.city) === expectedCity &&
+                rule.state === expectedState;
+        });
+
+        if (!correction) return { ...addressData };
+
+        return {
+            ...addressData,
+            streetAddress: correction.streetAddress,
+            city: expected.city || addressData.city || 'Richmond',
+            state: expected.state || addressData.state || correction.state,
+            zipCode: correction.zipCode,
+            fullAddress: `${correction.streetAddress}, ${expected.city || addressData.city || 'Richmond'}, ${correction.state} ${correction.zipCode}`,
+            website: correction.website,
+            phone: correction.phone
+        };
+    }
+
     const APPROVED_POSITIONS = [
         'Associate Veterinarian',
         'Medical Director',
@@ -139,6 +205,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function hasSpecialtyTrainingSignal(text) {
         return /\bboard certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b/i.test(text || '');
+    }
+
+    function isMedicalDirectorTitle(title) {
+        return /\bmedical director\b/i.test(title || '');
+    }
+
+    function getMedicalDirectorAreaOfPractice(descriptionText) {
+        return hasSpecialtyTrainingSignal(descriptionText) ? 'Specialty Care' : 'General Practice Care';
     }
 
     function matchApprovedPositionFromText(text) {
@@ -304,31 +378,54 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============ LOCAL DETAIL EXTRACTION (mirrors detail-extractor.js) ============
 
     function extractDetailsFromDescription(positionTitle, descriptionText) {
-        // Format salary to standard "$X–$Y per year" or "$X per hour"
+        // Format salary to standard "$X-$Y per year" or "$X per hour"
         function formatSalary(raw) {
             if (!raw) return '';
-            const isHourly = /(?:per\s+)?(?:hour|hr|\/hr)/i.test(raw);
+            const isHourly = /\b(?:per\s+)?(?:hour|hr)s?\b|\/hr\b/i.test(raw);
             const amounts = [];
-            const amountRegex = /\$?([\d,]+(?:\.\d{2})?)\s*k?\b/gi;
-            let match;
-            while ((match = amountRegex.exec(raw)) !== null) {
-                let num = parseFloat(match[1].replace(/,/g, ''));
-                const afterMatch = raw.substring(match.index + match[0].length - 1, match.index + match[0].length + 1);
-                if (/k/i.test(match[0]) || /k/i.test(afterMatch)) {
+            const annualContext = /\b(?:salary|compensation|pay|base|earn(?:ing)?|annual(?:ly)?|year|production)\b/i.test(raw);
+            const amountRegex = /(?:\$|USD\s*)\s*\d[\d\s,]*(?:\.\d{2})?\s*(?:\/\s*k|k)?/gi;
+            const rangePartnerRegex = /(?:\$|USD\s*)\s*\d[\d\s,]*(?:\.\d{2})?\s*(?:\/\s*k|k)?\s*(?:[-–—]|\bto\b)\s*(\d[\d\s,]*(?:\.\d{2})?\s*(?:\/\s*k|k)?)/gi;
+            const rangeHasK = /(?:\/\s*k|k)\b/i.test(raw);
+
+            function addAmount(rawAmount, index) {
+                const before = raw.substring(Math.max(0, index - 45), index);
+                const after = raw.substring(index + rawAmount.length, index + rawAmount.length + 45);
+                const bonusAfterIndex = after.search(/\b(?:sign[-\s]?on|bonus|relocation|stipend|tuition|401)\b/i);
+                const nextDollarIndex = after.indexOf('$');
+                const bonusBefore = /\b(?:sign[-\s]?on|bonus|relocation|stipend|tuition|401)\b/i.test(before);
+                const bonusAfter = bonusAfterIndex !== -1 && (nextDollarIndex === -1 || bonusAfterIndex < nextDollarIndex);
+                const isRangeContinuation = /(?:[-–—]|\bto\b)\s*$/i.test(before);
+                const isBonusAmount = !isRangeContinuation && (bonusAfter || bonusBefore);
+                if (isBonusAmount) return;
+
+                let num = parseFloat(rawAmount.replace(/[^\d.]/g, ''));
+                if (!Number.isFinite(num)) return;
+
+                if (/(?:\/\s*k|k)\b/i.test(rawAmount) || (!isHourly && num < 1000 && (rangeHasK || annualContext))) {
                     num = num * 1000;
                 }
                 if (num > 0) amounts.push(num);
             }
-            if (amounts.length === 0) return raw;
+
+            let match;
+            while ((match = amountRegex.exec(raw)) !== null) {
+                addAmount(match[0], match.index);
+            }
+
+            while ((match = rangePartnerRegex.exec(raw)) !== null) {
+                addAmount(match[1], match.index + match[0].lastIndexOf(match[1]));
+            }
+            if (amounts.length === 0) return '';
             const fmt = (n) => {
-                if (Number.isInteger(n)) return '$' + n.toLocaleString('en-US');
-                return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                const rounded = Math.round(n);
+                return '$' + rounded.toLocaleString('en-US');
             };
             const unit = isHourly ? 'per hour' : 'per year';
             if (amounts.length >= 2) {
                 const min = Math.min(amounts[0], amounts[1]);
                 const max = Math.max(amounts[0], amounts[1]);
-                return `${fmt(min)}–${fmt(max)} ${unit}`;
+                return `${fmt(min)}-${fmt(max)} ${unit}`;
             }
             return `${fmt(amounts[0])} ${unit}`;
         }
@@ -343,33 +440,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 return formatSalary(jsonLdMatch[1].trim());
             }
 
-            // Fallback to text pattern matching
-            const salaryPatterns = [
-                // "Base salary ranges: $150k - $171k" or "base salary range of $140,000 – 160,000"
-                /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
-                /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
-                // "Pay range: $95,000 - $160,000" or "Salary range: $120,000 - $140,000"
-                /(?:(?:pay|salary|compensation)\s+range)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
-                /(?:(?:pay|salary|compensation)\s+range)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
-                // "Salary: $130,000-$200,000" or "Compensation: $110,000 to $180,000"
-                /(?:salary|compensation|pay)[:\s]+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual))?/i,
-                /(?:salary|compensation|pay)[:\s]+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual))?/i,
-                // "$130,000-$200,000" or "$130,000 to $200,000"
-                /\$[\d,]+(?:\.\d{2})?\s*[-–—]\s*\$[\d,]+(?:\.\d{2})?/i,
-                /\$[\d,]+(?:\.\d{2})?\s+to\s+\$[\d,]+(?:\.\d{2})?/i,
-                // "$150k - $171k" or "$165 to $185/k"
-                /\$[\d,]+\s*(?:\/k|k)\s*[-–—]+\s*\$?[\d,]+\s*(?:\/k|k)/i,
-                /\$[\d,]+\s*(?:\/k|k)?\s+to\s+\$?[\d,]+\s*(?:\/k|k)/i,
-                // "earn $250,000 annually"
-                /(?:earn|earning)\s+\$[\d,]+(?:\.\d{2})?\s*(?:annually|per\s*year)?/i,
-                // "$250,000 annually" or "$250,000 per year"
-                /\$[\d,]+(?:\.\d{2})?\s*(?:annually|per\s*year|per\s*annum)/i,
-                // "$95 per hour" or "$95/hr"
-                /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hour|hr|\/hr)/i,
-            ];
-            for (const pattern of salaryPatterns) {
-                const m = text.match(pattern);
-                if (m) return formatSalary(m[0].trim());
+            const salaryContext = /\b(?:salary|compensation|pay(?:\s+range)?|base|earn(?:ing)?|annual(?:ly)?|year|hour|production)\b/i;
+            const amountPattern = /\$\s*\d[\d\s,]*(?:\.\d{2})?\s*(?:\/\s*k|k)?/i;
+            const chunks = text
+                .replace(/\r/g, '\n')
+                .split(/\n|(?<=[.!?])\s+/)
+                .map(line => line.trim())
+                .filter(Boolean);
+
+            for (const chunk of chunks) {
+                if (!amountPattern.test(chunk) || !salaryContext.test(chunk)) continue;
+                const formatted = formatSalary(chunk);
+                if (formatted) return formatted;
             }
             return '';
         }
@@ -422,6 +504,10 @@ document.addEventListener('DOMContentLoaded', () => {
         function determineAreaOfPractice(positionText, descriptionText) {
             const title = positionText.toLowerCase();
             const category = getIndustryCategory(descriptionText).toLowerCase();
+
+            if (isMedicalDirectorTitle(positionText)) {
+                return getMedicalDirectorAreaOfPractice(descriptionText);
+            }
 
             if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
 
@@ -715,10 +801,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 new RegExp(`\\b(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
                 new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
                 new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\b`, 'i'),
-                new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
+                new RegExp(`\\b(?:minimum|min\\.?)\\s+(?:of\\s+)?(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
+                new RegExp(`\\bat\\s+least\\s+(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
                 new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
                 new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
-                new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
+                new RegExp(`\\b(?:minimum|min\\.?)\\s+(?:of\\s+)?(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
+                new RegExp(`\\bat\\s+least\\s+(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
                 new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:in\\s+(?:practice|a\\s+practice\\s+setting)|practice\\s+setting)\\b`, 'i')
             ];
 
@@ -732,14 +820,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 const years = minYears || maxYears;
                 if (!years) return '';
 
-                if (/\+/.test(match[0]) || /\b(?:minimum|min\.?|at least)\b/i.test(match[0])) {
-                    return `${years}+ years`;
-                }
-
                 return `${years} ${years === '1' ? 'year' : 'years'}`;
             }
 
             for (const source of prioritizedLines) {
+                if (/\bpreferred\b/i.test(source) && !/\b(?:required|must|minimum|min\.?|at\s+least)\b/i.test(source)) continue;
+                if (/\ball experience levels\b/i.test(source)) continue;
                 for (const pattern of patterns) {
                     const match = source.match(pattern);
                     if (match) return formatExperience(match);
@@ -1184,14 +1270,16 @@ document.addEventListener('DOMContentLoaded', () => {
             console.warn(`✗ No address found for: "${searchQuery}"`);
         }
 
+        const correctedData = applyAuthoritativeAddressCorrection(hospitalName || originalHospitalName, location, data);
+
         return {
-            streetAddress: data.streetAddress || '',
-            zipCode: data.zipCode || '',
-            city: data.city || '',
-            state: data.state || '',
-            fullAddress: data.fullAddress || '',
-            website: data.website || '',
-            phone: data.phone || ''
+            streetAddress: correctedData.streetAddress || '',
+            zipCode: correctedData.zipCode || '',
+            city: correctedData.city || '',
+            state: correctedData.state || '',
+            fullAddress: correctedData.fullAddress || '',
+            website: correctedData.website || '',
+            phone: correctedData.phone || ''
         };
     }
 
@@ -1223,6 +1311,36 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateJobCount(count) {
         totalCountElement.textContent = count;
     }
+
+    function openDescriptionModal(job) {
+        if (!job?.description) return;
+
+        descriptionModalTitle.textContent = job.title || 'Job Description';
+        descriptionModalMeta.textContent = [job.jobId, job.hospital, job.location]
+            .filter(Boolean)
+            .join(' | ') || 'Full scraped description for the selected job.';
+        descriptionModalBody.textContent = job.description;
+        descriptionModal.classList.remove('hidden');
+        closeDescriptionModalBtn.focus();
+    }
+
+    function closeDescriptionModal() {
+        descriptionModal.classList.add('hidden');
+        descriptionModalTitle.textContent = 'Job Description';
+        descriptionModalMeta.textContent = 'Full scraped description for the selected job.';
+        descriptionModalBody.textContent = '';
+    }
+
+    closeDescriptionModalBtn.addEventListener('click', closeDescriptionModal);
+    closeDescriptionModalFooterBtn.addEventListener('click', closeDescriptionModal);
+    descriptionModal.addEventListener('click', event => {
+        if (event.target === descriptionModal) closeDescriptionModal();
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape' && !descriptionModal.classList.contains('hidden')) {
+            closeDescriptionModal();
+        }
+    });
 
     function displayRecords(jobs) {
         tableBody.innerHTML = '';
@@ -1299,10 +1417,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const descCell = row.insertCell(18);
             if (job.description) {
-                const descDiv = document.createElement('div');
-                descDiv.className = 'description-cell';
-                descDiv.textContent = job.description;
-                descCell.appendChild(descDiv);
+                const viewDescriptionBtn = document.createElement('button');
+                viewDescriptionBtn.type = 'button';
+                viewDescriptionBtn.className = 'btn btn-primary description-action';
+                viewDescriptionBtn.textContent = 'View Description';
+                viewDescriptionBtn.addEventListener('click', () => openDescriptionModal(job));
+                descCell.appendChild(viewDescriptionBtn);
             } else {
                 descCell.innerHTML = '<span style="color: #94a3b8; font-style: italic; font-size: 12px;">Not scraped</span>';
             }
@@ -1680,7 +1800,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await chrome.storage.local.get(['scrapedJobs']);
         const jobs = data.scrapedJobs || [];
 
-        const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
+        const jobsWithoutDesc = jobs
+            .map((job, index) => ({ job, index }))
+            .filter(item => item.job.link && !item.job.description && !(item.job.isNewLocation && item.job.sourceLink));
         if (jobsWithoutDesc.length === 0) {
             showToast('All jobs already have descriptions!', 'success');
             return;
@@ -1688,6 +1810,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         isGettingDescriptions = true;
         currentJobIndex = 0;
+        currentDescriptionIndex = 0;
+        descriptionQueue = jobsWithoutDesc.map(item => ({
+            storageIndex: item.index,
+            jobId: item.job.jobId || '',
+            link: item.job.link || '',
+            title: item.job.title || ''
+        }));
 
         getDescriptionsBtn.disabled = true;
         getDescriptionsBtn.textContent = 'Getting Descriptions...';
@@ -1699,76 +1828,118 @@ document.addEventListener('DOMContentLoaded', () => {
         const progressLabel = document.getElementById('progressLabel');
         progressSection.classList.remove('hidden');
         progressLabel.textContent = 'Getting Descriptions';
-        progressText.textContent = `0 / ${jobsWithoutDesc.length}`;
+        progressText.textContent = `0 / ${descriptionQueue.length}`;
         progressBar.style.width = '0%';
 
-        processNextJob();
+        await processDescriptionQueue();
     });
 
-    async function processNextJob() {
-        const data = await chrome.storage.local.get(['scrapedJobs']);
-        const jobs = data.scrapedJobs || [];
-
-        const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
-        const totalOriginal = jobs.filter(job => job.link).length;
-        const totalWithoutDesc = jobsWithoutDesc.length;
-        const processed = totalOriginal - totalWithoutDesc;
-
-        // Update progress
+    function updateDescriptionProgress() {
         const progressBar = document.getElementById('progressBar');
         const progressText = document.getElementById('progressText');
-        const totalToProcess = allJobs.filter(job => !job.description && job.link).length;
-        progressText.textContent = `${processed} / ${totalToProcess + processed}`;
-        progressBar.style.width = `${(processed / (totalToProcess + processed)) * 100}%`;
+        const total = descriptionQueue.length || 1;
+        progressText.textContent = `${currentDescriptionIndex} / ${descriptionQueue.length}`;
+        progressBar.style.width = `${(currentDescriptionIndex / total) * 100}%`;
+    }
 
-        if (jobsWithoutDesc.length === 0) {
-            isGettingDescriptions = false;
-            getDescriptionsBtn.disabled = false;
-            getDescriptionsBtn.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M13,13H11V18H13V13M13,9.5H11V11.5H13V9.5Z"/>
-                </svg>
-                Get Descriptions
-            `;
-            document.getElementById('progressSection').classList.add('hidden');
+    function finishDescriptionFetching(failedJobs) {
+        isGettingDescriptions = false;
+        getDescriptionsBtn.disabled = false;
+        getDescriptionsBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M13,13H11V18H13V13M13,9.5H11V11.5H13V9.5Z"/>
+            </svg>
+            Get Descriptions
+        `;
+        updateDescriptionProgress();
+        document.getElementById('progressSection').classList.add('hidden');
+
+        if (failedJobs.length > 0) {
+            const sample = failedJobs.slice(0, 4).join(', ');
+            const suffix = failedJobs.length > 4 ? ', ...' : '';
+            showToast(`${failedJobs.length} description${failedJobs.length === 1 ? '' : 's'} could not be fetched: ${sample}${suffix}`, 'error');
+        } else {
             showToast('All descriptions have been fetched!', 'success');
-            return;
-        }
-
-        const job = jobsWithoutDesc[0];
-        const jobIndex = jobs.findIndex(j => j.link === job.link);
-
-        try {
-            // Add nl=1 param so Jobvite serves the standalone page instead of redirecting to the parent site iframe
-            const jobUrl = new URL(job.link);
-            jobUrl.searchParams.set('nl', '1');
-            const tab = await chrome.tabs.create({ url: jobUrl.toString(), active: false });
-            chrome.runtime.sendMessage({
-                action: 'scrapeJobDescription',
-                tabId: tab.id,
-                jobIndex: jobIndex,
-                jobLink: job.link
-            });
-        } catch (error) {
-            console.error('Error opening tab for job:', error);
-            setTimeout(() => processNextJob(), 1500);
         }
     }
 
-    // Listen for description saved messages from background.js
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.action === 'descriptionSaved') {
-            chrome.storage.local.get(['scrapedJobs'], (data) => {
-                const jobs = data.scrapedJobs || [];
-                allJobs = jobs;
-                displayRecords(allJobs);
+    async function processDescriptionQueue() {
+        const failedJobs = [];
 
-                if (isGettingDescriptions) {
-                    setTimeout(() => processNextJob(), 1500);
-                }
-            });
+        function normalizeJobTitle(title) {
+            return (title || '').toLowerCase().replace(/\s+/g, ' ').trim();
         }
-    });
+
+        function getDescriptionTitle(description) {
+            const match = (description || '').match(/^Title:\s*(.+)$/m);
+            return match ? match[1].trim() : '';
+        }
+
+        try {
+            // Deliberately sequential: the next request is not sent until the current
+            // background fetch has responded and its storage write has completed.
+            while (isGettingDescriptions && currentDescriptionIndex < descriptionQueue.length) {
+                const queueItem = descriptionQueue[currentDescriptionIndex];
+                getDescriptionsBtn.textContent = `Getting... (${currentDescriptionIndex + 1}/${descriptionQueue.length})`;
+
+                try {
+                    const response = await chrome.runtime.sendMessage({
+                        action: 'fetchJobDescription',
+                        url: queueItem.link,
+                        jobLink: queueItem.link,
+                        jobId: queueItem.jobId,
+                        title: queueItem.title
+                    });
+
+                    if (!response?.ok || !response.description?.trim()) {
+                        throw new Error(response?.error || 'The background fetch returned an empty description.');
+                    }
+
+                    const fetchedDescription = response.description.trim();
+                    const fetchedTitle = getDescriptionTitle(fetchedDescription);
+                    if (fetchedTitle && normalizeJobTitle(fetchedTitle) !== normalizeJobTitle(queueItem.title)) {
+                        throw new Error(`Fetched description title "${fetchedTitle}" does not match job title "${queueItem.title}".`);
+                    }
+
+                    const data = await chrome.storage.local.get(['scrapedJobs']);
+                    const jobs = data.scrapedJobs || [];
+                    let jobIndex = -1;
+                    const indexedJob = jobs[queueItem.storageIndex];
+                    if (indexedJob &&
+                        indexedJob.link === queueItem.link &&
+                        indexedJob.jobId === queueItem.jobId &&
+                        normalizeJobTitle(indexedJob.title) === normalizeJobTitle(queueItem.title)) {
+                        jobIndex = queueItem.storageIndex;
+                    }
+                    if (jobIndex === -1) {
+                        jobIndex = jobs.findIndex(job =>
+                            job.link === queueItem.link &&
+                            job.jobId === queueItem.jobId &&
+                            normalizeJobTitle(job.title) === normalizeJobTitle(queueItem.title)
+                        );
+                    }
+
+                    if (jobIndex === -1) {
+                        throw new Error('The job was no longer present in storage.');
+                    }
+
+                    jobs[jobIndex].description = fetchedDescription;
+                    await chrome.storage.local.set({ scrapedJobs: jobs });
+                    allJobs = jobs;
+                    displayRecords(allJobs);
+                } catch (error) {
+                    console.error(`Description fetch failed for ${queueItem.jobId || queueItem.title}:`, error);
+                    failedJobs.push(queueItem.jobId || queueItem.title || 'Unknown job');
+                }
+
+                currentDescriptionIndex++;
+                currentJobIndex = currentDescriptionIndex;
+                updateDescriptionProgress();
+            }
+        } finally {
+            finishDescriptionFetching(failedJobs);
+        }
+    }
 
     // ============ FETCH DETAILS ============
 
@@ -1791,6 +1962,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const jobsToFetch = jobs.map((job, index) => ({ job, index }))
             .filter(item => {
                 if (!item.job.title) return false;
+                if (item.job.isNewLocation && item.job.sourceLink) return false;
                 const needsDetails = !item.job.areaOfPractice || !item.job.position || !item.job.experience;
                 return needsDetails;
             });
@@ -1798,7 +1970,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (jobsToFetch.length === 0) {
             if (confirm('All jobs already have details. Do you want to re-analyze all jobs?')) {
                 detailsQueue = jobs.map((job, index) => ({ job, index }))
-                    .filter(item => item.job.title);
+                    .filter(item => item.job.title && !(item.job.isNewLocation && item.job.sourceLink));
             } else {
                 return;
             }
@@ -1982,9 +2154,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const descText = firstDetail.description || originalJob.description || '';
 
                 // Step 1: Determine AOP — prefer detail extractor's AOP (from page category), fall back to title
-                let finalAOP = hasSpecialtyTrainingSignal(descText)
-                    ? 'Specialty Care'
-                    : (detailAOP || getAOPFromTitle(listingTitle) || 'General Practice Care');
+                let finalAOP = isMedicalDirectorTitle(listingTitle)
+                    ? getMedicalDirectorAreaOfPractice(descText)
+                    : (hasSpecialtyTrainingSignal(descText)
+                        ? 'Specialty Care'
+                        : (detailAOP || getAOPFromTitle(listingTitle) || 'General Practice Care'));
 
                 // Step 2: Match position from listing title
                 let finalPosition = getPositionFromTitle(listingTitle) || firstDetail.position || '';
@@ -2003,7 +2177,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 // Step 5: Medical Director override — if title says "Medical Director", keep it
-                if ((!finalPosition || finalPosition === 'Associate Veterinarian') && listingTitle.toLowerCase().includes('medical director')) {
+                if (isMedicalDirectorTitle(listingTitle)) {
                     finalPosition = APPROVED_POSITION_SET.has('Medical Director') ? 'Medical Director' : '';
                 }
 
@@ -2029,6 +2203,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Handle multi-location jobs
                 if (detailsList.length > 1) {
                     const currentHospital = originalJob.hospital || '';
+                    const parentLink = originalJob.link || originalJob.sourceLink || '';
 
                     // Check if hospital name already has a city suffix (e.g. "The Oncology Service-Leesburg")
                     // Only swap city suffixes if the pattern exists — don't add suffixes to names that don't have one
@@ -2045,10 +2220,18 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
 
                     originalJob.isNewLocation = true;
+                    for (let i = jobs.length - 1; i >= 0; i--) {
+                        if (i === jobIndex) continue;
+                        const existing = jobs[i];
+                        if (existing?.isNewLocation && existing.sourceLink && existing.sourceLink === parentLink) {
+                            jobs.splice(i, 1);
+                        }
+                    }
+
                     const newJobs = [];
+                    const baseJobId = originalJob.jobId || 'UVC';
                     for (let i = 1; i < detailsList.length; i++) {
                         const loc = detailsList[i];
-                        const baseJobId = originalJob.jobId.split('-')[0];
                         // Only build city-specific hospital name if the original had a city suffix
                         let childHospital = currentHospital;
                         if (hasCitySuffix) {
@@ -2059,10 +2242,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                         const newJob = {
                             ...originalJob,
-                            jobId: `${baseJobId}-${i + 1}`,
+                            jobId: `${baseJobId}-loc-${i + 1}`,
                             hospital: childHospital,
-                            city: '',
-                            state: '',
+                            city: loc.city || '',
+                            state: loc.state || '',
                             location: loc.location || `${loc.city}, ${loc.state}`,
                             streetAddress: '',
                             zipCode: '',
@@ -2071,7 +2254,8 @@ document.addEventListener('DOMContentLoaded', () => {
                         };
                         newJobs.push(newJob);
                     }
-                    jobs.splice(jobIndex + 1, 0, ...newJobs);
+                    const insertionIndex = jobs.indexOf(originalJob);
+                    jobs.splice((insertionIndex === -1 ? jobIndex : insertionIndex) + 1, 0, ...newJobs);
                 }
 
                 chrome.storage.local.set({ scrapedJobs: jobs }, () => {
@@ -2178,7 +2362,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 website: job.website || '',
                 phone: job.phone || ''
             };
-            rememberAddressData(getAddressCacheKeys(job.hospital, job.location), cached);
+            const corrected = applyAuthoritativeAddressCorrection(job.hospital, job.location, cached);
+            rememberAddressData(getAddressCacheKeys(job.hospital, job.location), corrected);
         }
     }
 
@@ -2289,6 +2474,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.log(`Using cached address for "${searchHospital}, ${searchLocation}"`);
             } else {
                 addressData = await fetchAddressFromGoogleMaps(searchHospital, searchLocation, job.hospital || '');
+                addressData = applyAuthoritativeAddressCorrection(job.hospital || searchHospital, searchLocation, addressData);
                 rememberAddressData(cacheKeys, addressData);
             }
 

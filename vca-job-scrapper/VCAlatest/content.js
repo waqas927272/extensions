@@ -552,7 +552,12 @@ function startScrapingFromBox() {
     totalPages: totalPagesToScrape,
     startTime: Date.now()
   };
-  chrome.storage.local.set({ scrapingState });
+  chrome.storage.local.set({
+    scrapingState,
+    scrapingComplete: false,
+    scrapingStatus: 'Scraping in progress',
+    scrapingFinalJobCount: 0
+  });
   updateFloatingBoxUI('Starting...', true);
   // Use setInterval to keep scraping even if tab is not active
   if (scrapingInterval) clearInterval(scrapingInterval);
@@ -665,16 +670,21 @@ async function stopScraping() {
   });
 }
 
-async function finishAllJobsScraped(totalScraped) {
+async function finishAllJobsScraped() {
+  // The authoritative total is the final persisted array, not the number of
+  // new rows found on the last page.
+  const finalSnapshot = await chrome.storage.local.get(['jobs']);
+  const finalJobCount = Array.isArray(finalSnapshot.jobs) ? finalSnapshot.jobs.length : 0;
   await stopScraping();
   await chrome.storage.local.set({
     scrapingComplete: true,
-    scrapingStatus: 'All jobs are scraped'
+    scrapingStatus: 'All jobs are scraped',
+    scrapingFinalJobCount: finalJobCount
   });
   updateFloatingBoxUI('All jobs are scraped', false);
   chrome.runtime.sendMessage({
     action: 'scrapingComplete',
-    data: { totalScraped }
+    data: { totalScraped: finalJobCount }
   });
 }
 
@@ -692,7 +702,12 @@ async function startScraping() {
     startTime: Date.now()
   };
   
-  await chrome.storage.local.set({ scrapingState });
+  await chrome.storage.local.set({
+    scrapingState,
+    scrapingComplete: false,
+    scrapingStatus: 'Scraping in progress',
+    scrapingFinalJobCount: 0
+  });
   
   try {
     // Ensure filters are applied if not already
@@ -797,7 +812,7 @@ async function continueScraping() {
     const nextPage = getNextPageInfo();
     if (!nextPage.buttonPresent) {
       console.log('Scraping complete: next arrow is not present on this page.');
-      await finishAllJobsScraped(newJobs.length);
+      await finishAllJobsScraped();
       return;
     }
     
@@ -816,14 +831,14 @@ async function continueScraping() {
         // Navigate to next page
         const didNavigate = await navigateToNextPage(nextPage);
         if (!didNavigate) {
-          await finishAllJobsScraped(newJobs.length);
+          await finishAllJobsScraped();
         }
       } else {
         console.log('No next page available:', nextPage.reason);
-        await finishAllJobsScraped(newJobs.length);
+        await finishAllJobsScraped();
       }
     } else {
-      await finishAllJobsScraped(newJobs.length);
+      await finishAllJobsScraped();
     }
     
     // Persist skipped stats after each page

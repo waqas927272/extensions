@@ -214,6 +214,14 @@
         return /\bboard certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b/i.test(text || '');
     }
 
+    function isMedicalDirectorTitle(title) {
+        return /\bmedical director\b/i.test(title || '');
+    }
+
+    function getMedicalDirectorAreaOfPractice(descriptionText) {
+        return hasSpecialtyTrainingSignal(descriptionText) ? 'Specialty Care' : 'General Practice Care';
+    }
+
     function getAOPParts(aop) {
         return (aop || '').split('/').map(part => part.trim()).filter(Boolean);
     }
@@ -295,6 +303,10 @@
 
     // ===== Determine Area of Practice =====
     function determineAreaOfPractice(title, category, descriptionText) {
+        if (isMedicalDirectorTitle(title)) {
+            return getMedicalDirectorAreaOfPractice(descriptionText);
+        }
+
         if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
         // STEP 1: Use category from page (most reliable — directly from jobvite)
         const aopFromCategory = categoryToAOP(category);
@@ -497,33 +509,51 @@
         return 'Associate Veterinarian';
     }
 
-    // ===== Format salary to standard "$X–$Y per year" or "$X per hour" =====
+    // ===== Format salary to standard "$X-$Y per year" or "$X per hour" =====
     function formatSalary(raw) {
         if (!raw) return '';
 
-        // Check if it's hourly
-        const isHourly = /(?:per\s+)?(?:hour|hr|\/hr)/i.test(raw);
-
-        // Extract all dollar amounts from the string
+        const isHourly = /\b(?:per\s+)?(?:hour|hr)s?\b|\/hr\b/i.test(raw);
         const amounts = [];
-        const amountRegex = /\$?([\d,]+(?:\.\d{2})?)\s*k?\b/gi;
-        let match;
-        while ((match = amountRegex.exec(raw)) !== null) {
-            let num = parseFloat(match[1].replace(/,/g, ''));
-            // If "k" follows the number, multiply by 1000
-            const afterMatch = raw.substring(match.index + match[0].length - 1, match.index + match[0].length + 1);
-            if (/k/i.test(match[0]) || /k/i.test(afterMatch)) {
+        const annualContext = /\b(?:salary|compensation|pay|base|earn(?:ing)?|annual(?:ly)?|year|production)\b/i.test(raw);
+        const amountRegex = /(?:\$|USD\s*)\s*\d[\d\s,]*(?:\.\d{2})?\s*(?:\/\s*k|k)?/gi;
+        const rangePartnerRegex = /(?:\$|USD\s*)\s*\d[\d\s,]*(?:\.\d{2})?\s*(?:\/\s*k|k)?\s*(?:[-–—]|\bto\b)\s*(\d[\d\s,]*(?:\.\d{2})?\s*(?:\/\s*k|k)?)/gi;
+        const rangeHasK = /(?:\/\s*k|k)\b/i.test(raw);
+
+        function addAmount(rawAmount, index) {
+            const before = raw.substring(Math.max(0, index - 45), index);
+            const after = raw.substring(index + rawAmount.length, index + rawAmount.length + 45);
+            const bonusAfterIndex = after.search(/\b(?:sign[-\s]?on|bonus|relocation|stipend|tuition|401)\b/i);
+            const nextDollarIndex = after.indexOf('$');
+            const bonusBefore = /\b(?:sign[-\s]?on|bonus|relocation|stipend|tuition|401)\b/i.test(before);
+            const bonusAfter = bonusAfterIndex !== -1 && (nextDollarIndex === -1 || bonusAfterIndex < nextDollarIndex);
+            const isRangeContinuation = /(?:[-–—]|\bto\b)\s*$/i.test(before);
+            const isBonusAmount = !isRangeContinuation && (bonusAfter || bonusBefore);
+            if (isBonusAmount) return;
+
+            let num = parseFloat(rawAmount.replace(/[^\d.]/g, ''));
+            if (!Number.isFinite(num)) return;
+
+            if (/(?:\/\s*k|k)\b/i.test(rawAmount) || (!isHourly && num < 1000 && (rangeHasK || annualContext))) {
                 num = num * 1000;
             }
             if (num > 0) amounts.push(num);
         }
 
-        if (amounts.length === 0) return raw;
+        let match;
+        while ((match = amountRegex.exec(raw)) !== null) {
+            addAmount(match[0], match.index);
+        }
 
-        // Format number with commas, no decimals for whole numbers
+        while ((match = rangePartnerRegex.exec(raw)) !== null) {
+            addAmount(match[1], match.index + match[0].lastIndexOf(match[1]));
+        }
+
+        if (amounts.length === 0) return '';
+
         const fmt = (n) => {
-            if (Number.isInteger(n)) return '$' + n.toLocaleString('en-US');
-            return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            const rounded = Math.round(n);
+            return '$' + rounded.toLocaleString('en-US');
         };
 
         const unit = isHourly ? 'per hour' : 'per year';
@@ -531,10 +561,9 @@
         if (amounts.length >= 2) {
             const min = Math.min(amounts[0], amounts[1]);
             const max = Math.max(amounts[0], amounts[1]);
-            return `${fmt(min)}–${fmt(max)} ${unit}`;
+            return `${fmt(min)}-${fmt(max)} ${unit}`;
         }
 
-        // Single amount
         return `${fmt(amounts[0])} ${unit}`;
     }
 
@@ -546,22 +575,9 @@
             const minVal = s.minValue ? String(s.minValue).trim() : '';
             const maxVal = s.maxValue ? String(s.maxValue).trim() : '';
             if (minVal && maxVal) {
-                const unit = s.unitText || 'per year';
-                const isHourly = /hour/i.test(unit);
-                const min = parseFloat(minVal.replace(/,/g, ''));
-                const max = parseFloat(maxVal.replace(/,/g, ''));
-                const fmt = (n) => {
-                    if (Number.isInteger(n)) return '$' + n.toLocaleString('en-US');
-                    return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                };
-                return `${fmt(min)}–${fmt(max)} ${isHourly ? 'per hour' : 'per year'}`;
+                return formatSalary(`$${minVal}-$${maxVal} ${s.unitText || 'per year'}`);
             } else if (minVal) {
-                const min = parseFloat(minVal.replace(/,/g, ''));
-                const fmt = (n) => {
-                    if (Number.isInteger(n)) return '$' + n.toLocaleString('en-US');
-                    return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                };
-                return `${fmt(min)}+ per year`;
+                return formatSalary(`$${minVal} ${s.unitText || 'per year'}`);
             }
         }
 
@@ -569,32 +585,18 @@
         if (!descriptionText) return '';
         const text = descriptionText;
 
-        const salaryPatterns = [
-            // "Base salary ranges: $150k - $171k" or "base salary range of $140,000 – 160,000"
-            /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
-            /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
-            // "Pay range: $95,000 - $160,000" or "Salary range: $120,000 - $140,000"
-            /(?:(?:pay|salary|compensation)\s+range)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
-            /(?:(?:pay|salary|compensation)\s+range)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
-            // "Salary: $130,000-$200,000" or "Compensation: $110,000 to $180,000"
-            /(?:salary|compensation|pay)[:\s]+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual))?/i,
-            /(?:salary|compensation|pay)[:\s]+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?(?:\s*(?:per\s+)?(?:year|annually|annum|annual))?/i,
-            // "$130,000-$200,000" or "$130,000 to $200,000"
-            /\$[\d,]+(?:\.\d{2})?\s*[-–—]\s*\$[\d,]+(?:\.\d{2})?/i,
-            /\$[\d,]+(?:\.\d{2})?\s+to\s+\$[\d,]+(?:\.\d{2})?/i,
-            // "$150k - $171k" or "$165 to $185/k"
-            /\$[\d,]+\s*(?:\/k|k)\s*[-–—]+\s*\$?[\d,]+\s*(?:\/k|k)/i,
-            /\$[\d,]+\s*(?:\/k|k)?\s+to\s+\$?[\d,]+\s*(?:\/k|k)/i,
-            // "earn $250,000 annually"
-            /(?:earn|earning)\s+\$[\d,]+(?:\.\d{2})?\s*(?:annually|per\s*year)?/i,
-            // "$250,000 annually" or "$250,000 per year"
-            /\$[\d,]+(?:\.\d{2})?\s*(?:annually|per\s*year|per\s*annum)/i,
-            // "$95 per hour" or "$95/hr"
-            /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hour|hr|\/hr)/i,
-        ];
-        for (const pattern of salaryPatterns) {
-            const m = text.match(pattern);
-            if (m) return formatSalary(m[0].trim());
+        const salaryContext = /\b(?:salary|compensation|pay(?:\s+range)?|base|earn(?:ing)?|annual(?:ly)?|year|hour|production)\b/i;
+        const amountPattern = /\$\s*\d[\d\s,]*(?:\.\d{2})?\s*(?:\/\s*k|k)?/i;
+        const chunks = text
+            .replace(/\r/g, '\n')
+            .split(/\n|(?<=[.!?])\s+/)
+            .map(line => line.trim())
+            .filter(Boolean);
+
+        for (const chunk of chunks) {
+            if (!amountPattern.test(chunk) || !salaryContext.test(chunk)) continue;
+            const formatted = formatSalary(chunk);
+            if (formatted) return formatted;
         }
         return '';
     }
@@ -622,10 +624,12 @@
             new RegExp(`\\b(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
             new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
             new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\s+to\\s+(\\d+)\\s*${yearToken}\\b`, 'i'),
-            new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
+            new RegExp(`\\b(?:minimum|min\\.?)\\s+(?:of\\s+)?(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
+            new RegExp(`\\bat\\s+least\\s+(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\b`, 'i'),
             new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
             new RegExp(`\\bexperience\\s+(?:should\\s+be|must\\s+be|is|of|required(?:\\s+is)?|requires|:)?\\s*(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
-            new RegExp(`\\b(?:minimum|min\\.?|at\\s+least)\\s+(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
+            new RegExp(`\\b(?:minimum|min\\.?)\\s+(?:of\\s+)?(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
+            new RegExp(`\\bat\\s+least\\s+(\\d+)\\+?\\s*${yearToken}\\b`, 'i'),
             new RegExp(`\\b(\\d+)\\+?\\s*${yearToken}\\s+(?:in\\s+(?:practice|a\\s+practice\\s+setting)|practice\\s+setting)\\b`, 'i')
         ];
 
@@ -639,14 +643,12 @@
             const years = minYears || maxYears;
             if (!years) return '';
 
-            if (/\+/.test(match[0]) || /\b(?:minimum|min\.?|at least)\b/i.test(match[0])) {
-                return `${years}+ years`;
-            }
-
             return `${years} ${years === '1' ? 'year' : 'years'}`;
         }
 
         for (const source of prioritizedLines) {
+            if (/\bpreferred\b/i.test(source) && !/\b(?:required|must|minimum|min\.?|at\s+least)\b/i.test(source)) continue;
+            if (/\ball experience levels\b/i.test(source)) continue;
             for (const pattern of patterns) {
                 const match = source.match(pattern);
                 if (match) return formatExperience(match);

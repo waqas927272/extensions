@@ -423,7 +423,8 @@
     table {
       width: 100%;
       min-width: 1780px;
-      border-collapse: collapse;
+      border-collapse: separate;
+      border-spacing: 0;
       table-layout: fixed;
     }
 
@@ -452,6 +453,8 @@
     }
 
     th {
+      background: linear-gradient(135deg, #F9A11B 0%, #e8920f 100%);
+      background-clip: padding-box;
       color: white;
       font-weight: 700;
       text-align: left;
@@ -464,10 +467,11 @@
       user-select: none;
       position: sticky;
       top: 0;
-      z-index: 2;
+      z-index: 20;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.22), 0 2px 5px rgba(120, 73, 4, 0.18);
     }
 
     th:first-child {
@@ -477,11 +481,11 @@
     }
 
     th:first-child:hover {
-      background: transparent;
+      background: linear-gradient(135deg, #F9A11B 0%, #e8920f 100%);
     }
 
     th:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: linear-gradient(135deg, #fbbf24 0%, #F9A11B 100%);
     }
 
     th.sort-asc::after {
@@ -662,6 +666,89 @@
       border: 1px solid #f1f5f9;
       min-width: 160px;
       max-width: 220px;
+    }
+
+    .description-action {
+      min-width: 118px;
+      justify-content: center;
+      padding: 7px 10px;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(69, 45, 18, 0.56);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      z-index: 10000;
+      backdrop-filter: blur(4px);
+    }
+
+    .modal-card {
+      width: min(900px, 100%);
+      max-height: 92vh;
+      overflow: hidden;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 28px 80px rgba(69, 45, 18, 0.3);
+      border: 1px solid rgba(249, 161, 27, 0.2);
+      padding: 20px;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .modal-header h2 {
+      color: #d4850d;
+      font-size: 18px;
+      font-weight: 800;
+      margin-bottom: 4px;
+    }
+
+    .modal-header p {
+      color: #64748b;
+      font-size: 12px;
+    }
+
+    .modal-close {
+      width: 36px;
+      height: 36px;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      background: #f8fafc;
+      color: #475569;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .description-modal-body {
+      max-height: 66vh;
+      overflow-y: auto;
+      border: 1px solid #e2e8f0;
+      border-radius: 12px;
+      background: #fafaf9;
+      padding: 16px;
+      color: #1e293b;
+      font-size: 13px;
+      line-height: 1.55;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 16px;
     }
 
     td:has(.description-cell) {
@@ -942,8 +1029,23 @@
     </div>
   </div>
 
+  <div class="modal-overlay hidden" id="descriptionModal" role="dialog" aria-modal="true" aria-labelledby="descriptionModalTitle">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <h2 id="descriptionModalTitle">Job Description</h2>
+          <p id="descriptionModalMeta">Full scraped description for the selected job.</p>
+        </div>
+        <button class="modal-close" id="closeDescriptionModal" type="button" aria-label="Close description">&times;</button>
+      </div>
+      <div class="description-modal-body" id="descriptionModalBody"></div>
+      <div class="modal-footer">
+        <button class="btn btn-danger" id="closeDescriptionModalFooter" type="button">Close</button>
+      </div>
+    </div>
+  </div>
+
   <div id="toastContainer"></div>
   <script src="records.js"></script>
 </body>
 </html>
-                                                                

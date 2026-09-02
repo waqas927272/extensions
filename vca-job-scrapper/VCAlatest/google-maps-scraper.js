@@ -11,7 +11,7 @@
 // Uses polling — checks every 500ms for up to 15 seconds total.
 (async () => {
     try {
-        const MAX_WAIT = 35000;   // 35 seconds max total
+        const MAX_WAIT = 17000;   // Finish before the records-page tab timeout.
         const POLL = 500;         // Check every 500ms
         const startTime = Date.now();
 
@@ -85,7 +85,7 @@
         // Look for the address button to appear
         // ============================================================
         const remainingTime = MAX_WAIT - (Date.now() - startTime);
-        const phase3End = Date.now() + Math.max(remainingTime, 5000); // At least 5s more
+        const phase3End = Date.now() + Math.max(remainingTime, 0);
 
         while (Date.now() < phase3End) {
             await wait(POLL);
@@ -396,7 +396,11 @@
             const textContent = addressButton.textContent.trim();
             let fullAddress = ariaLabel.replace(/^Address:\s*/i, '').trim() || textContent;
             if (fullAddress && /\d/.test(fullAddress)) {
-                const result = { fullAddress };
+                const result = {
+                    fullAddress,
+                    source: 'google_maps_place',
+                    permanentlyClosed: /\bpermanently\s+closed\b/i.test((addressButton.closest('[role="main"]') || document.body).innerText || '')
+                };
                 Object.assign(result, parseAddress(fullAddress));
                 result.businessName = tryExtractBusinessName();
                 // Also extract website and phone while we're on the detail panel
@@ -405,6 +409,10 @@
                 if (result.streetAddress) return result;
             }
         }
+
+        // Result lists are not a single business panel. Their first address
+        // must never be paired with an unrelated heading or contact details.
+        if (!document.querySelector('h1') || document.querySelector('a.hfpxzc')) return null;
 
         // Method 2: Side panel text elements with address pattern
         const infoSelectors = [

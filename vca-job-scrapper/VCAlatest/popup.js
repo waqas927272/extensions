@@ -122,6 +122,10 @@ document.addEventListener('DOMContentLoaded', function() {
       updateUI('Completed', false);
       progressFill.style.width = '100%';
       progressText.textContent = '100%';
+      const finalCount = Number(request.data?.totalScraped);
+      if (Number.isInteger(finalCount) && finalCount >= 0) {
+        jobCount.textContent = finalCount;
+      }
       loadStoredData();
       
       // Clean up scraping state

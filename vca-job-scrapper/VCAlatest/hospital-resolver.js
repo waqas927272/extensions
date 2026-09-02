@@ -107,6 +107,67 @@
             .toLowerCase();
     }
 
+    function compactHospitalIdentity(value) {
+        return normalizeName(value)
+            .split(' ')
+            .filter(token => !['vca', 'the', 'and', 'of', 'at', 'in'].includes(token))
+            .join('');
+    }
+
+    function hospitalNamesCompactEquivalent(left, right) {
+        const compactLeft = compactHospitalIdentity(left);
+        const compactRight = compactHospitalIdentity(right);
+        return !!compactLeft && !!compactRight && compactLeft === compactRight;
+    }
+
+    function hospitalIdentityTokens(value) {
+        const uiNoiseWords = new Set([
+            'appointment', 'appointments', 'book', 'booking', 'direction', 'directions',
+            'hour', 'hours', 'how', 'info', 'information', 'overview', 'photo', 'photos',
+            'review', 'reviews', 'to', 'website'
+        ]);
+        return normalizeName(value).replace(/\b(?:and\s+)?pet\s+resort$/, '').trim()
+            .split(' ')
+            .filter(token => token.length > 1 && !GENERIC_WORDS.has(token) && !uiNoiseWords.has(token));
+    }
+
+    function hospitalNameIdentityMatches(expectedName, actualName, location = '') {
+        if (hospitalNamesCompactEquivalent(expectedName, actualName)) return true;
+
+        const expectedLocation = parseLocation(location);
+        const fullStateName = Object.keys(STATE_CODES).find(name => STATE_CODES[name] === expectedLocation.state) || '';
+        const locationTokens = new Set([
+            ...normalizeName(expectedLocation.city || '').split(' '),
+            ...normalizeName(expectedLocation.state || '').split(' '),
+            ...normalizeName(fullStateName).split(' '),
+            ...normalizeName(location || '').split(' ')
+        ].filter(Boolean));
+        const expectedTokens = hospitalIdentityTokens(expectedName).filter(token => !locationTokens.has(token));
+        const actualTokens = hospitalIdentityTokens(actualName);
+        if (!expectedTokens.length || !actualTokens.length) return false;
+
+        const matches = expectedTokens.filter(expectedToken =>
+            actualTokens.some(actualToken => tokensApproximatelyMatch(expectedToken, actualToken))
+        ).length;
+        if (expectedTokens.length === 1) return matches === 1;
+        return matches >= 2 && matches / expectedTokens.length >= 0.6;
+    }
+
+    function isVcaLocationOnlyName(value, location = '') {
+        if (!/^vca\b/i.test(cleanText(value || ''))) return false;
+        const expectedLocation = parseLocation(location);
+        const normalizedCity = normalizeName(expectedLocation.city || '');
+        if (!normalizedCity || !normalizeName(value).includes(normalizedCity)) return false;
+
+        const fullStateName = Object.keys(STATE_CODES).find(name => STATE_CODES[name] === expectedLocation.state) || '';
+        const locationTokens = new Set([
+            ...normalizeName(expectedLocation.city || '').split(' '),
+            ...normalizeName(expectedLocation.state || '').split(' '),
+            ...normalizeName(fullStateName).split(' ')
+        ].filter(Boolean));
+        return hospitalIdentityTokens(value).filter(token => !locationTokens.has(token)).length === 0;
+    }
+
     function meaningfulTokens(value) {
         return normalizeName(value).split(' ').filter(token => token.length > 1 && !GENERIC_WORDS.has(token));
     }
@@ -413,7 +474,10 @@
         // source as equal can resolve a child row to one of its sibling hospitals.
         const bestDescriptionName = extractBestHospitalName(context.description, context.hospitalName || '');
         const rawNames = [context.hospitalName, ...(context.candidates || []), bestDescriptionName]
-            .map(cleanHospitalCandidate)
+            // Saved/directory names are already bounded fields. Preserve names
+            // ending in a city (e.g. "Center of Westbury"); the description
+            // phrase extractor deliberately truncates those and is not enough here.
+            .flatMap(value => [cleanText(value).replace(/\s+(?:Appointments?\b|How\s+To\b).*$/i, ''), cleanHospitalCandidate(value)])
             .filter(Boolean);
         const expectedSlug = pageSlug(context.website || '');
         const isLocationSearchLabel = value =>
@@ -427,31 +491,40 @@
         const names = rawNames.filter(name => !isLocationSearchLabel(name));
         const hasSpecificName = names.some(name => !isGenericHospitalName(name));
         const expectsVca = genericLocationLabel || names.some(name => /^VCA\b/i.test(name) || isGenericHospitalName(name));
+        const identityLocation = [expectedLocation.city, expectedLocation.state].filter(Boolean).join(', ');
+        const locationOnlyName = names.some(name => isVcaLocationOnlyName(name, identityLocation));
 
-        const ranked = entries.map(entry => {
+        // State is a hard boundary, not a scoring penalty. Besides preventing
+        // cross-state matches this avoids fuzzy-scoring all 830 entries per row.
+        const eligibleEntries = expectedLocation.state
+            ? entries.filter(entry => stateCode(entry.state) === expectedLocation.state)
+            : entries;
+        const ranked = eligibleEntries.map(entry => {
             const slugMatch = expectedSlug && pageSlug(entry.website) === expectedSlug;
             const similarities = names.map(name => nameSimilarity(name, entry.name));
             const bestSimilarity = similarities.length ? Math.max(...similarities) : 0;
             const exactName = names.some(name => normalizeName(name) === normalizeName(entry.name));
+            const compactEquivalentName = names.some(name => hospitalNamesCompactEquivalent(name, entry.name));
+            const identityName = names.some(name => hospitalNameIdentityMatches(name, entry.name, identityLocation));
             const stateMatch = expectedLocation.state && entry.state === expectedLocation.state;
             const stateMismatch = expectedLocation.state && entry.state !== expectedLocation.state;
             const cityMatch = expectedLocation.city && normalizeName(entry.city) === normalizeName(expectedLocation.city);
             // A weak one-token overlap can point to a different hospital in the
             // same state. Require stronger name evidence before allowing the
             // official address to replace an advertised/nearby city.
-            const nameEvidence = slugMatch || exactName || bestSimilarity >= 0.55;
+            const nameEvidence = slugMatch || exactName || compactEquivalentName || identityName;
             // City/state-only matching is for descriptions that genuinely contain
             // no hospital identity. If a specific hospital was extracted, a
             // different same-city VCA location must not replace it.
-            const locationOnlyAllowed = expectsVca && !hasSpecificName && cityMatch && stateMatch;
+            const locationOnlyAllowed = expectsVca && (!hasSpecificName || locationOnlyName) && cityMatch && stateMatch;
             let score = bestSimilarity * 100;
-            if (exactName) score += 90;
+            if (exactName || compactEquivalentName) score += 90;
             if (slugMatch) score += 160;
             if (stateMatch) score += 50;
             if (cityMatch) score += 35;
             if (stateMismatch) score -= 220;
             if (!nameEvidence && !locationOnlyAllowed) score -= 100;
-            return { entry, score, bestSimilarity, exactName, slugMatch, stateMatch, cityMatch, nameEvidence, locationOnlyAllowed };
+            return { entry, score, bestSimilarity, exactName, compactEquivalentName, identityName, slugMatch, stateMatch, cityMatch, nameEvidence, locationOnlyAllowed };
         }).sort((a, b) => b.score - a.score);
 
         const best = ranked[0];
@@ -572,7 +645,10 @@
 
             const types = Array.isArray(node['@type']) ? node['@type'] : [node['@type'] || ''];
             const typeText = types.join(' ');
-            const businessName = cleanText(node.name || node.location?.name || officialPageName || expectedName);
+            const businessName = cleanText(node.name || node.location?.name || officialPageName || '');
+            // The site's own identity must support the address. Echoing the
+            // requested name here could "verify" a different business's address.
+            if (!businessName) continue;
             const similarity = expectedName && businessName ? nameSimilarity(expectedName, businessName) : 0;
             let score = 100 + similarity * 100;
             if (/VeterinaryCare|AnimalHospital|Hospital|MedicalBusiness|LocalBusiness|Organization/i.test(typeText)) score += 35;
@@ -597,7 +673,7 @@
         if (!candidates.length) {
             const text = stripHtml(html, true);
             const addressMatch = text.match(/(\d{1,6}\s+[^\n,]{2,100}?(?:Street|St|Avenue|Ave|Boulevard|Blvd|Road|Rd|Drive|Dr|Lane|Ln|Court|Ct|Way|Parkway|Pkwy|Highway|Hwy|Trail|Trl|Circle|Cir|Terrace|Ter)\b[^\n,]*),?\s*[\n,]+\s*([^\n,]{2,80}),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)/i);
-            if (addressMatch) {
+            if (addressMatch && officialPageName) {
                 const address = {
                     streetAddress: cleanText(addressMatch[1]),
                     city: cleanText(addressMatch[2]),
@@ -692,6 +768,10 @@
         meaningfulTokens,
         nameSimilarity,
         normalizeName,
+        compactHospitalIdentity,
+        hospitalNamesCompactEquivalent,
+        hospitalNameIdentityMatches,
+        isVcaLocationOnlyName,
         extractOfficialSiteLinks,
         parseOfficialWebsite,
         parseLocation,
