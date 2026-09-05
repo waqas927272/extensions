@@ -63,6 +63,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const DESCRIPTION_REQUEST_TIMEOUT_MS = 15000;
     const DESCRIPTION_FETCH_ATTEMPTS = 3;
     const DESCRIPTION_SAVE_BATCH_SIZE = 1;
+    const ADDRESS_LOOKUP_VERSION = '1.32';
+    let addressRunVerified = 0;
+    let addressRunUnresolved = 0;
 
     // ============ WEBHOOK URL DYNAMIC CONFIGURATION ============
 
@@ -165,7 +168,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function normalizeCityForCompare(value) {
+        if (addressQuality) return addressQuality.normalizeCity(value);
         return normalizeSimpleText(value)
+            .replace(/^washington dc$/, 'washington')
             .replace(/\bmount\b/g, 'mt')
             .replace(/\bsaint\b/g, 'st')
             .replace(/\bfort\b/g, 'ft')
@@ -200,10 +205,21 @@ document.addEventListener('DOMContentLoaded', () => {
         return previous[b.length];
     }
 
-    function cityMatchesExpected(expectedCity, resultCity) {
+    function cityMatchesExpected(expectedCity, resultCity, state = '') {
+        if (addressQuality) return addressQuality.citiesMatch(expectedCity, resultCity, state);
         const expected = normalizeCityForCompare(expectedCity);
         const result = normalizeCityForCompare(resultCity);
         return Boolean(expected && result && expected === result);
+    }
+
+    function cityIsSafeAlternate(expectedCity, resultCity, state = '') {
+        return cityMatchesExpected(expectedCity, resultCity, state);
+    }
+
+    function shouldCorrectStoredCity(expectedCity, resultCity, hospitalName, addressData) {
+        // Fetch Addresses never changes the job's requested city. Source-data
+        // corrections require a separate decision, not a nearby-address match.
+        return false;
     }
 
     function toDisplayCase(value) {
@@ -658,10 +674,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let livewellLocationsCache = null;
 
-    function addressMatchesExpectedHospitalBrand(hospitalName, addressData, descriptionAddress = null) {
+    function addressMatchesExpectedHospitalBrand(hospitalName, addressData, descriptionAddress = null, location = '') {
         if (!addressQuality || !hospitalName) return false;
         return addressQuality.hospitalIdentityMatches(hospitalName, addressData || {}, {
-            descriptionAddress
+            descriptionAddress, location
         });
     }
 
@@ -899,7 +915,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const response = await fetch('https://www.livewellanimal.com/_files/json/locations.geojson', {
-                cache: 'no-cache'
+                cache: 'no-cache', signal: AbortSignal.timeout(8000)
             });
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
@@ -947,11 +963,11 @@ document.addEventListener('DOMContentLoaded', () => {
             const parsed = parseLivewellCityStateZip(props.cityStateZip || '');
             if (!props.name || !props.address1 || !parsed.city || !parsed.state || !parsed.zipCode) continue;
             const nameScore = Math.max(...expectedNames.map(name => scoreLivewellLocationName(name, props.name || '')));
-            const cityMatch = !expectedCity || normalizeCityForCompare(parsed.city) === expectedCity;
+            const cityMatch = !expectedCity || cityMatchesExpected(expected.city, parsed.city, expectedState);
             const stateMatch = !expectedState || getStateAbbreviation(parsed.state) === expectedState;
             // A similar branch name in another state is never the same hospital
             // (for example, Redmond, WA must not match Edmond, OK).
-            if (!stateMatch) continue;
+            if (!stateMatch || (!cityMatch && nameScore < 10)) continue;
             const score = (nameScore * 10) + (cityMatch ? 2 : 0) + (stateMatch ? 2 : -4);
             if (score > bestScore) {
                 bestScore = score;
@@ -960,29 +976,15 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // A strong branch-name match is authoritative even when the job card uses a
-        // nearby city (the public postal city can legitimately differ).
+        // An official directory must also respect the job's city and state.
         if (!best || bestNameScore < 0.6) return emptyAddressResult();
 
         const streetAddress = [best.props.address1, best.props.address2].filter(Boolean).join(', ');
         const stateZip = [getStateAbbreviation(best.parsed.state), best.parsed.zipCode].filter(Boolean).join(' ');
         const fullAddress = [streetAddress, best.parsed.city, stateZip].filter(Boolean).join(', ');
-        let phone = best.props.phone || '';
-
-        if (!phone && best.props.url) {
-            try {
-                const response = await fetch(best.props.url, { cache: 'no-cache' });
-                if (response.ok) {
-                    const html = await response.text();
-                    const telMatch = html.match(/href=["']tel:([^"']+)["']/i)
-                        || html.match(/["']telephone["']\s*:\s*["']([^"']+)["']/i);
-                    const pagePhone = telMatch?.[1] ? decodeURIComponent(telMatch[1]).trim() : '';
-                    phone = pagePhone.replace(/\D/g, '').length >= 10 ? pagePhone : '';
-                }
-            } catch (error) {
-                console.warn(`Could not load Livewell branch phone for "${best.props.name}":`, error);
-            }
-        }
+        // The caller inspects the branch page once and validates its complete
+        // address/contact bundle. Do not fetch it a second time for a loose tel.
+        const phone = best.props.phone || '';
 
         return {
             businessName: best.props.name || hospitalName || originalHospitalName || '',
@@ -2154,7 +2156,57 @@ document.addEventListener('DOMContentLoaded', () => {
     // Address lookup uses Google Maps first. If Maps does not return a usable
     // address, it falls back to Google Search, which checks the right-side panel
     // and then one matching left-side result/card.
-    async function fetchAddressFromGoogleMaps(hospitalName, location, originalHospitalName = '', descriptionAddress = null) {
+    function runAddressLookupTab(url, script, context = {}, timeoutMs = 21000) {
+        return new Promise(resolve => {
+            let settled = false, started = false, tabId = null;
+            const startedAt = Date.now();
+            const finish = result => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                chrome.tabs.onUpdated.removeListener(onUpdated);
+                if (tabId !== null) chrome.tabs.remove(tabId).catch(() => {});
+                console.info('[MPH lookup]', { script, durationMs: Date.now() - startedAt, error: result?.lookupError || '' });
+                resolve(result || {});
+            };
+            const inject = async () => {
+                if (settled || started || tabId === null) return;
+                started = true;
+                try {
+                    await chrome.scripting.executeScript({ target: { tabId }, func: values => {
+                        const d = document.documentElement.dataset;
+                        d.mphExpectedHospital = values.expectedHospital || '';
+                        d.mphExpectedCity = values.expectedCity || '';
+                        d.mphExpectedState = values.expectedState || '';
+                        d.mphDescriptionAddressSearch = values.descriptionAddressSearch ? 'true' : 'false';
+                        d.mphAddressOnlyPostalCheck = values.addressOnlyPostalCheck ? 'true' : 'false';
+                        d.mphBranchQueryResolved = values.branchQueryResolved ? 'true' : 'false';
+                    }, args: [context] });
+                    if (settled) return;
+                    const results = await chrome.scripting.executeScript({ target: { tabId },
+                        files: ['mph-address-quality.js', script] });
+                    finish(results?.[0]?.result || {});
+                } catch (error) { finish({ lookupError: 'script-error', error: error.message }); }
+            };
+            const onUpdated = (id, change) => {
+                if (id === tabId && change.status === 'complete') inject();
+            };
+            const timer = setTimeout(() => finish({ lookupError: 'timeout' }), timeoutMs);
+            chrome.tabs.create({ url, active: false }, tab => {
+                const createError = chrome.runtime.lastError;
+                if (!tab || createError) { finish({ lookupError: 'tab-create-failed' }); return; }
+                if (settled) { chrome.tabs.remove(tab.id).catch(() => {}); return; }
+                tabId = tab.id;
+                chrome.tabs.onUpdated.addListener(onUpdated);
+                if (tab.status === 'complete') inject();
+                else chrome.tabs.get(tabId).then(current => {
+                    if (current.status === 'complete') inject();
+                }).catch(() => finish({ lookupError: 'tab-closed' }));
+            });
+        });
+    }
+
+    async function fetchAddressFromGoogleMaps(hospitalName, location, originalHospitalName = '', descriptionAddress = null, storedAddress = null) {
         // Build search query: "Hospital Name, City, State"
         const searchQuery = `${hospitalName}, ${location}`;
         const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
@@ -2164,14 +2216,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const expectedLocation = parseExpectedLocation(location);
+        const lookupAddress = descriptionAddress || (addressPolicy.hasCompleteStoredAddress(storedAddress)
+            ? { streetAddress: storedAddress.streetAddress, zipCode: storedAddress.zipCode,
+                city: expectedLocation.city, state: expectedLocation.state } : null);
         const identityContext = {
             hospitalName,
             originalHospitalName: originalHospitalName || hospitalName,
             location,
-            descriptionAddress: descriptionAddress || null,
+            descriptionAddress: lookupAddress,
             zipMatchesState
         };
         let lastAddressRejectionResult = addressPolicy?.RESULTS.NO_VERIFIED_LISTING || 'No verified Google listing found';
+        const diagnostics = [];
+        let storedAddressConflict = '';
+        const websiteAttempts = new Map();
+        function trace(source, reason, candidate = {}) {
+            const entry = { source, reason, businessName: candidate.businessName || '',
+                streetAddress: candidate.streetAddress || '', city: candidate.city || '',
+                state: candidate.state || '', zipCode: candidate.zipCode || '' };
+            if (diagnostics.length < 30) diagnostics.push(entry);
+            console.info('[MPH address]', entry);
+        }
 
         function normalizeForCompare(value) {
             return (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -2233,7 +2298,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (expectedCity && !resultCity) return false;
             if (expectedState && !resultState && !zipCode) return false;
-            if (expectedCity && !cityMatchesExpected(expectedCity, resultCity)) return false;
+            if (expectedCity && !cityMatchesExpected(expectedCity, resultCity, expectedState)) return false;
             if (expectedState && resultState && resultState !== expectedState) return false;
             if (expectedState && zipCode && !zipMatchesState(zipCode, expectedState)) return false;
             return true;
@@ -2248,6 +2313,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 ...extraContext
             });
             if (!validation.accepted) {
+                trace(sourceLabel, validation.reason, result);
+                // A positive same-hospital, same-street location contradiction
+                // invalidates the saved bundle. A mere timeout does not.
+                if (['city-and-hospital-mismatch', 'state-mismatch'].includes(validation.reason)
+                    && result.uniquePlaceMatch === true
+                    && storedAddress?.streetAddress
+                    && addressQuality.streetAddressesMatch(storedAddress.streetAddress, result.streetAddress)
+                    && addressQuality.hospitalIdentityMatches(identityContext.originalHospitalName, result, identityContext)) {
+                    storedAddressConflict = addressPolicy.rejectionResult(validation.reason);
+                }
                 const summary = result.fullAddress || result.businessName || [result.city, result.state, result.zipCode].filter(Boolean).join(', ');
                 console.warn(`Ignoring unverified address result (${validation.reason}) from "${sourceLabel}": ${summary}`);
                 const rejectionResult = addressPolicy?.rejectionResult(validation.reason);
@@ -2257,21 +2332,100 @@ document.addEventListener('DOMContentLoaded', () => {
                 return emptyAddressResult();
             }
             validation.result.addressResult = extraContext.acceptanceResult || (
-                result.sourceType === 'google-search'
+                result.sourceType === 'official-website'
+                    ? 'Verified using official hospital website'
+                    : result.sourceType === 'google-search'
                     ? (addressPolicy?.RESULTS.VERIFIED_SEARCH || 'Verified using Google Search')
                     : (addressPolicy?.RESULTS.VERIFIED_MAPS || 'Verified using Google Maps')
             );
+            trace(sourceLabel, 'accepted', validation.result);
             return validation.result;
         }
 
         function mergeMapsData(primary, secondary, sourceLabel = '', extraContext = {}) {
             const safeSecondary = filterDataForExpectedLocation(secondary, sourceLabel, extraContext);
-            if (extraContext.preferSecondary && safeSecondary.verified) return safeSecondary;
+            if (primary?.verified && primary.sourceType === 'livewell-geojson' && safeSecondary.verified
+                && !['google-maps', 'google-search'].includes(safeSecondary.sourceType)) {
+                const sameLivewellStreet = addressQuality.streetAddressesMatch(primary.streetAddress, safeSecondary.streetAddress);
+                // The official Livewell directory is authoritative for the branch
+                // identity and street. Google may use the current postal ZIP while
+                // the directory still carries an older ZIP, so a strictly verified
+                // same-street Google place is allowed to supply the current bundle.
+                if (!sameLivewellStreet) return primary;
+            }
+            if (extraContext.preferSecondary && safeSecondary.verified
+                && !['google-maps', 'google-search'].includes(primary?.sourceType)) return safeSecondary;
             return addressQuality.selectAtomicAddress(primary, safeSecondary, identityContext);
         }
 
         function needsMapsRetry(data) {
             return !data.streetAddress || !data.zipCode || !data.phone || !data.website;
+        }
+
+        function needsAddressRetry(data) {
+            return !data.streetAddress || !data.zipCode;
+        }
+
+        async function verifyOfficialDirectoryPostalData(directoryData) {
+            if (!directoryData?.verified
+                || (directoryData.sourceType !== 'livewell-geojson' && !directoryData.officialDirectorySeed
+                    && !(directoryData.sourceType === 'official-website' && isLivewellHospital(originalHospitalName || hospitalName)))
+                || !directoryData.streetAddress
+                || !directoryData.city
+                || !directoryData.state) {
+                return directoryData;
+            }
+
+            const exactAddressQuery = [
+                directoryData.streetAddress.replace(/\b(?:suites?|ste\.?|units?)\s+.*$/i, '').replace(/[,\s]+$/, ''),
+                directoryData.city,
+                directoryData.state
+            ].filter(Boolean).join(', ');
+            const exactAddressUrl = `https://www.google.com/maps/search/${encodeURIComponent(exactAddressQuery)}`;
+            const postalCandidate = await scrapeGoogleMapsTabSafe(exactAddressUrl, exactAddressQuery, {
+                addressOnlyPostalCheck: true
+            });
+            const candidateState = getStateAbbreviation(postalCandidate?.state || '');
+            const directoryState = getStateAbbreviation(directoryData.state || '');
+            const candidateCity = postalCandidate?.city || '';
+            const exactStreetMatch = addressQuality?.streetAddressesMatch(
+                directoryData.streetAddress,
+                postalCandidate?.streetAddress || ''
+            );
+            const exactLocationMatch = exactStreetMatch
+                && candidateState
+                && candidateState === directoryState
+                && cityMatchesExpected(directoryData.city, candidateCity, directoryState)
+                && /^\d{5}(?:-\d{4})?$/.test(String(postalCandidate?.zipCode || '').trim())
+                && zipMatchesState(postalCandidate.zipCode, directoryData.state);
+
+            if (!exactLocationMatch) {
+                trace('Livewell postal cross-check', 'postal-address-not-verified', directoryData);
+                // Do not promote an unchecked directory ZIP to verified data.
+                // If the description disagrees, the saved directory bundle is
+                // unsafe too; keep the original in previousAddress for recovery.
+                if (descriptionAddress?.zipCode && descriptionAddress.zipCode !== directoryData.zipCode) {
+                    storedAddressConflict = 'Official directory ZIP conflicts with description; postal check unresolved';
+                    return emptyAddressResult();
+                }
+                // The named official branch remains a valid source when Google
+                // has no building listing. A failed optional cross-check is not
+                // evidence that its complete published address is wrong.
+                return directoryData;
+            }
+
+            const correctedZip = String(postalCandidate.zipCode).trim();
+            if (correctedZip === String(directoryData.zipCode || '').trim()) return directoryData;
+
+            return {
+                ...directoryData,
+                zipCode: correctedZip,
+                fullAddress: [
+                    directoryData.streetAddress,
+                    directoryData.city,
+                    `${directoryData.state} ${correctedZip}`.trim()
+                ].filter(Boolean).join(', ')
+            };
         }
 
         function uniqueQueries(names) {
@@ -2290,13 +2444,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         function buildDescriptionAddressQueries() {
-            const structured = descriptionAddress || {};
+            const structured = lookupAddress || {};
             const streetAddress = String(structured.streetAddress || '').trim();
             if (!streetAddress) return [];
 
             const descriptionCity = String(structured.city || '').trim();
             const descriptionState = normalizeStateForCompare(structured.state || '');
-            if (expectedLocation.city && descriptionCity && !cityMatchesExpected(expectedLocation.city, descriptionCity)) {
+            if (expectedLocation.city && descriptionCity && !cityIsSafeAlternate(expectedLocation.city, descriptionCity, expectedLocation.state)) {
                 return [];
             }
             if (expectedLocation.state && descriptionState && descriptionState !== expectedLocation.state) {
@@ -2335,6 +2489,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const expandedParens = base.replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim();
                 const plain = base.replace(/&/g, 'and').replace(/[-–—()]/g, ' ').replace(/\s+/g, ' ').trim();
 
+                const coBrands = base.split(/\s+(?:&|and)\s+/i);
+                if (coBrands.length === 2 && coBrands.every(name => /\b(?:hospital|clinic|veterinary specialists?)\b/i.test(name))) {
+                    names.push(...coBrands);
+                }
                 names.push(base, withoutLocationSuffix, withoutParens, expandedParens, plain);
 
                 if (city) {
@@ -2411,77 +2569,18 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        function scrapeGoogleMapsTabSafe(url, queryLabel, options = {}) {
-            return new Promise((resolve) => {
-                let settled = false;
-                let mapsTabId = null;
-                let listener = null;
-
-                const finish = (result) => {
-                    if (settled) return;
-                    settled = true;
-                    clearTimeout(timeout);
-                    if (listener) chrome.tabs.onUpdated.removeListener(listener);
-                    if (mapsTabId) chrome.tabs.remove(mapsTabId).catch(() => {});
-                    resolve(result || emptyAddressResult());
-                };
-
-                const timeout = setTimeout(() => {
-                    console.warn(`Google Maps timeout for: "${queryLabel}"`);
-                    finish(emptyAddressResult());
-                }, 22000);
-
-                chrome.tabs.create({ url: url, active: false }, (tab) => {
-                    if (!tab) {
-                        finish(emptyAddressResult());
-                        return;
-                    }
-
-                    mapsTabId = tab.id;
-                    listener = (updatedTabId, info) => {
-                        if (updatedTabId === mapsTabId && info.status === 'complete') {
-                            chrome.tabs.onUpdated.removeListener(listener);
-                            listener = null;
-
-                            setTimeout(() => {
-                                if (settled) return;
-                                chrome.scripting.executeScript({
-                                    target: { tabId: mapsTabId },
-                                    func: (mapsContext) => {
-                                        document.documentElement.dataset.mphExpectedHospital = mapsContext.expectedHospital || '';
-                                        document.documentElement.dataset.mphDescriptionAddressSearch = mapsContext.descriptionAddressSearch ? 'true' : 'false';
-                                    },
-                                    args: [options]
-                                }).then(() => chrome.scripting.executeScript({
-                                    target: { tabId: mapsTabId },
-                                    files: ['google-maps-scraper.js']
-                                })).then((results) => {
-                                    const data = results?.[0]?.result || {};
-                                    finish({
-                                        businessName: data.businessName || '',
-                                        streetAddress: data.streetAddress || '',
-                                        zipCode: data.zipCode || '',
-                                        city: data.city || '',
-                                        state: data.state || '',
-                                        fullAddress: data.fullAddress || '',
-                                        website: data.website || '',
-                                        phone: data.phone || '',
-                                        category: data.category || '',
-                                        uniquePlaceMatch: data.uniquePlaceMatch === true,
-                                        branchQueryResolved: data.branchQueryResolved === true,
-                                        sourceType: 'google-maps'
-                                    });
-                                }).catch((err) => {
-                                    console.error(`Google Maps script error for "${queryLabel}":`, err);
-                                    finish(emptyAddressResult());
-                                });
-                            }, 1400);
-                        }
-                    };
-
-                    chrome.tabs.onUpdated.addListener(listener);
-                });
+        async function scrapeGoogleMapsTabSafe(url, queryLabel, options = {}) {
+            const result = await runAddressLookupTab(url, 'google-maps-scraper.js', {
+                expectedHospital: originalHospitalName || hospitalName,
+                expectedCity: expectedLocation.city, expectedState: expectedLocation.state, ...options
             });
+            if (result.lookupError) trace(queryLabel, result.lookupError);
+            if (result.verificationRequired) {
+                const error = new Error('Google verification required');
+                error.code = 'GOOGLE_VERIFICATION_REQUIRED';
+                throw error;
+            }
+            return { ...result, sourceType: 'google-maps' };
         }
 
         function scrapeGoogleSearchTab(queryLabel) {
@@ -2532,6 +2631,9 @@ document.addEventListener('DOMContentLoaded', () => {
                                         phone: data.phone || '',
                                         category: data.category || '',
                                         panelText: data.panelText || '',
+                                        uniquePlaceMatch: data.uniquePlaceMatch === true,
+                                        branchQueryResolved: data.branchQueryResolved === true,
+                                        verificationRequired: data.verificationRequired === true,
                                         sourceType: 'google-search'
                                     });
                                 }).catch((err) => {
@@ -2547,90 +2649,179 @@ document.addEventListener('DOMContentLoaded', () => {
             });
         }
 
-        function scrapeGoogleSearchTabSafe(queryLabel) {
-            return new Promise((resolve) => {
-                let settled = false;
-                let searchTabId = null;
-                let listener = null;
-
-                const finish = (result) => {
-                    if (settled) return;
-                    settled = true;
-                    clearTimeout(timeout);
-                    if (listener) chrome.tabs.onUpdated.removeListener(listener);
-                    if (searchTabId) chrome.tabs.remove(searchTabId).catch(() => {});
-                    resolve(result || emptyAddressResult());
-                };
-
-                const timeout = setTimeout(() => {
-                    console.warn(`Google Search timeout for: "${queryLabel}"`);
-                    finish(emptyAddressResult());
-                }, 26000);
-
-                const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(queryLabel)}`;
-                chrome.tabs.create({ url: searchUrl, active: false }, (tab) => {
-                    if (!tab) {
-                        finish(emptyAddressResult());
-                        return;
-                    }
-
-                    searchTabId = tab.id;
-                    listener = (updatedTabId, info) => {
-                        if (updatedTabId === searchTabId && info.status === 'complete') {
-                            chrome.tabs.onUpdated.removeListener(listener);
-                            listener = null;
-
-                            setTimeout(() => {
-                                if (settled) return;
-                                chrome.scripting.executeScript({
-                                    target: { tabId: searchTabId },
-                                    files: ['google-search-scraper.js']
-                                }).then((results) => {
-                                    const data = results?.[0]?.result || {};
-                                    finish({
-                                        businessName: data.businessName || '',
-                                        streetAddress: data.streetAddress || '',
-                                        zipCode: data.zipCode || '',
-                                        city: data.city || '',
-                                        state: data.state || '',
-                                        fullAddress: data.fullAddress || '',
-                                        website: data.website || '',
-                                        phone: data.phone || '',
-                                        category: data.category || '',
-                                        panelText: data.panelText || '',
-                                        sourceType: 'google-search'
-                                    });
-                                }).catch((err) => {
-                                    console.error(`Google Search script error for "${queryLabel}":`, err);
-                                    finish(emptyAddressResult());
-                                });
-                            }, 1200);
-                        }
-                    };
-
-                    chrome.tabs.onUpdated.addListener(listener);
-                });
+        async function scrapeGoogleSearchTabSafe(queryLabel) {
+            const url = 'https://www.google.com/search?q=' + encodeURIComponent(queryLabel);
+            const result = await runAddressLookupTab(url, 'google-search-scraper.js', {
+                expectedHospital: originalHospitalName || hospitalName,
+                expectedCity: expectedLocation.city, expectedState: expectedLocation.state
             });
+            if (result.lookupError) trace(queryLabel, result.lookupError);
+            return { ...result, sourceType: 'google-search' };
         }
 
-        console.log(`Google Maps address search: "${searchQuery}"`);
-        let data = mergeMapsData(emptyAddressResult(), await scrapeGoogleMapsTabSafe(mapsUrl, searchQuery), searchQuery);
+        async function scrapeHospitalWebsiteTabSafe(url, queryLabel, options = {}) {
+            const result = await runAddressLookupTab(url, 'hospital-website-scraper.js', options, 12000);
+            if (result.lookupError) trace(queryLabel, result.lookupError);
+            if (result.streetAddress && !addressQuality.sanitizeWebsite(result.website)) {
+                trace(queryLabel, 'blocked-website-destination');
+                return emptyAddressResult();
+            }
+            return { ...result, sourceType: 'official-website' };
+        }
+
+        async function inspectHospitalWebsite(url, queryLabel, options = {}) {
+            options = { expectedHospital: originalHospitalName || hospitalName,
+                expectedCity: expectedLocation.city, expectedState: expectedLocation.state, ...options };
+            // Google's opaque /goto links are navigation hints, never a saved
+            // hospital URL. Resolve them and validate the actual destination.
+            const safeUrl = addressQuality.sanitizeWebsite(url) || googleDiscoveryUrl(url);
+            if (!safeUrl) return emptyAddressResult();
+            const attemptKey = JSON.stringify([safeUrl, options.expectedHospital, options.expectedCity,
+                options.expectedState, options.branchQueryResolved === true]);
+            if (websiteAttempts.has(attemptKey)) return websiteAttempts.get(attemptKey);
+            const inspection = (async () => {
+                let firstCandidate = emptyAddressResult();
+                let acceptedCandidate = null;
+                const pending = [safeUrl];
+                const visited = new Set();
+                // Static structured/contact data needs no browser tab. Follow at
+                // most two same-site contact/location pages, never crawl a site.
+                while (pending.length && visited.size < 3) {
+                    const pageUrl = pending.shift();
+                    if (visited.has(pageUrl)) continue;
+                    visited.add(pageUrl);
+                    try {
+                        const response = await fetch(pageUrl, { signal: AbortSignal.timeout(6000), credentials: 'omit' });
+                        if (!response.ok) { trace(pageUrl, `http-${response.status}`); continue; }
+                        const html = await response.text();
+                        const doc = new DOMParser().parseFromString(html, 'text/html');
+                        const actualUrl = response.url || pageUrl;
+                        if (!addressQuality.sanitizeWebsite(actualUrl)) { trace(pageUrl, 'blocked-website-destination'); continue; }
+                        const candidate = { ...globalThis.MphExtractWebsiteAddress(doc, options, actualUrl), sourceType: 'official-website' };
+                        if (candidate.streetAddress) {
+                            firstCandidate = candidate;
+                            if (addressQuality.validateAddressCandidate(candidate, { ...identityContext, ...options }).accepted) {
+                                acceptedCandidate = acceptedCandidate
+                                    ? addressQuality.selectAtomicAddress(acceptedCandidate, candidate, identityContext) : candidate;
+                                if (acceptedCandidate.phone) return acceptedCandidate;
+                            } else filterDataForExpectedLocation(candidate, actualUrl, options);
+                        }
+                        for (const link of doc.querySelectorAll('a[href]')) {
+                            const href = link.getAttribute('href') || '';
+                            if (!/contact|locations?(?:\/|$)/i.test(href)) continue;
+                            try {
+                                const next = new URL(href, actualUrl);
+                                if (next.origin !== new URL(actualUrl).origin || next.search || next.hash) continue;
+                                if (!visited.has(next.href) && !pending.includes(next.href) && pending.length < 2) pending.push(next.href);
+                            } catch (_) { /* Ignore malformed navigation links. */ }
+                        }
+                    } catch (error) { trace(pageUrl, error.name === 'TimeoutError' ? 'timeout' : 'website-fetch-failed'); }
+                }
+                // A dynamic site can still use the existing rendered-page path.
+                if (acceptedCandidate) return acceptedCandidate;
+                if (!firstCandidate.streetAddress) return scrapeHospitalWebsiteTabSafe(safeUrl, queryLabel, options);
+                return firstCandidate;
+            })();
+            websiteAttempts.set(attemptKey, inspection);
+            return inspection;
+        }
+
+        function googleDiscoveryUrl(value) {
+            try {
+                const url = new URL(value);
+                return url.protocol === 'https:' && /^(?:www\.)?google\.com$/.test(url.hostname)
+                    && ['/goto', '/url'].includes(url.pathname) && url.searchParams.has('url') ? url.href : '';
+            } catch (_) { return ''; }
+        }
+
+        let data = emptyAddressResult();
+
+        if (isLivewellHospital(hospitalName) || isLivewellHospital(originalHospitalName)) {
+            const livewellData = await fetchLivewellLocationAddress(hospitalName, location, originalHospitalName);
+            if (livewellData.streetAddress && livewellData.zipCode) {
+                livewellData.category = 'Veterinary hospital';
+                livewellData.uniquePlaceMatch = true;
+                livewellData.branchQueryResolved = true;
+                data = mergeMapsData(data, livewellData, 'Livewell official location directory', {
+                    acceptanceResult: addressPolicy?.RESULTS.VERIFIED_OFFICIAL_DIRECTORY || 'Verified using official hospital directory'
+                });
+                // Verify the published branch page directly. New branches often
+                // have no Google listing, and directory ZIPs can lag behind.
+                if (livewellData.website) {
+                    const branchData = await inspectHospitalWebsite(livewellData.website, searchQuery);
+                    branchData.officialDirectorySeed = true;
+                    data = mergeMapsData(data, branchData, livewellData.website, { preferSecondary: true });
+                }
+            }
+        }
+
+        async function searchGoogleAndOfficialWebsite(query, options = {}) {
+            let searchData = await scrapeGoogleSearchTabSafe(query);
+            if (searchData.verificationRequired) {
+                const verificationError = new Error('Google requires a verification check before address fetching can continue.');
+                verificationError.code = 'GOOGLE_VERIFICATION_REQUIRED';
+                throw verificationError;
+            }
+            // A left-side Google result can expose a full address while its title
+            // is an SEO headline or localized text rather than the hospital name.
+            // Confirm such non-unique results on the linked official website.
+            const preliminaryValidation = searchData.streetAddress && searchData.zipCode
+                ? addressQuality?.validateAddressCandidate(searchData, {
+                    ...identityContext,
+                    ...options
+                })
+                : null;
+            if (preliminaryValidation && !preliminaryValidation.accepted) {
+                filterDataForExpectedLocation(searchData, query, options);
+            }
+            const searchWebsite = addressQuality?.sanitizeWebsite(searchData.website || '') || '';
+            const discoveredWebsite = addressQuality?.sanitizeWebsite(searchData.websiteCandidate?.website || '')
+                || googleDiscoveryUrl(searchData.websiteCandidate?.discoveryUrl || searchData.discoveryUrl || '');
+            const websiteToInspect = (!preliminaryValidation?.accepted || !searchWebsite)
+                ? discoveredWebsite || searchWebsite : searchWebsite;
+            const shouldInspectOfficialWebsite = !!websiteToInspect && (
+                !preliminaryValidation?.accepted
+                || searchData.uniquePlaceMatch !== true
+                || !searchData.phone
+                || !searchWebsite
+            );
+            if (shouldInspectOfficialWebsite) {
+                const websiteData = await inspectHospitalWebsite(websiteToInspect, query, {
+                    expectedHospital: originalHospitalName || hospitalName,
+                    expectedCity: expectedLocation.city,
+                    expectedState: expectedLocation.state,
+                    branchQueryResolved: searchData.branchQueryResolved === true
+                });
+                if (websiteData.streetAddress && websiteData.zipCode
+                    && addressQuality.validateAddressCandidate(websiteData, { ...identityContext, ...options }).accepted) {
+                    searchData = addressQuality.selectAtomicAddress(searchData, websiteData, { ...identityContext, ...options });
+                }
+            }
+            return mergeMapsData(data, searchData, query, options);
+        }
 
         const descriptionQueries = buildDescriptionAddressQueries();
-        const descriptionStreet = descriptionAddress?.streetAddress || '';
+        const descriptionStreet = lookupAddress?.streetAddress || '';
         const dataMatchesDescriptionStreet = () => Boolean(
-            descriptionStreet && data.streetAddress && addressQuality?.streetAddressesMatch(data.streetAddress, descriptionStreet)
+            descriptionStreet && data.streetAddress && (addressQuality?.streetAddressesMatch(data.streetAddress, descriptionStreet)
+                || addressQuality?.isStreetEnrichment(descriptionStreet, data.streetAddress)
+                || (data.uniquePlaceMatch === true && addressQuality?.isPublishedStreetCorrection(descriptionStreet, data.streetAddress)))
         );
-        if (descriptionQueries.length && (needsMapsRetry(data) || !dataMatchesDescriptionStreet())) {
-            for (const query of descriptionQueries.slice(0, 2)) {
-                if (data.addressResult === addressPolicy?.RESULTS.VERIFIED_DESCRIPTION_MAPS) break;
+
+        // Maps usually exposes the complete atomic place record in one request.
+        // Make it the fast path; Search and official-site inspection are fallbacks.
+        console.log(`Google Maps address search: "${searchQuery}"`);
+        data = mergeMapsData(data, await scrapeGoogleMapsTabSafe(mapsUrl, searchQuery), searchQuery);
+
+        if (descriptionQueries.length && needsMapsRetry(data)) {
+            for (const query of descriptionQueries.slice(0, 1)) {
                 console.log(`Google Maps description-address candidate: "${query}"`);
                 const descriptionUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}`;
-                const mapsData = await scrapeGoogleMapsTabSafe(descriptionUrl, query, {
+                const descriptionMapsData = await scrapeGoogleMapsTabSafe(descriptionUrl, query, {
                     expectedHospital: originalHospitalName || hospitalName,
                     descriptionAddressSearch: true
                 });
-                data = mergeMapsData(data, mapsData, query, {
+                data = mergeMapsData(data, descriptionMapsData, query, {
                     requireDescriptionStreetMatch: true,
                     acceptanceResult: addressPolicy?.RESULTS.VERIFIED_DESCRIPTION_MAPS || 'Verified using description address + Google Maps',
                     preferSecondary: true
@@ -2638,16 +2829,38 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        if (descriptionStreet && data.verified && !dataMatchesDescriptionStreet()) {
-            lastAddressRejectionResult = addressPolicy?.RESULTS.REJECTED_DESCRIPTION_ADDRESS ||
-                'Google result rejected because description address did not match';
-            data = emptyAddressResult();
+        if (needsMapsRetry(data)) {
+            // When the address is already known, search that exact branch for
+            // its missing contacts instead of repeating a broad name search.
+            const contactQuery = data.verified && dataMatchesDescriptionStreet() ? descriptionQueries[0] : '';
+            const fallbackQuery = contactQuery || searchQuery;
+            console.log(`Google Search address fallback: "${fallbackQuery}"`);
+            data = await searchGoogleAndOfficialWebsite(fallbackQuery, contactQuery ? {
+                requireDescriptionStreetMatch: true,
+                acceptanceResult: addressPolicy?.RESULTS.VERIFIED_DESCRIPTION_SEARCH,
+                preferSecondary: true
+            } : { acceptanceResult: addressPolicy?.RESULTS.VERIFIED_SEARCH || 'Verified using Google Search' });
         }
 
-        if (needsMapsRetry(data)) {
-            for (const query of uniqueQueries(buildHospitalNameVariants()).slice(0, 6)) {
-                if (!needsMapsRetry(data)) break;
-                if (query === searchQuery) continue;
+        // Only use one description-address Search fallback, and only while the
+        // street/ZIP are still unresolved. Missing optional contacts do not cause
+        // another round of address searches.
+        if (descriptionQueries.length && needsAddressRetry(data)) {
+            const query = descriptionQueries[0];
+            console.log(`Google Search description-address fallback: "${query}"`);
+            data = await searchGoogleAndOfficialWebsite(query, {
+                requireDescriptionStreetMatch: true,
+                acceptanceResult: addressPolicy?.RESULTS.VERIFIED_DESCRIPTION_SEARCH || 'Verified using description address + Google Search',
+                preferSecondary: true
+            });
+        }
+
+        // Once a complete address has been verified, do not spend several more
+        // searches trying to manufacture a phone or website that the hospital
+        // does not publish. One Search plus one Maps check is enough for contacts.
+        if (needsAddressRetry(data)) {
+            for (const query of uniqueQueries(buildHospitalNameVariants()).filter(query => query !== searchQuery).slice(0, 1)) {
+                if (!needsAddressRetry(data)) break;
                 console.log(`Google Maps address candidate: "${query}"`);
                 const variantUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}`;
                 const mapsData = await scrapeGoogleMapsTabSafe(variantUrl, query);
@@ -2658,13 +2871,14 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        if (needsMapsRetry(data)) {
-            const searchQueries = [...descriptionQueries, ...uniqueQueries(buildHospitalNameVariants())];
-            for (const query of [...new Set(searchQueries)].slice(0, 6)) {
-                if (!needsMapsRetry(data)) break;
+        if (needsAddressRetry(data)) {
+            const searchQueries = uniqueQueries(buildHospitalNameVariants())
+                .filter(query => query !== searchQuery)
+                .slice(0, 1);
+            for (const query of searchQueries) {
+                if (!needsAddressRetry(data)) break;
                 console.log(`Google Search address candidate: "${query}"`);
-                const searchData = await scrapeGoogleSearchTabSafe(query);
-                data = mergeMapsData(data, searchData, query, descriptionStreet ? {
+                data = await searchGoogleAndOfficialWebsite(query, descriptionStreet ? {
                     requireDescriptionStreetMatch: true,
                     acceptanceResult: addressPolicy?.RESULTS.VERIFIED_DESCRIPTION_SEARCH || 'Verified using description address + Google Search'
                 } : {
@@ -2672,6 +2886,49 @@ document.addEventListener('DOMContentLoaded', () => {
                 });
             }
         }
+        // A new Livewell branch can be present in the official directory before
+        // it has a named Google business listing. In that case, ask Maps for the
+        // exact official street solely to verify the postal ZIP. No phone,
+        // website, or business identity is copied from the address-only result.
+        // Use a previously discovered site as a lookup seed, not as trusted data.
+        // Inspect it even if Google failed to return a usable address this time.
+        if (needsMapsRetry(data) && !storedAddressConflict && storedAddress?.website && !addressPolicy.isPlaceholder(storedAddress.website)) {
+            data = mergeMapsData(data, await inspectHospitalWebsite(storedAddress.website, searchQuery), storedAddress.website);
+        }
+
+        // Validate after every discovery path, including the saved-website seed.
+        // A later fallback must never resurrect a rejected description bundle.
+        data = await verifyOfficialDirectoryPostalData(data);
+        const verifiedGoogleAddressCorrection = data.verified && data.uniquePlaceMatch === true
+            && ['google-maps', 'google-search'].includes(data.sourceType);
+        if (descriptionStreet && data.verified && !verifiedGoogleAddressCorrection && !dataMatchesDescriptionStreet()) {
+            lastAddressRejectionResult = addressPolicy.RESULTS.REJECTED_DESCRIPTION_ADDRESS;
+            data = emptyAddressResult();
+        }
+
+        // Run enrichment after ALL discovery paths, not only the first Maps
+        // response. Keep the complete source bundle; never discard a new suite
+        // because the older street/ZIP happen to match.
+        if (data.verified && data.website) {
+            const published = await inspectHospitalWebsite(data.website, searchQuery);
+            const check = addressQuality.validateAddressCandidate(published, identityContext);
+            if (check.accepted) data = addressQuality.selectAtomicAddress(data, published, identityContext);
+            if (check.accepted && data.zipCode.slice(0, 5) === published.zipCode.slice(0, 5)
+                && published.uniquePlaceMatch === true
+                && addressQuality.isPublishedStreetCorrection(data.streetAddress, published.streetAddress)) {
+                trace(data.website, 'completed-published-street', published);
+                // A unique Google place remains authoritative for its street
+                // and ZIP; official pages can supply missing branch contacts.
+                if (!['google-maps', 'google-search'].includes(data.sourceType)) {
+                    data = filterDataForExpectedLocation(published, data.website);
+                } else {
+                    // Add omitted suite/directional detail for this same street;
+                    // this check cannot move the row to another street/branch.
+                    data = { ...data, streetAddress: published.streetAddress };
+                }
+            }
+        }
+
         if (data.streetAddress || data.zipCode) {
             console.log(`✓ SUCCESS: "${searchQuery}"`);
             console.log(`  → Street="${data.streetAddress}", City="${data.city}", State="${data.state}", Zip="${data.zipCode}"`);
@@ -2697,7 +2954,11 @@ document.addEventListener('DOMContentLoaded', () => {
             allowPostalCityMismatch: data.allowPostalCityMismatch || false,
             uniquePlaceMatch: data.uniquePlaceMatch === true,
             branchQueryResolved: data.branchQueryResolved === true,
-            addressResult: data.addressResult || lastAddressRejectionResult
+            branchEvidence: data.branchEvidence || '',
+            sourceUrl: data.sourceUrl || data.website || '',
+            contactSourceUrl: data.contactSourceUrl || '',
+            addressResult: data.addressResult || storedAddressConflict || lastAddressRejectionResult,
+            diagnostics, storedAddressConflict: data.verified ? '' : storedAddressConflict
         };
     }
 
@@ -2731,10 +2992,28 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function hasCompleteCityAndState(job) {
+        recoverInvalidJobCity(job);
         const city = (job?.city || '').replace(/\s+/g, ' ').trim();
         const state = (job?.state || '').replace(/\s+/g, ' ').trim();
-        if (!city || !state) return false;
+        if (!isUsableCityValue(city) || !isStateValue(state)) return false;
         return ![city, state].some(value => /\b(?:remote|nationwide)\b/i.test(value));
+    }
+
+    function isUsableCityValue(value) {
+        const city = (value || '').replace(/\s+/g, ' ').trim();
+        if (!city || city.length > 80 || !/[A-Za-z]/.test(city) || !/[AEIOUY]/i.test(city)) return false;
+        return !/^(?:-|n\/?a|none|null|undefined|unknown|tbd|dnt|not available|remote|nationwide)$/i.test(city);
+    }
+
+    function recoverInvalidJobCity(job) {
+        if (!job || isUsableCityValue(job.city) || !isStateValue(job.state || '')) return false;
+        const jobSite = String(job.description || '').match(/^\s*Job Site:\s*(.+?)\s*$/im)?.[1] || job.hospital || '';
+        const parenthetical = String(jobSite).match(/\(([^()]+)\)\s*$/);
+        const candidate = parenthetical?.[1]?.replace(/\s+/g, ' ').trim() || '';
+        if (candidate.split(/\s+/).length < 2 || !isUsableCityValue(candidate)) return false;
+        job.city = formatCityForStorage(candidate);
+        job.location = `${job.city}, ${formatStateForStorage(job.state)}`;
+        return true;
     }
 
     function excludeJobsWithoutCompleteLocation(jobs) {
@@ -3029,7 +3308,9 @@ document.addEventListener('DOMContentLoaded', () => {
             jobIdCell.style.color = '#64748b';
             row.insertCell(4).textContent = job.hospital;
             row.insertCell(5).textContent = 'Mission Pet Health (Parent Client)';
-            row.insertCell(6).textContent = job.streetAddress || '-';
+            const streetCell = row.insertCell(6);
+            streetCell.textContent = job.streetAddress || '-';
+            streetCell.title = job.addressConflict || job.addressResult || 'Address has not been verified by this version.';
             row.insertCell(7).textContent = job.city;
             row.insertCell(8).textContent = job.state;
             row.insertCell(9).textContent = job.zipCode || '-';
@@ -4093,10 +4374,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         zipCode: structuredZip
                     };
 
-                    if (structuredStreet && addressPolicy?.isPlaceholder(originalJob.streetAddress)) {
+                    if (!originalJob.addressConflict && structuredStreet && addressPolicy?.isPlaceholder(originalJob.streetAddress)) {
                         originalJob.streetAddress = structuredStreet;
                     }
-                    if (structuredZip && addressPolicy?.isPlaceholder(originalJob.zipCode)) {
+                    if (!originalJob.addressConflict && structuredZip && addressPolicy?.isPlaceholder(originalJob.zipCode)) {
                         originalJob.zipCode = structuredZip;
                     }
                 }
@@ -4160,11 +4441,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function hasUsableCachedAddress(data) {
-        return !!(data && data.streetAddress && data.zipCode && data.phone && data.website
+        return !!(data && data.verified && data.streetAddress && data.zipCode
             && !addressPolicy?.isPlaceholder(data.streetAddress)
-            && !addressPolicy?.isPlaceholder(data.zipCode)
-            && !addressPolicy?.isPlaceholder(data.phone)
-            && !addressPolicy?.isPlaceholder(data.website));
+            && !addressPolicy?.isPlaceholder(data.zipCode));
     }
 
     function parseLocationParts(location) {
@@ -4232,7 +4511,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function rememberAddressData(keys, data) {
-        if (!hasUsableCachedAddress(data)) return;
+        if (!hasUsableCachedAddress(data) && !data?.addressResult) return;
         for (const key of keys) {
             addressCache.set(key, { ...data });
         }
@@ -4241,9 +4520,36 @@ document.addEventListener('DOMContentLoaded', () => {
     function getRememberedAddress(keys) {
         for (const key of keys) {
             const cached = addressCache.get(key);
-            if (hasUsableCachedAddress(cached)) return { ...cached };
+            if (hasUsableCachedAddress(cached) || cached?.addressResult) return { ...cached };
         }
         return null;
+    }
+
+    function getAddressLookupSignature(job) {
+        return addressPolicy.lookupSignature(job);
+    }
+
+    function hasCurrentAddressLookup(job) {
+        return addressPolicy.isLookupComplete(job, ADDRESS_LOOKUP_VERSION);
+    }
+
+    function markAddressLookupComplete(job, verified) {
+        if (!job) return;
+        addressPolicy.recordLookupAttempt(job, ADDRESS_LOOKUP_VERSION, verified);
+    }
+
+    function shouldReplaceStoredAddressBundle(job, verifiedResult) {
+        if (!isLivewellHospital(job?.hospital || '')) return false;
+        if (verifiedResult?.sourceType === 'livewell-geojson') return true;
+
+        // An intersection is not a deliverable street address. A strictly
+        // verified single Livewell place may replace it with the current numbered
+        // street; ordinary complete description addresses still keep the prior
+        // contact-only behavior requested by the user.
+        const storedStreet = String(job?.streetAddress || '').trim();
+        return verifiedResult?.uniquePlaceMatch === true
+            && /^\d/.test(String(verifiedResult?.streetAddress || '').trim())
+            && (!/^\d/.test(storedStreet) || /\s(?:&|and)\s/i.test(storedStreet));
     }
 
     function canLookupAddressForJob(job) {
@@ -4258,7 +4564,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const descriptionCity = structured.city || '';
         const descriptionState = getStateAbbreviation(structured.state || '');
 
-        if (expectedCity && descriptionCity && !cityMatchesExpected(expectedCity, descriptionCity)) return null;
+        if (expectedCity && descriptionCity && !cityMatchesExpected(expectedCity, descriptionCity, expectedState)) return null;
         if (expectedState && descriptionState && expectedState !== descriptionState) return null;
 
         const rawStreetAddress = addressPolicy?.isPlaceholder(structured.streetAddress)
@@ -4276,7 +4582,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ? String(structured.zipCode).trim()
             : '';
 
-        if (!streetAddress && !zipCode) return null;
+        if (!streetAddress || !zipCode) return null;
         return { streetAddress, zipCode };
     }
 
@@ -4339,7 +4645,13 @@ document.addEventListener('DOMContentLoaded', () => {
         jobs.forEach(job => {
             const before = JSON.stringify([job.hospital, job.streetAddress, job.zipCode, job.phone, job.website, job.addressResult]);
             addressPolicy?.normalizeLegacyRecord(job);
+            if (!addressPolicy?.isPlaceholder(job.website)) {
+                job.website = addressQuality?.sanitizeWebsite(job.website || '') || '-';
+            }
             resolveMissionHospitalFromDescription(job);
+            if (savedAddressStateMismatch(job) || jobLocationMismatch(job)) {
+                addressPolicy.invalidateConflictingAddress(job, 'Stored address does not match the job city/state');
+            }
             const after = JSON.stringify([job.hospital, job.streetAddress, job.zipCode, job.phone, job.website, job.addressResult]);
             if (before !== after) defaultedAddressCount++;
         });
@@ -4362,13 +4674,14 @@ document.addEventListener('DOMContentLoaded', () => {
             renderCurrentView();
         }
 
-        // Re-check every lookup-capable hospital on each run. This corrects complete-
-        // looking rows created by older builds, including wrong but populated phones.
+        // Each extension version verifies a hospital/location once. A second click
+        // resumes only unfinished rows; it does not repeat hundreds of completed
+        // Google lookups. Hospital or location edits automatically invalidate the stamp.
         const jobsNeedingAddresses = jobs.map((job, index) => ({ job, index }))
-            .filter(item => canLookupAddressForJob(item.job));
+            .filter(item => canLookupAddressForJob(item.job) && !hasCurrentAddressLookup(item.job));
 
         if (jobsNeedingAddresses.length === 0) {
-            if (confirm('All jobs already have addresses. Do you want to re-fetch addresses for all jobs?')) {
+            if (confirm('All eligible jobs have verified addresses for this version. Recheck all of them, including missing contacts?')) {
                 addressQueue = jobs.map((job, index) => ({ job, index }))
                     .filter(item => canLookupAddressForJob(item.job));
             } else {
@@ -4387,6 +4700,8 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         primeAddressCache(jobs);
+        addressRunVerified = 0;
+        addressRunUnresolved = 0;
         isFetchingAddresses = true;
         currentAddressIndex = 0;
         fetchAddressesBtn.disabled = true;
@@ -4405,13 +4720,19 @@ document.addEventListener('DOMContentLoaded', () => {
         processNextAddress();
     });
 
+    function findAddressJobIndex(jobs, queuedJob) {
+        return jobs.findIndex(candidate => getJobSelectionKey(candidate) === getJobSelectionKey(queuedJob)
+            && getAddressLookupSignature(candidate) === getAddressLookupSignature(queuedJob));
+    }
+
     async function processNextAddress() {
         if (currentAddressIndex >= addressQueue.length) {
             finishAddressFetching();
             return;
         }
 
-        const { job, index } = addressQueue[currentAddressIndex];
+        const { job } = addressQueue[currentAddressIndex];
+        let index = -1;
 
         // Update progress
         const progressBar = document.getElementById('progressBar');
@@ -4424,6 +4745,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!canLookupAddressForJob(job)) {
                 const data = await chrome.storage.local.get(['scrapedJobs']);
                 const jobs = data.scrapedJobs || [];
+                index = findAddressJobIndex(jobs, job);
                 if (jobs[index]) {
                     if (isMissionPetHealthHospital(jobs[index].hospital)) {
                         applyMissionPetHealthFallback(jobs[index]);
@@ -4475,7 +4797,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const searchLocation = [searchCity, searchState].filter(Boolean).join(', ');
 
-            const cacheKeys = getAddressCacheKeys(searchHospital, searchLocation, job.hospital || '');
+            const descriptionKey = getStrictDescriptionAddress(job)
+                || (addressPolicy.hasCompleteStoredAddress(job) ? job : null);
+            const cacheKeys = getAddressCacheKeys(searchHospital, searchLocation, job.hospital || '')
+                .map(key => [key, normalizeAddressCacheValue(descriptionKey?.streetAddress || ''), descriptionKey?.zipCode || ''].join('|'));
             let addressData = getRememberedAddress(cacheKeys);
 
             if (addressData) {
@@ -4485,7 +4810,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     searchHospital,
                     searchLocation,
                     job.hospital || '',
-                    getStrictDescriptionAddress(job) ? job.descriptionAddress : null
+                    getStrictDescriptionAddress(job) ? job.descriptionAddress : null,
+                    job
                 );
             }
 
@@ -4497,8 +4823,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 addressData?.businessName || addressData?.streetAddress || addressData?.fullAddress ||
                 addressData?.zipCode || addressData?.website || addressData?.phone
             );
+            const fetchedCityAccepted = !searchCity || (
+                fetchedCity && (cityMatchesExpected(searchCity, fetchedCity, searchState)
+                    || (addressData?.verified === true && addressData?.allowPostalCityMismatch === true))
+            );
             const fetchedLocationMismatch = hasFetchedCandidate && (
-                (searchCity && !addressData?.allowPostalCityMismatch && (!fetchedCity || !cityMatchesExpected(searchCity, fetchedCity))) ||
+                !fetchedCityAccepted ||
                 (searchState && !fetchedState && !fetchedZip) ||
                 (searchState && fetchedState && getStateAbbreviation(fetchedState) !== getStateAbbreviation(searchState)) ||
                 (searchState && fetchedZip && !zipMatchesState(fetchedZip, searchState))
@@ -4506,15 +4836,22 @@ document.addEventListener('DOMContentLoaded', () => {
             const fetchedBrandMismatch = hasFetchedCandidate && !addressMatchesExpectedHospitalBrand(
                 job.hospital,
                 addressData,
-                getStrictDescriptionAddress(job) ? job.descriptionAddress : null
+                getStrictDescriptionAddress(job) ? job.descriptionAddress : null,
+                searchLocation
             );
 
             if (fetchedLocationMismatch || fetchedBrandMismatch) {
                 const reason = fetchedBrandMismatch ? 'wrong hospital brand' : 'outside requested location';
                 console.warn(`Ignoring address result ${reason} "${searchLocation}" for "${searchHospital}": ${addressData.fullAddress || addressData.website || [addressData.city, addressData.state, addressData.zipCode].filter(Boolean).join(', ')}`);
-                const cityRejected = searchCity && (!fetchedCity || !cityMatchesExpected(searchCity, fetchedCity));
+                const cityRejected = searchCity && !fetchedCityAccepted;
                 addressData = {
                     streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '',
+                    diagnostics: addressData.diagnostics || [],
+                    storedAddressConflict: addressData.storedAddressConflict || (
+                        fetchedLocationMismatch && !fetchedBrandMismatch
+                        && addressData.uniquePlaceMatch === true
+                        && addressQuality.streetAddressesMatch(job.streetAddress, addressData.streetAddress)
+                            ? (cityRejected ? addressPolicy.RESULTS.REJECTED_CITY : addressPolicy.RESULTS.REJECTED_STATE) : ''),
                     addressResult: fetchedBrandMismatch
                         ? addressPolicy?.RESULTS.REJECTED_HOSPITAL
                         : (cityRejected ? addressPolicy?.RESULTS.REJECTED_CITY : addressPolicy?.RESULTS.REJECTED_STATE)
@@ -4526,6 +4863,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Update job with address data from Google Maps
             const data = await chrome.storage.local.get(['scrapedJobs']);
             const jobs = data.scrapedJobs || [];
+            index = findAddressJobIndex(jobs, job);
 
             if (jobs[index]) {
                 const zipFromFull = addressData.fullAddress?.match(/\b(\d{5}(?:-\d{4})?)\b/);
@@ -4538,23 +4876,37 @@ document.addEventListener('DOMContentLoaded', () => {
                     })
                     : (addressData.streetAddress || '');
 
-                // City and state come from the job card and are never replaced by
-                // Google. Google is only allowed to supply a place in that exact city/state.
-                jobs[index].city = formatCityForStorage(searchCity || jobs[index].city || '');
+                const correctedCity = shouldCorrectStoredCity(
+                    searchCity,
+                    fetchedCity,
+                    job.hospital || searchHospital,
+                    addressData
+                ) ? fetchedCity : searchCity;
+                jobs[index].city = formatCityForStorage(correctedCity || jobs[index].city || '');
                 jobs[index].state = formatStateForStorage(searchState || jobs[index].state || '');
+                if (jobs[index].city && jobs[index].state) {
+                    jobs[index].location = `${jobs[index].city}, ${jobs[index].state}`;
+                }
 
                 if (hasVerifiedAddress) {
-                    // Shared rule for every hospital: when the row already has a
-                    // complete street and ZIP, keep them and save only contacts.
-                    // Otherwise save the entire bundle from the verified place.
-                    addressPolicy?.applyVerifiedGoogleResultUsingExistingAddress(jobs[index], {
+                    const verifiedResult = {
                         ...addressData,
                         streetAddress: cleanedFetchedStreet,
                         zipCode: addressData.zipCode || zipFromFull?.[1] || ''
-                    }, addressData.addressResult || addressPolicy?.RESULTS.VERIFIED_MAPS);
+                    };
+                    addressPolicy?.applyVerifiedGoogleResult(
+                        jobs[index], verifiedResult,
+                        addressData.addressResult || addressPolicy?.RESULTS.VERIFIED_MAPS
+                    );
                 } else {
+                    if (addressData.storedAddressConflict) addressPolicy.invalidateConflictingAddress(jobs[index], addressData.storedAddressConflict);
                     applyFailedAddressDefaults(jobs[index], addressData.addressResult);
                 }
+
+                jobs[index].addressDiagnostics = addressData.diagnostics || [];
+                markAddressLookupComplete(jobs[index], hasVerifiedAddress);
+                if (hasVerifiedAddress) addressRunVerified++;
+                else addressRunUnresolved++;
 
                 await chrome.storage.local.set({ scrapedJobs: jobs });
 
@@ -4564,10 +4916,23 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (error) {
             console.error('Error fetching address:', error);
+            if (error?.code === 'GOOGLE_VERIFICATION_REQUIRED') {
+                isFetchingAddresses = false;
+                fetchAddressesBtn.disabled = false;
+                fetchAddressesBtn.textContent = 'Fetch Addresses';
+                const progressLabel = document.getElementById('progressLabel');
+                if (progressLabel) progressLabel.textContent = 'Paused: Google verification required';
+                showToast('Address fetching paused. Open Google, complete its verification check, then click Fetch Addresses again.', 'error');
+                return;
+            }
             const data = await chrome.storage.local.get(['scrapedJobs']);
             const jobs = data.scrapedJobs || [];
+            index = findAddressJobIndex(jobs, job);
             if (jobs[index]) {
                 applyFailedAddressDefaults(jobs[index], addressPolicy?.RESULTS.NO_VERIFIED_LISTING);
+                markAddressLookupComplete(jobs[index], false);
+                addressRunUnresolved++;
+                jobs[index].addressDiagnostics = [{ source: 'lookup', reason: error?.message || 'Unexpected lookup error' }];
                 await chrome.storage.local.set({ scrapedJobs: jobs });
                 allJobs = jobs;
                 renderCurrentView();
@@ -4577,8 +4942,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Move to next address
         currentAddressIndex++;
 
-        // Continue processing — delay for Google Maps tab loading
-        setTimeout(() => processNextAddress(), 250);
+        // The previous lookup tab is already closed before this point; a short UI
+        // yield is enough and avoids adding over two minutes across 500+ rows.
+        setTimeout(() => processNextAddress(), 50);
     }
 
     function finishAddressFetching() {
@@ -4591,6 +4957,6 @@ document.addEventListener('DOMContentLoaded', () => {
             Fetch Addresses
         `;
         document.getElementById('progressSection').classList.add('hidden');
-        showToast(`Address fetching completed! Fetched ${addressQueue.length} addresses.`, 'success');
+        showToast(`Address check finished: ${addressRunVerified} verified, ${addressRunUnresolved} unresolved. Unresolved rows will retry on the next run.`, addressRunUnresolved ? 'error' : 'success');
     }
 });

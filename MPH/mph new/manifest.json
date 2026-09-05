@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Mission Pet Health Job Scraper",
-  "version": "1.21",
+  "version": "1.32",
   "description": "Scrapes job data from the current page and saves it.",
   "permissions": [
     "activeTab",
@@ -33,7 +33,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["detail-extractor.js", "google-maps-scraper.js", "google-search-scraper.js"],
+      "resources": ["detail-extractor.js", "google-maps-scraper.js", "google-search-scraper.js", "hospital-website-scraper.js"],
       "matches": ["<all_urls>"]
     }
   ]

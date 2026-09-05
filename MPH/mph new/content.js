@@ -140,8 +140,31 @@ function shouldSkipJobTitle(title) {
 function hasCompleteCityAndState(job) {
     const city = (job?.city || '').replace(/\s+/g, ' ').trim();
     const state = (job?.state || '').replace(/\s+/g, ' ').trim();
-    if (!city || !state) return false;
+    if (!isUsableCityValue(city) || !isRecognizedStateValue(state)) return false;
     return ![city, state].some(value => /\b(?:remote|nationwide)\b/i.test(value));
+}
+
+function isUsableCityValue(value) {
+    const city = (value || '').replace(/\s+/g, ' ').trim();
+    if (!city || city.length > 80 || !/[A-Za-z]/.test(city) || !/[AEIOUY]/i.test(city)) return false;
+    return !/^(?:-|n\/?a|none|null|undefined|unknown|tbd|dnt|not available|remote|nationwide)$/i.test(city);
+}
+
+function isRecognizedStateValue(value) {
+    const state = (value || '').replace(/\s+/g, ' ').trim();
+    return /^[A-Z]{2}$/i.test(state) || Object.prototype.hasOwnProperty.call(STATE_ABBR, state.toLowerCase());
+}
+
+function recoverInvalidCardCity(city, state, hospital) {
+    if (isUsableCityValue(city) || !isRecognizedStateValue(state)) return city;
+
+    // Some Avature cards contain a broken City value even though the Job Site
+    // identifies the locality in parentheses, for example "(Flower Mound)".
+    // Require a multi-word locality so a neighborhood/branch label such as
+    // "Kempsville" is never silently treated as a city.
+    const parenthetical = String(hospital || '').match(/\(([^()]+)\)\s*$/);
+    const candidate = parenthetical?.[1]?.replace(/\s+/g, ' ').trim() || '';
+    return candidate.split(/\s+/).length >= 2 && isUsableCityValue(candidate) ? candidate : city;
 }
 
 function scrapeCurrentPage(scrapedJobIds, pageType) {
@@ -482,6 +505,7 @@ function extractLocationFromSubtitle(article) {
     }
 
     city = removeTrailingStateFragment(city, state);
+    city = recoverInvalidCardCity(city, state, hospital);
 
     if (city || state) {
         location = [city, state].filter(Boolean).join(', ');

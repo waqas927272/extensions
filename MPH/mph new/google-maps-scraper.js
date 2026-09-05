@@ -16,10 +16,12 @@
         const startTime = Date.now();
         const mapsContext = {
             expectedHospital: document.documentElement.dataset.mphExpectedHospital || '',
-            descriptionAddressSearch: document.documentElement.dataset.mphDescriptionAddressSearch === 'true'
+            descriptionAddressSearch: document.documentElement.dataset.mphDescriptionAddressSearch === 'true',
+            addressOnlyPostalCheck: document.documentElement.dataset.mphAddressOnlyPostalCheck === 'true'
         };
         const descriptionAddressStartTime = Date.now();
         let attemptedAddressOccupant = false;
+        let firstAddressAt = 0;
 
         // Helper: wait ms
         const wait = (ms) => new Promise(r => setTimeout(r, ms));
@@ -31,8 +33,12 @@
         let addressData = null;
 
         while (Date.now() - startTime < MAX_WAIT) {
+            if (/\/sorry\//i.test(location.pathname)
+                || /unusual traffic|not a robot|complete the security check/i.test(document.body?.innerText || '')) {
+                return { ...emptyResult(), verificationRequired: true };
+            }
             // Check if we're on a single place page (address button exists)
-            addressData = tryExtractFromPlaceDetail();
+            addressData = tryExtractFromPlaceDetail(mapsContext.addressOnlyPostalCheck);
             if (addressData) {
                 // An exact address can open a generic building page. When Google
                 // lists businesses "At this place", open only the occupant whose
@@ -53,6 +59,13 @@
                 }
                 addressData.uniquePlaceMatch = true;
                 addressData.descriptionAddressResolved = mapsContext.descriptionAddressSearch;
+                // Address, phone and website may render in separate updates.
+                // Give optional contacts a bounded settling window, not 15s.
+                if (!firstAddressAt) firstAddressAt = Date.now();
+                if (!mapsContext.addressOnlyPostalCheck && (!addressData.phone || !addressData.website) && Date.now() - firstAddressAt < 1000) {
+                    await wait(POLL);
+                    continue;
+                }
                 return addressData;
             }
 
@@ -74,7 +87,8 @@
         // Find the best matching result by comparing aria-label to hospital name
         // The hospital name is embedded in the search URL query
         // ============================================================
-        const hospitalName = getHospitalNameFromUrl();
+        const hospitalName = mapsContext.addressOnlyPostalCheck ? getHospitalNameFromUrl()
+            : mapsContext.expectedHospital || getHospitalNameFromUrl();
         const resultLinks = document.querySelectorAll('a.hfpxzc');
 
         if (resultLinks.length === 0) {
@@ -83,7 +97,7 @@
         }
 
         // Find best matching result
-        const bestMatch = findBestMatch(resultLinks, hospitalName);
+        const bestMatch = findBestMatch(resultLinks, hospitalName, mapsContext.addressOnlyPostalCheck);
         if (!bestMatch) {
             console.log('No acceptable Maps result match found; skipping first-result fallback');
             return emptyResult();
@@ -105,10 +119,13 @@
         while (Date.now() < phase3End) {
             await wait(POLL);
 
-            addressData = tryExtractFromPlaceDetail();
+            addressData = tryExtractFromPlaceDetail(mapsContext.addressOnlyPostalCheck);
             if (addressData) {
                 addressData.uniquePlaceMatch = bestMatch.uniquePlaceMatch;
                 addressData.branchQueryResolved = bestMatch.branchQueryResolved;
+                if (!firstAddressAt) firstAddressAt = Date.now();
+                if (!mapsContext.addressOnlyPostalCheck && (!addressData.phone || !addressData.website)
+                    && Date.now() - firstAddressAt < 1000) continue;
                 return addressData;
             }
         }
@@ -135,8 +152,12 @@
 
     // ===== Find the search result that best matches the hospital name =====
     // Compares aria-label text against the hospital name using word overlap
-    function findBestMatch(links, searchQuery) {
+    function findBestMatch(links, searchQuery, addressOnlyPostalCheck = false) {
         if (!searchQuery || links.length === 0) return null;
+
+        if (addressOnlyPostalCheck) {
+            return findBestAddressOnlyMatch(links, searchQuery);
+        }
 
         const stopWords = new Set(['the', 'and', 'for', 'with', 'of', 'at', 'in', 'veterinary', 'animal', 'pet']);
         const facilityWords = new Set(['hospital', 'clinic', 'center', 'centre']);
@@ -212,8 +233,55 @@
                 // branch-targeted search ranking selects the location. The place
                 // detail address is still checked against the requested city and
                 // state before this result can be saved.
-                branchQueryResolved: branchWords.length > 0
+                branchQueryResolved: branchWords.length > 0 && acceptableMatchCount === 1
             }
+            : null;
+    }
+
+    function findBestAddressOnlyMatch(links, searchQuery) {
+        const normalizeStreet = value => String(value || '')
+            .toLowerCase()
+            .replace(/\bnorth\b/g, 'n')
+            .replace(/\bsouth\b/g, 's')
+            .replace(/\beast\b/g, 'e')
+            .replace(/\bwest\b/g, 'w')
+            .replace(/\bstreet\b/g, 'st')
+            .replace(/\broad\b/g, 'rd')
+            .replace(/\bavenue\b/g, 'ave')
+            .replace(/\bboulevard\b/g, 'blvd')
+            .replace(/\bdrive\b/g, 'dr')
+            .replace(/\blane\b/g, 'ln')
+            .replace(/\bhighway\b/g, 'hwy')
+            .replace(/\bparkway\b/g, 'pkwy')
+            .replace(/\b(?:suites?|ste|units?|building|bldg|floor)\b.*$/g, '')
+            .replace(/\s+#\s*[a-z0-9-]+.*$/g, '')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        const expectedStreet = normalizeStreet(searchQuery.split(',')[0]);
+        const expectedTokens = expectedStreet.split(' ').filter(Boolean);
+        const expectedHouseNumber = expectedTokens[0] || '';
+        if (!/^\d+[a-z]?$/.test(expectedHouseNumber) || expectedTokens.length < 3) return null;
+
+        let bestLink = null;
+        let bestScore = 0;
+        let acceptableMatchCount = 0;
+        for (const link of links) {
+            const card = link.closest('article, [role="article"], .Nv2PK, .bfdHYd');
+            const candidate = normalizeStreet(`${link.getAttribute('aria-label') || ''} ${card?.textContent || ''}`);
+            const candidateTokens = new Set(candidate.split(' ').filter(Boolean));
+            if (!candidateTokens.has(expectedHouseNumber)) continue;
+            const matched = expectedTokens.filter(token => candidateTokens.has(token)).length;
+            const score = matched / expectedTokens.length;
+            if (score >= 0.8) acceptableMatchCount++;
+            if (score > bestScore) {
+                bestScore = score;
+                bestLink = link;
+            }
+        }
+
+        return bestLink && bestScore >= 0.8
+            ? { link: bestLink, uniquePlaceMatch: acceptableMatchCount === 1, branchQueryResolved: false }
             : null;
     }
 
@@ -258,6 +326,12 @@
     }
 
     function businessNameMatchesExpected(candidateName, expectedHospital) {
+        if (globalThis.MphAddressQuality) {
+            const d = document.documentElement.dataset;
+            return globalThis.MphAddressQuality.hospitalIdentityMatches(expectedHospital,
+                { businessName: candidateName, uniquePlaceMatch: true },
+                { location: [d.mphExpectedCity, d.mphExpectedState].filter(Boolean).join(', ') });
+        }
         const candidate = normalizeBusinessName(candidateName).replace(/\s+/g, '');
         const expected = normalizeBusinessName(expectedHospitalBase(expectedHospital)).replace(/\s+/g, '');
         if (!candidate || !expected) return false;
@@ -362,7 +436,20 @@
 
     // ===== Try to extract address from place detail panel =====
     // This works when Google Maps shows a single place view with the address button
-    function tryExtractFromPlaceDetail() {
+    function tryExtractFromPlaceDetail(allowBuildingAddress = false) {
+        // Google renders a street/building as a copy-address row, not the
+        // business place's data-item-id="address" button. Use it only for postal
+        // verification; occupants' phone/website must never be borrowed.
+        if (allowBuildingAddress) {
+            const addressText = document.querySelector('[role="button"][data-tooltip="Copy address"] .DkEaL')?.textContent?.trim();
+            if (addressText) {
+                const parsed = parseAddress(addressText);
+                if (parsed.streetAddress && parsed.city && parsed.state && parsed.zipCode) {
+                    return { ...parsed, fullAddress: addressText, businessName: tryExtractBusinessName(),
+                        phone: '', website: '', category: '' };
+                }
+            }
+        }
         // Method 1: Address button (most reliable)
         const addressButton = document.querySelector('button[data-item-id="address"]');
         if (addressButton) {

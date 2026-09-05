@@ -6,12 +6,24 @@
     try {
         await waitForGoogleResults();
 
+        const pageText = cleanText(document.body?.innerText || document.body?.textContent || '');
+        if (/\/sorry\//i.test(location.pathname)
+            || /unusual traffic|not a robot|automated queries|complete the security check/i.test(pageText)) {
+            return {
+                ...emptyResult('google_verification_required'),
+                verificationRequired: true,
+                error: 'Google verification required'
+            };
+        }
+
+        const expected = getExpectedSearchParts();
         const panel = getKnowledgePanelRoot();
         if (panel) {
             const panelText = getKnowledgePanelText(panel);
             const address = extractAddress(panelText, panel);
             if (address) {
                 const parsed = parseAddress(address);
+                const panelWebsite = extractWebsiteFromPanel(panel) || '';
 
                 return {
                     businessName: extractBusinessNameFromPanel(panel) || '',
@@ -21,19 +33,26 @@
                     state: parsed.state || '',
                     zipCode: parsed.zipCode || '',
                     phone: extractPhoneFromPanel(panel) || extractPhone(panelText) || '',
-                    website: extractWebsiteFromPanel(panel) || '',
+                    // Never attach an unverified organic result to this place.
+                    website: panelWebsite,
                     category: extractFacilityCategory(panelText),
                     panelText: panelText || '',
-                    source: 'google_knowledge_panel'
+                    source: 'google_knowledge_panel',
+                    // A discovery hint stays separate from the place bundle.
+                    // The caller must inspect and validate this site itself.
+                    websiteCandidate: extractWebsiteHintFromPanel(panel) || extractOfficialWebsiteCandidate(),
+                    uniquePlaceMatch: true,
+                    branchQueryResolved: /\([^)]*\)|\s[-–—]\s/.test(expected.name || '')
                 };
             }
         }
 
         // Never scan the whole page for a loose address: that can join the title
         // of one business with an address from another result. One Google card only.
-        return extractLeftSideResult()
-            || extractOfficialWebsiteCandidate()
-            || emptyResult(panel ? 'no_panel_or_left_address' : 'no_panel_or_left_match');
+        const leftResult = extractLeftSideResult();
+        const websiteCandidate = extractOfficialWebsiteCandidate();
+        return leftResult ? { ...leftResult, websiteCandidate }
+            : websiteCandidate || emptyResult(panel ? 'no_panel_or_left_address' : 'no_panel_or_left_match');
     } catch (error) {
         return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: error.message };
     }
@@ -197,10 +216,10 @@
             if (!businessName) continue;
 
             const links = [...element.querySelectorAll('a[href]')];
-            const website = links
-                .map(link => unwrapGoogleUrl(link.href || ''))
-                .find(href => /^https?:\/\//i.test(href) && !isBlockedUrl(href));
-            if (!website) continue;
+            const website = links.map(link => unwrapGoogleUrl(link.href || ''))
+                .find(href => /^https?:\/\//i.test(href) && !isBlockedUrl(href)) || '';
+            const discoveryUrl = website ? '' : googleRedirectFromResult(element, heading);
+            if (!website && !discoveryUrl) continue;
 
             const score = scoreWebsiteCandidate({ businessName, text, expected });
             if (score < 4) continue;
@@ -209,6 +228,7 @@
                 ...emptyResult('official_website_candidate'),
                 businessName,
                 website,
+                discoveryUrl,
                 category: extractFacilityCategory(`${businessName} ${text}`),
                 panelText: text,
                 source: 'google_official_website',
@@ -219,6 +239,35 @@
         }
 
         return best;
+    }
+
+    function googleRedirectFromResult(element, heading) {
+        // Some Google layouts hide the destination behind an opaque /goto URL.
+        // Follow the actual heading link, not a guessed path from the breadcrumb.
+        // The caller must verify the destination and its hospital address.
+        try {
+            const url = new URL(heading.closest('a[href]')?.getAttribute('href') || '', location.href);
+            if (url.protocol !== 'https:' || !/^(?:www\.)?google\.com$/.test(url.hostname)
+                || !['/goto', '/url'].includes(url.pathname) || !url.searchParams.has('url')) return '';
+            const cited = cleanText(element.querySelector('cite')?.textContent || '').match(/^https?:\/\/[^\s›]+/)?.[0];
+            if (!cited || isBlockedUrl(cited)) return '';
+            return url.href;
+        } catch (_) { return ''; }
+    }
+
+    function extractWebsiteHintFromPanel(panel) {
+        for (const link of panel.querySelectorAll('a[href]')) {
+            const label = cleanText(`${link.innerText || link.textContent || ''} ${link.getAttribute('aria-label') || ''}`);
+            if (!/\bwebsite\b/i.test(label)) continue;
+            try {
+                const url = new URL(link.getAttribute('href'), location.href);
+                if (url.protocol === 'https:' && /^(?:www\.)?google\.com$/.test(url.hostname)
+                    && ['/goto', '/url'].includes(url.pathname) && url.searchParams.has('url')) {
+                    return { website: '', discoveryUrl: url.href };
+                }
+            } catch (_) { /* Ignore malformed panel links. */ }
+        }
+        return null;
     }
 
     function scoreWebsiteCandidate({ businessName, text, expected }) {
@@ -274,11 +323,12 @@
         }
 
         const parts = query.split(',').map(part => part.trim()).filter(Boolean);
+        const context = document.documentElement.dataset;
         return {
             rawQuery: query,
-            name: parts.length >= 3 ? parts.slice(0, -2).join(', ') : (parts[0] || query),
-            city: parts.length >= 2 ? parts[parts.length - 2] : '',
-            state: parts.length >= 2 ? parts[parts.length - 1] : ''
+            name: context.mphExpectedHospital || (parts.length >= 3 ? parts.slice(0, -2).join(', ') : (parts[0] || query)),
+            city: context.mphExpectedCity || (parts.length >= 2 ? parts[parts.length - 2] : ''),
+            state: context.mphExpectedState || (parts.length >= 2 ? parts[parts.length - 1] : '')
         };
     }
 
@@ -512,17 +562,22 @@
             return true;
         }
 
+        if (/(?:^|\.)(?:gov|mil)$/.test(host)) return true;
         return [
             'google.', 'gstatic.', 'googleusercontent.', 'youtube.', 'facebook.', 'linkedin.',
             'instagram.', 'x.com', 'twitter.', 'indeed.', 'glassdoor.', 'ziprecruiter.',
-            'jobvite.', 'unitedveterinarycare.', 'yelp.', 'mapquest.', 'bing.', 'duckduckgo.'
-        ].some(blocked => host.includes(blocked));
+            'jobvite.', 'unitedveterinarycare.', 'yelp.', 'mapquest.', 'waze.', 'bing.', 'duckduckgo.',
+            'yellowpages.', 'greatpetcare.', 'carecredit.', 'vetmodo.', 'vetreceipt.', 'vetstoria.',
+            'petdesk.'
+        ].some(blocked => blocked.endsWith('.')
+            ? host.split('.').includes(blocked.slice(0, -1))
+            : host === blocked || host.endsWith(`.${blocked}`));
     }
 
     function looksLikeBusinessWebsite(href) {
         try {
             const host = new URL(href).hostname.toLowerCase();
-            return /\b(vet|veterinary|animal|pet|clinic|hospital|emergency|specialty|care)\b/i.test(host);
+            return /(vet|veterinary|animal|pet|clinic|hospital|emergency|specialty|care)/i.test(host);
         } catch {
             return false;
         }
@@ -547,7 +602,10 @@
     function parseAddress(fullAddress) {
         if (!fullAddress) return { streetAddress: '', city: '', state: '', zipCode: '' };
 
-        const addr = normalizeAddress(fullAddress);
+        const addr = normalizeAddress(fullAddress)
+            // Google snippets occasionally remove the separator between the
+            // street suffix and city: "10685 N. 69th St.Scottsdale, AZ".
+            .replace(/\b(St|Street|Rd|Road|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Ln|Lane|Ct|Court|Pkwy|Parkway|Hwy|Highway)\.([A-Z])/g, '$1., $2');
         const zipPattern = /^([\s\S]+?),\s*([^,]+?),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/;
         const zipMatch = addr.match(zipPattern);
         if (zipMatch) {
@@ -575,6 +633,20 @@
             return {
                 streetAddress: parts.slice(0, -1).join(', '),
                 city: parts[parts.length - 1],
+                state,
+                zipCode
+            };
+        }
+
+        // Google snippets sometimes separate the suite and city with periods
+        // instead of commas: "13900 Jog Rd. Ste 209. Delray Beach, FL 33446".
+        // The last period-delimited segment is the city; everything before it is
+        // the street/suite belonging to that same result card.
+        const periodParts = beforeStateZip.split(/\.\s+/).map(part => part.trim()).filter(Boolean);
+        if (periodParts.length >= 2) {
+            return {
+                streetAddress: periodParts.slice(0, -1).join('. '),
+                city: periodParts[periodParts.length - 1],
                 state,
                 zipCode
             };

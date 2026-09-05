@@ -1,13 +1,14 @@
 (function (root, factory) {
-    const api = factory();
+    const api = factory(root?.MphAddressQuality || (typeof require === 'function' ? require('./mph-address-quality.js') : null));
     if (typeof module === 'object' && module.exports) module.exports = api;
     if (root) root.MphAddressPolicy = api;
-})(typeof globalThis !== 'undefined' ? globalThis : this, () => {
+})(typeof globalThis !== 'undefined' ? globalThis : this, (quality) => {
     const RESULTS = Object.freeze({
         VERIFIED_MAPS: 'Verified using Google Maps',
         VERIFIED_DESCRIPTION_MAPS: 'Verified using description address + Google Maps',
         VERIFIED_SEARCH: 'Verified using Google Search',
         VERIFIED_DESCRIPTION_SEARCH: 'Verified using description address + Google Search',
+        VERIFIED_OFFICIAL_DIRECTORY: 'Verified using official hospital directory',
         DESCRIPTION_ONLY: 'Address from description; Google listing unavailable',
         NO_SPECIFIC_HOSPITAL: 'No specific hospital branch identified',
         NO_VERIFIED_LISTING: 'No verified Google listing found',
@@ -72,11 +73,23 @@
 
     function applyVerifiedGoogleResult(job, addressData, resultLabel = RESULTS.VERIFIED_MAPS) {
         if (!job) return job;
-        job.streetAddress = streetOrTbd(addressData?.streetAddress);
+        const preserveKnownUnit = quality?.streetAddressesMatch(job.streetAddress, addressData?.streetAddress)
+            && String(job.zipCode || '').slice(0, 5) === String(addressData?.zipCode || '').slice(0, 5)
+            && quality.isStreetEnrichment(addressData?.streetAddress, job.streetAddress);
+        job.streetAddress = streetOrTbd(preserveKnownUnit ? job.streetAddress : addressData?.streetAddress);
         job.zipCode = zipOrZeros(addressData?.zipCode);
         job.phone = valueOrDash(addressData?.phone);
         job.website = valueOrDash(addressData?.website);
         job.addressResult = resultLabel;
+        job.addressVerified = true;
+        job.addressConflict = '';
+        job.addressSource = {
+            businessName: addressData?.businessName || '',
+            city: addressData?.city || '', state: addressData?.state || '',
+            streetAddress: job.streetAddress, zipCode: job.zipCode,
+            sourceType: addressData?.sourceType || '', sourceUrl: addressData?.sourceUrl || addressData?.website || '',
+            contactSourceUrl: addressData?.contactSourceUrl || ''
+        };
         return job;
     }
 
@@ -84,7 +97,7 @@
         return !!(
             job &&
             !isPlaceholder(job.streetAddress) &&
-            !isPlaceholder(job.zipCode)
+            !isPlaceholder(job.zipCode) && /^\d{5}(?:-\d{4})?$/.test(String(job.zipCode).trim())
         );
     }
 
@@ -95,15 +108,14 @@
     ) {
         if (!job) return job;
 
-        if (hasCompleteStoredAddress(job)) {
-            // A complete address already saved for the row remains authoritative.
-            // The verified Google place is used only for its contact details.
-            job.phone = valueOrDash(addressData?.phone);
-            job.website = valueOrDash(addressData?.website);
-            job.addressResult = resultLabel;
-            return job;
+        // Contacts may be attached to a stored address only after the street and
+        // ZIP match. A verified correction replaces the complete bundle instead
+        // of attaching a new branch's contacts to an old address.
+        if (hasCompleteStoredAddress(job) && quality?.streetAddressesMatch(job.streetAddress, addressData?.streetAddress)
+            && String(job.zipCode).slice(0, 5) === String(addressData?.zipCode || '').slice(0, 5)
+            && !quality.isStreetEnrichment(job.streetAddress, addressData?.streetAddress)) {
+            return applyVerifiedGoogleResult(job, { ...addressData, streetAddress: job.streetAddress, zipCode: job.zipCode }, resultLabel);
         }
-
         return applyVerifiedGoogleResult(job, addressData, resultLabel);
     }
 
@@ -124,19 +136,27 @@
 
     function applyUnverifiedResult(job, descriptionAddress, reason = RESULTS.NO_VERIFIED_LISTING) {
         if (!job) return job;
+        job.addressVerified = false;
+        if (job.addressConflict) {
+            job.streetAddress = 'TBD'; job.zipCode = '00000';
+            job.phone = '-'; job.website = '-';
+            job.addressResult = reason;
+            return job;
+        }
         if (hasCompleteStoredAddress(job)) {
-            // A failed contact lookup must not erase an address that the row
-            // already had before the search began.
-            job.phone = valueOrDash(job.phone);
-            job.website = valueOrDash(job.website);
+            // Preserve the uncontradicted address, not unverified old contacts.
+            job.phone = '-';
+            job.website = '-';
             job.addressResult = reason;
             return job;
         }
         const hasDescriptionStreet = !isPlaceholder(descriptionAddress?.streetAddress);
         const hasDescriptionZip = !isPlaceholder(descriptionAddress?.zipCode);
-        const hasDescriptionAddress = hasDescriptionStreet || hasDescriptionZip;
-        job.streetAddress = hasDescriptionStreet ? String(descriptionAddress.streetAddress).trim() : 'TBD';
-        job.zipCode = hasDescriptionZip ? String(descriptionAddress.zipCode).trim() : '00000';
+        const hasDescriptionAddress = hasDescriptionStreet && hasDescriptionZip;
+        // A partial address must not look verified in the export. Preserve a
+        // description address only when its street and ZIP are both available.
+        job.streetAddress = hasDescriptionAddress ? String(descriptionAddress.streetAddress).trim() : 'TBD';
+        job.zipCode = hasDescriptionAddress ? String(descriptionAddress.zipCode).trim() : '00000';
         job.phone = '-';
         job.website = '-';
         job.addressResult = hasDescriptionAddress ? RESULTS.DESCRIPTION_ONLY : reason;
@@ -150,7 +170,36 @@
         job.phone = '-';
         job.website = '-';
         job.addressResult = RESULTS.NO_SPECIFIC_HOSPITAL;
+        job.addressVerified = false;
         return job;
+    }
+
+    function invalidateConflictingAddress(job, reason) {
+        if (!job) return;
+        if (hasCompleteStoredAddress(job) && !job.addressConflict) {
+            job.previousAddress = { streetAddress: job.streetAddress, zipCode: job.zipCode,
+                city: job.city, state: job.state, phone: job.phone, website: job.website };
+        }
+        job.addressConflict = reason;
+        applyUnverifiedResult(job, null, reason);
+    }
+
+    function lookupSignature(job) {
+        return [job?.hospital, job?.location || [job?.city, job?.state].filter(Boolean).join(', '),
+            job?.descriptionAddress?.streetAddress, job?.descriptionAddress?.zipCode]
+            .map(value => quality?.normalizeAddressCacheValue(value || '') || String(value || '').trim().toLowerCase()).join('|');
+    }
+
+    function isLookupComplete(job, version) {
+        return job?.addressLookupVersion === version && job?.addressLookupSignature === lookupSignature(job)
+            && job?.addressVerified === true && !job?.addressConflict && hasCompleteStoredAddress(job);
+    }
+
+    function recordLookupAttempt(job, version, verified) {
+        job.addressLastAttemptAt = new Date().toISOString();
+        job.addressLookupVersion = verified ? version : '';
+        job.addressLookupSignature = verified ? lookupSignature(job) : '';
+        job.addressVerified = verified === true;
     }
 
     function rejectionResult(validationReason) {
@@ -181,6 +230,10 @@
         extractSpecificHospitalFromDescription,
         hasCompleteStoredAddress,
         isMissionParentName,
+        invalidateConflictingAddress,
+        isLookupComplete,
+        lookupSignature,
+        recordLookupAttempt,
         isPlaceholder,
         normalizeLegacyRecord,
         rejectionResult,
