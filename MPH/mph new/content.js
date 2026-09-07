@@ -22,7 +22,11 @@
         // from an older extension version where city/state were stored differently;
         // re-filtering them here can erase the user's saved data after a reload.
         const validNewJobs = newScrape.jobs.filter(hasCompleteCityAndState);
-        const allJobs = (data.scrapedJobs || []).concat(validNewJobs);
+        const existingDvmJobs = (data.scrapedJobs || []).filter(job => {
+            const title = normalizeTitleForComparison(job?.title);
+            return !title || isDvmJobTitle(title);
+        });
+        const allJobs = existingDvmJobs.concat(validNewJobs);
         const allJobIds = Array.from(newScrape.scrapedJobIds);
 
         await chrome.storage.local.set({
@@ -74,6 +78,13 @@ const EXCLUDED_JOB_TITLES = new Set([
     'staff accountant',
     'acquisition diligence analyst'
 ]);
+
+// The agency portal contains every kind of Mission Pet Health opening, not just
+// veterinarian openings. Use a positive DVM/doctor allow-list so new corporate,
+// support, technician, and management titles cannot slip through merely because
+// they were not present in the exact-title exclusion list above.
+const DVM_JOB_TITLE_PATTERN = /\b(?:veterinarian|dvm|medical\s+(?:director|lead)|lead\s+vet(?:erinarian)?|founding\s+(?:partner|specialist)|cardiologist|oncologist|internist|ophthalmologist|neurologist|neurosurgeon|dermatologist|radiologist|anesthesiologist|criticalist|surgeon|dentist|dental\s+residen(?:t|cy)|veterinary\s+specialist)\b/i;
+const DVM_ASSOCIATE_CONTEXT_PATTERN = /\b(?:general practice|reproductive referral center)\b.*\bassociate\b/i;
 
 const STATE_ABBR = {
     'alabama': 'AL',
@@ -133,8 +144,16 @@ function normalizeTitleForComparison(title) {
     return (title || '').replace(/\s+/g, ' ').trim().toLowerCase();
 }
 
+function isDvmJobTitle(title) {
+    const normalizedTitle = normalizeTitleForComparison(title);
+    if (!normalizedTitle || EXCLUDED_JOB_TITLES.has(normalizedTitle)) return false;
+
+    return DVM_JOB_TITLE_PATTERN.test(normalizedTitle)
+        || DVM_ASSOCIATE_CONTEXT_PATTERN.test(normalizedTitle);
+}
+
 function shouldSkipJobTitle(title) {
-    return EXCLUDED_JOB_TITLES.has(normalizeTitleForComparison(title));
+    return !isDvmJobTitle(title);
 }
 
 function hasCompleteCityAndState(job) {

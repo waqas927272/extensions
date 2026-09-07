@@ -60,6 +60,26 @@
         return normalizeWords(value).replace(/\s+/g, '');
     }
 
+    function primaryClinicalBusinessName(value) {
+        const name = String(value || '').replace(/\s+/g, ' ').trim();
+        const parts = name.split(/\s+(?:&|and)\s+/i).map(part => part.trim()).filter(Boolean);
+        if (parts.length !== 2) return '';
+
+        // Some facilities publish the veterinary practice and an adjacent resort
+        // as separate Google businesses even though the job card combines them.
+        // Split only that narrow clinical + non-clinical service shape. Two
+        // veterinary brands, urgent-care names, and ordinary uses of "and" remain
+        // untouched and continue through the normal branch validator.
+        const clinicalPattern = /\b(?:veterinary|animal|pet)\b.*\b(?:hospital|clinic|medical\s+(?:center|centre))\b|\b(?:veterinary\s+hospital|animal\s+hospital|pet\s+hospital|veterinary\s+clinic)\b/i;
+        const nonClinicalServicePattern = /\b(?:resort|boarding|grooming|day\s*care|lodging|kennel)\b/i;
+        const clinicalParts = parts.filter(part => clinicalPattern.test(part));
+        const serviceParts = parts.filter(part => nonClinicalServicePattern.test(part));
+
+        if (clinicalParts.length !== 1 || serviceParts.length !== 1
+            || clinicalParts[0] === serviceParts[0]) return '';
+        return clinicalParts[0];
+    }
+
     function normalizeCity(value) {
         // Only spelling-equivalent abbreviations are normalized. Administrative
         // suffixes stay significant so separate cities/branches never collapse.
@@ -958,6 +978,7 @@
         normalizePhone,
         normalizeState,
         normalizeStreetAddress,
+        primaryClinicalBusinessName,
         parseStructuredAddress,
         parseLocation,
         sanitizeWebsite,

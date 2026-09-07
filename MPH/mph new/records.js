@@ -64,6 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const DESCRIPTION_FETCH_ATTEMPTS = 3;
     const DESCRIPTION_SAVE_BATCH_SIZE = 1;
     const ADDRESS_LOOKUP_VERSION = '1.32';
+    const COMPOSITE_HOSPITAL_LOOKUP_VERSION = '1.35';
     let addressRunVerified = 0;
     let addressRunUnresolved = 0;
 
@@ -1165,6 +1166,26 @@ document.addEventListener('DOMContentLoaded', () => {
         'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian']
     };
     const NON_CLINICAL_TITLE_PATTERN = /\b(?:analyst|accountant|coordinator|marketing|tax|data scientist|vice president|acquisition diligence)\b/i;
+    const NON_DVM_EXACT_TITLES = new Set([
+        'payroll coordinator',
+        'marketing analyst',
+        'analyst, product insights',
+        'marketing automation specialist',
+        'test veterinarian',
+        'senior indirect tax analyst',
+        'test only do not submit',
+        'data scientist',
+        'financial analyst',
+        'marketing business partner',
+        'director, indirect tax',
+        'tax analyst',
+        'division vice president',
+        'operations analyst',
+        'staff accountant',
+        'acquisition diligence analyst'
+    ]);
+    const DVM_JOB_TITLE_PATTERN = /\b(?:veterinarian|dvm|medical\s+(?:director|lead)|lead\s+vet(?:erinarian)?|founding\s+(?:partner|specialist)|cardiologist|oncologist|internist|ophthalmologist|neurologist|neurosurgeon|dermatologist|radiologist|anesthesiologist|criticalist|surgeon|dentist|dental\s+residen(?:t|cy)|veterinary\s+specialist)\b/i;
+    const DVM_ASSOCIATE_CONTEXT_PATTERN = /\b(?:general practice|reproductive referral center)\b.*\bassociate\b/i;
     const URGENT_CARE_SIGNAL_PATTERN = /\burgent care\b|after hours urgent care|veterinary urgent care center/i;
     const EMERGENCY_SIGNAL_PATTERN = /\bemergency veterinarian\b|\ber veterinarian\b|\ber dvm\b|\ber\b|\bemergency\b/i;
 
@@ -1195,6 +1216,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function isNonClinicalJobTitle(title) {
         return NON_CLINICAL_TITLE_PATTERN.test(title || '');
+    }
+
+    function normalizeJobTitleForFiltering(title) {
+        return (title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    }
+
+    function isDvmJobTitle(title) {
+        const normalizedTitle = normalizeJobTitleForFiltering(title);
+        if (!normalizedTitle || NON_DVM_EXACT_TITLES.has(normalizedTitle)) return false;
+
+        return DVM_JOB_TITLE_PATTERN.test(normalizedTitle)
+            || DVM_ASSOCIATE_CONTEXT_PATTERN.test(normalizedTitle);
     }
 
     function hasUrgentCareSignal(title, hospitalName = '', extraText = '') {
@@ -2484,6 +2517,15 @@ document.addEventListener('DOMContentLoaded', () => {
                 const base = rawName.replace(/\s+/g, ' ').trim();
                 if (!base) continue;
 
+                // A job card may combine a veterinary hospital with its adjacent
+                // resort even though Google lists them as two places. Search the
+                // clinical component as a fallback. Candidate acceptance still
+                // requires the description street, job city/state, ZIP, and
+                // veterinary-facility identity, so the resort or another branch
+                // cannot supply its contacts.
+                const clinicalBusinessName = addressQuality?.primaryClinicalBusinessName(base) || '';
+                if (clinicalBusinessName) names.push(clinicalBusinessName);
+
                 const withoutLocationSuffix = base.replace(/\s*[-–—]\s*[A-Z][a-zA-Z\s.'-]+$/, '').trim();
                 const withoutParens = base.replace(/\s*\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
                 const expandedParens = base.replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -3444,10 +3486,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize
     chrome.storage.local.get(['scrapedJobs'], (result) => {
-        // Loading/reloading the records page must be read-only. Location cleanup
-        // is performed after Fetch Details and during export, not during startup.
-        allJobs = result.scrapedJobs || [];
+        const storedJobs = result.scrapedJobs || [];
+        // Only remove titled rows that clearly fail the same DVM allow-list used
+        // by the scraper. Blank/malformed legacy rows are left untouched so a
+        // page reload can never wipe records simply because a title is missing.
+        const dvmJobs = storedJobs.filter(job => !normalizeJobTitleForFiltering(job?.title) || isDvmJobTitle(job.title));
+        const removedNonDvmCount = storedJobs.length - dvmJobs.length;
+        allJobs = dvmJobs;
         renderCurrentView();
+
+        if (removedNonDvmCount > 0) {
+            chrome.storage.local.set({ scrapedJobs: dvmJobs }, () => {
+                showToast(`Removed ${removedNonDvmCount} non-DVM job${removedNonDvmCount === 1 ? '' : 's'}.`, 'success');
+            });
+        }
 
         tableHeaders.forEach(header => {
             header.addEventListener('click', () => {
@@ -3784,7 +3836,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 jobId: job.jobId || '',
                 link: job.link || ''
             }))
-            .filter(item => !jobs[item.index].description && item.link);
+            .filter(item => isDvmJobTitle(jobs[item.index].title) && !jobs[item.index].description && item.link);
 
         if (descriptionQueue.length === 0) {
             showToast('All jobs already have descriptions!', 'success');
@@ -3879,7 +3931,12 @@ document.addEventListener('DOMContentLoaded', () => {
             throw new Error(`Unsupported job URL: ${rawUrl}`);
         }
 
-        if (!/\/JobDetail\/|\/agency\/OpenPositions\//i.test(url.pathname)) {
+        const isPublicJobDetail = /\/JobDetail\//i.test(url.pathname);
+        const isLegacyAgencyDetail = /\/agency\/OpenPositions\//i.test(url.pathname);
+        const isPortalJobDetail = /^\/agency\/JobDetail\/?$/i.test(url.pathname) &&
+            /^\d+$/.test(url.searchParams.get('jobId') || '');
+
+        if (!isPublicJobDetail && !isLegacyAgencyDetail && !isPortalJobDetail) {
             throw new Error(`URL is not an Avature job-detail page: ${rawUrl}`);
         }
 
@@ -4051,7 +4108,7 @@ document.addEventListener('DOMContentLoaded', () => {
             jobId: job.jobId || '',
             link: job.link || ''
         }))
-            .filter(item => item.job.title && item.job.description);
+            .filter(item => isDvmJobTitle(item.job.title) && item.job.description);
 
         if (detailsQueue.length === 0) {
             showToast('No job descriptions found. Fetch descriptions first.', 'error');
@@ -4530,12 +4587,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function hasCurrentAddressLookup(job) {
-        return addressPolicy.isLookupComplete(job, ADDRESS_LOOKUP_VERSION);
+        return addressPolicy.isLookupComplete(job, getAddressLookupVersion(job));
     }
 
     function markAddressLookupComplete(job, verified) {
         if (!job) return;
-        addressPolicy.recordLookupAttempt(job, ADDRESS_LOOKUP_VERSION, verified);
+        addressPolicy.recordLookupAttempt(job, getAddressLookupVersion(job), verified);
+    }
+
+    function getAddressLookupVersion(job) {
+        return addressQuality?.primaryClinicalBusinessName(job?.hospital || '')
+            ? COMPOSITE_HOSPITAL_LOOKUP_VERSION
+            : ADDRESS_LOOKUP_VERSION;
     }
 
     function shouldReplaceStoredAddressBundle(job, verifiedResult) {
