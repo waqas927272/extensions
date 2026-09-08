@@ -1,6 +1,12 @@
 const JOBVITE_HOST = 'app.jobvite.com';
 const JOBVITE_LISTING_URL = 'https://app.jobvite.com/Recruiter/JobListing.aspx';
 
+importScripts('job-filter.js');
+importScripts('detail-rules.js');
+importScripts('description-queue.js');
+importScripts('address-rules.js');
+importScripts('address-queue.js');
+
 let isScraping = false;
 let scrapingTabId = null;
 let currentPage = 0;
@@ -8,6 +14,8 @@ let totalPages = 0;
 let totalJobs = 0;
 let allScrapedJobs = [];
 let seenJobLinks = new Set();
+let skippedJobLinks = new Set();
+let skippedByReason = new Map();
 
 function withJobviteStandaloneUrl(url) {
   try {
@@ -40,7 +48,7 @@ function isJobviteListingUrl(url) {
 async function injectContentScript(tabId) {
   await chrome.scripting.executeScript({
     target: { tabId },
-    files: ['content.js']
+    files: ['job-filter.js', 'content.js']
   });
 }
 
@@ -91,19 +99,42 @@ function waitForTabComplete(tabId, timeoutMs = 30000) {
 async function scrapeCurrentListingPage() {
   await injectContentScript(scrapingTabId);
   const response = await chrome.tabs.sendMessage(scrapingTabId, { action: 'scrapeCurrentPage' });
-  const jobs = response?.jobs || [];
+  const jobs = Array.isArray(response?.jobs) ? response.jobs : [];
   totalJobs = response?.totalJobs || totalJobs || jobs.length;
   totalPages = Math.max(1, Math.ceil(totalJobs / 20));
 
   jobs.forEach(job => {
+    const reason = ThriveJobFilter.exclusionReason(job);
+    if (reason) {
+      recordSkippedJob(job, reason);
+      return;
+    }
     if (job.link && !seenJobLinks.has(job.link)) {
       seenJobLinks.add(job.link);
       allScrapedJobs.push(job);
     }
   });
+  (response?.excludedJobs || []).forEach(job => recordSkippedJob(job, ThriveJobFilter.exclusionReason(job)));
 
-  await chrome.storage.local.set({ scrapedJobs: allScrapedJobs, thriveJobs: allScrapedJobs });
+  await chrome.storage.local.set({ scrapedJobs: allScrapedJobs });
   return response;
+}
+
+function recordSkippedJob(job, reason) {
+  const key = job.link || job.title;
+  if (!reason || !key || skippedJobLinks.has(key)) return;
+  skippedJobLinks.add(key);
+  skippedByReason.set(reason, (skippedByReason.get(reason) || 0) + 1);
+}
+
+function listingSummary() {
+  return {
+    totalJobs,
+    skippedJobs: skippedJobLinks.size,
+    scrapedJobs: allScrapedJobs.length,
+    skippedByKeyword: Array.from(skippedByReason, ([keyword, count]) => ({ keyword, count })),
+    completedAt: new Date().toISOString()
+  };
 }
 
 async function getListingPageState(tabId) {
@@ -188,13 +219,7 @@ async function scrapeAndGoNext() {
     isScraping = false;
     await chrome.storage.local.set({ isScraping: false });
     await chrome.storage.local.set({
-      scrapingSummary: {
-        totalJobs,
-        skippedJobs: 0,
-        scrapedJobs: allScrapedJobs.length,
-        skippedByKeyword: [],
-        completedAt: new Date().toISOString()
-      }
+      scrapingSummary: listingSummary()
     });
     sendScrapingStatus('completed', `Scraping completed. ${allScrapedJobs.length} jobs saved.`);
     return;
@@ -206,13 +231,7 @@ async function scrapeAndGoNext() {
       isScraping = false;
       await chrome.storage.local.set({ isScraping: false });
       await chrome.storage.local.set({
-        scrapingSummary: {
-          totalJobs,
-          skippedJobs: 0,
-          scrapedJobs: allScrapedJobs.length,
-          skippedByKeyword: [],
-          completedAt: new Date().toISOString()
-        }
+        scrapingSummary: listingSummary()
       });
       sendScrapingStatus('completed', `Scraping completed. ${allScrapedJobs.length} jobs saved.`);
       return;
@@ -235,6 +254,11 @@ async function scrapeAndGoNext() {
 }
 
 async function handleStartJobviteScraping(sendResponse) {
+  const queues = await chrome.storage.local.get(['addressRun', 'descriptionRun']);
+  if (queues.addressRun?.status === 'running' || queues.descriptionRun?.status === 'running') {
+    sendResponse({ status: 'already_running', message: 'Wait for the current lookup to finish.' });
+    return;
+  }
   if (isScraping) {
     sendResponse({ status: 'already_running' });
     return;
@@ -255,7 +279,9 @@ async function handleStartJobviteScraping(sendResponse) {
   totalJobs = 0;
   allScrapedJobs = [];
   seenJobLinks = new Set();
-  await chrome.storage.local.set({ isScraping: true, scrapedJobs: [], thriveJobs: [] });
+  skippedJobLinks = new Set();
+  skippedByReason = new Map();
+  await chrome.storage.local.set({ isScraping: true, scrapedJobs: [] });
 
   sendScrapingStatus('scraping', 'Starting Jobvite scrape...');
   scrapeAndGoNext();
@@ -402,11 +428,11 @@ function extractJobviteDetailsFromPage() {
   }
 
   function extractJobType(text) {
-    if (!text) return 'Full-Time';
+    if (!text) return 'Full Time';
     const hasPartTime = /\bpart[\s-]?time\b/i.test(text);
     const hasFullTime = /\bfull[\s-]?time\b/i.test(text);
-    if (hasPartTime && !hasFullTime) return 'Part-Time';
-    return 'Full-Time';
+    if (hasPartTime && !hasFullTime) return 'Part Time';
+    return 'Full Time';
   }
 
   function lookupPosition(title, category) {
@@ -460,7 +486,14 @@ function extractJobviteDetailsFromPage() {
   const state = specifics.state;
   const requisitionId = specifics.requisitionId;
   const descriptionEl = document.getElementById('DescriptionField');
-  const description = cleanText(descriptionEl?.innerText || descriptionEl?.textContent || '');
+  // Keep paragraphs and requirement lists intact for display and detail extraction.
+  const description = String(descriptionEl?.innerText || descriptionEl?.textContent || '')
+    .replace(/\u00a0/g, ' ')
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/ *\n */g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
   const descriptionHtml = descriptionEl?.innerHTML || '';
   const fullDetailText = formatFullDetailText(specifics, description);
   const areaOfPractice = lookupAreaOfPractice(title, category, description);
@@ -500,6 +533,101 @@ function executeDetailsInTab(tabId) {
     target: { tabId },
     func: extractJobviteDetailsFromPage
   }).then(results => results?.[0]?.result || {});
+}
+
+async function waitForJobviteDescription(tabId, timeoutMs = 30000) {
+  const deadline = Date.now() + timeoutMs;
+  let previousDescription = '';
+
+  while (Date.now() < deadline) {
+    // Poll the current state too: a cached tab may finish before a load listener exists.
+    const tab = await chrome.tabs.get(tabId);
+    if (tab.status === 'complete') {
+      try {
+        const details = await executeDetailsInTab(tabId);
+        const body = String(details.descriptionBody || '').trim();
+        if (body && !/^(?:loading(?:\.{3}|…)?|please wait(?:\.{3}|…)?)$/i.test(body)) {
+          if (body === previousDescription) return details;
+          previousDescription = body;
+        } else {
+          previousDescription = '';
+        }
+      } catch (error) {
+        // Jobvite can replace the document while navigating or rendering the description.
+        previousDescription = '';
+      }
+    } else {
+      previousDescription = '';
+    }
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+
+  throw new Error('No job description loaded. Check that you are signed in to Jobvite and can open this job, then retry.');
+}
+
+async function scrapeJobDescription({ tabId: existingTabId, jobIndex, jobLink, windowId, onTabCreated }) {
+  let tabId = existingTabId;
+  let details;
+  let errorMessage = '';
+
+  try {
+    await ensureJobStorage();
+    const initial = await chrome.storage.local.get('scrapedJobs');
+    const queuedJob = (initial.scrapedJobs || []).find(job => job.link === jobLink);
+    if (!queuedJob || !ThriveJobFilter.isDvmJob(queuedJob)) {
+      return { success: false, excluded: true, jobIndex, jobLink, error: 'Job is no longer an eligible DVM record.' };
+    }
+    const jobUrl = new URL(jobLink);
+    if (!/^https?:$/.test(jobUrl.protocol)) throw new Error('Invalid job URL.');
+    if (!tabId) {
+      if (!Number.isInteger(windowId) || windowId < 0) throw new Error('The originating window is unavailable. Open Records in that window and retry.');
+      const sourceWindow = await chrome.windows.get(windowId);
+      const tab = await chrome.tabs.create({ url: withJobviteStandaloneUrl(jobLink), active: false, windowId });
+      tabId = tab?.id;
+      if (!tabId) throw new Error('Could not open the job tab.');
+      if (onTabCreated) await onTabCreated(tabId);
+      // Chrome can restore a minimized window even when the new tab is inactive.
+      if (sourceWindow.state === 'minimized') await chrome.windows.update(windowId, { state: 'minimized' });
+    }
+    // Older records pages may already have opened the tab. Do not navigate it twice.
+    details = await waitForJobviteDescription(tabId);
+  } catch (error) {
+    errorMessage = error.message || 'Could not fetch the job description.';
+  } finally {
+    if (tabId) await chrome.tabs.remove(tabId).catch(() => {});
+  }
+
+  const result = await chrome.storage.local.get(['scrapedJobs']);
+  const jobs = result.scrapedJobs || [];
+  // Rows can be deleted or reordered while the tab loads. Never save to another job.
+  const index = jobs[jobIndex]?.link === jobLink
+    ? jobIndex
+    : jobs.findIndex(job => job.link === jobLink);
+  if (index < 0) return { success: false, jobIndex, jobLink, error: 'The job was removed before its description could be saved.' };
+
+  const job = jobs[index];
+  if (details) {
+    const classifiedJob = { ...job, category: details.category, jobviteSpecifics: details.jobviteSpecifics };
+    if (!ThriveJobFilter.isDvmJob(classifiedJob)) {
+      jobs.splice(index, 1);
+      await chrome.storage.local.set({ scrapedJobs: jobs });
+      return { success: false, excluded: true, jobIndex: index, jobLink, error: ThriveJobFilter.exclusionReason(classifiedJob) };
+    }
+    job.description = details.description;
+    job.jobviteSpecifics = details.jobviteSpecifics;
+    compactJobDescription(job);
+    job.descriptionFetched = true;
+    job.descriptionFetchFailed = false;
+    delete job.descriptionFetchError;
+  } else {
+    job.descriptionFetched = false;
+    job.descriptionFetchFailed = true;
+    job.descriptionFetchError = errorMessage;
+    if (job.description === 'Description fetch failed.') job.description = '';
+  }
+
+  await chrome.storage.local.set({ scrapedJobs: jobs });
+  return { success: !!details, jobIndex: index, jobLink, error: errorMessage };
 }
 
 function openJobviteTabAndExtract(url, timeoutMs = 30000) {
@@ -577,7 +705,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'storeJobs') {
-    chrome.storage.local.set({ scrapedJobs: request.data, thriveJobs: request.data }, () => {
+    const jobs = (Array.isArray(request.data) ? request.data : []).filter(ThriveJobFilter.isDvmJob);
+    chrome.storage.local.set({ scrapedJobs: jobs }, () => {
       console.log('Thrive Jobvite jobs data stored.');
     });
     return false;
@@ -630,103 +759,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'scrapeJobDescription') {
-    const { tabId, jobIndex, jobLink } = request;
-    let settled = false;
-    let timeoutId = null;
-
-    function cleanup() {
-      if (timeoutId) clearTimeout(timeoutId);
-      chrome.tabs.onUpdated.removeListener(listener);
-      closeTab(tabId);
-    }
-
-    function fail() {
-      if (settled) return;
-      settled = true;
-      chrome.storage.local.get(['scrapedJobs'], (result) => {
-        const jobs = result.scrapedJobs || [];
-        if (jobs[jobIndex]) {
-          jobs[jobIndex].descriptionFetchFailed = true;
-          jobs[jobIndex].description = 'Description fetch failed.';
-        }
-        chrome.storage.local.set({ scrapedJobs: jobs, thriveJobs: jobs }, () => {
-          cleanup();
-          sendRuntimeMessage({ action: 'descriptionSaved', jobIndex, success: false });
-        });
+    resolveDescriptionWindow(request, sender)
+      .then(windowId => scrapeJobDescription({ ...request, windowId }))
+      .catch(error => ({ success: false, jobIndex: request.jobIndex, jobLink: request.jobLink, error: error.message }))
+      .then(result => {
+        sendResponse(result);
+        sendRuntimeMessage({ action: 'descriptionSaved', ...result });
       });
-    }
-
-    async function injectAndSave() {
-      if (settled) return;
-      try {
-        const details = await executeDetailsInTab(tabId);
-        chrome.storage.local.get(['scrapedJobs'], (result) => {
-          const jobs = result.scrapedJobs || [];
-          if (!jobs[jobIndex]) {
-            fail();
-            return;
-          }
-
-          if (details.description) jobs[jobIndex].description = details.description;
-          if (details.descriptionBody) jobs[jobIndex].descriptionBody = details.descriptionBody;
-          if (details.descriptionHtml) jobs[jobIndex].descriptionHtml = details.descriptionHtml;
-          if (details.jobviteSpecifics) jobs[jobIndex].jobviteSpecifics = details.jobviteSpecifics;
-          if (details.jobviteDetails) jobs[jobIndex].jobviteDetails = details.jobviteDetails;
-          [
-            'jobId',
-            'hospital',
-            'hospitalName',
-            'company',
-            'city',
-            'state',
-            'zipCode',
-            'postalCode',
-            'streetAddress',
-            'location',
-            'category',
-            'requisitionId',
-            'lastUpdated',
-            'jobType',
-            'areaOfPractice',
-            'position',
-            'salary',
-            'experience'
-          ].forEach(field => {
-            jobs[jobIndex][field] = '';
-          });
-          jobs[jobIndex].detailsFetched = false;
-          jobs[jobIndex].descriptionFetched = true;
-
-          settled = true;
-          chrome.storage.local.set({ scrapedJobs: jobs, thriveJobs: jobs }, () => {
-            cleanup();
-            sendRuntimeMessage({ action: 'descriptionSaved', jobIndex, success: true });
-          });
-        });
-      } catch (e) {
-        fail();
-      }
-    }
-
-    function listener(updatedTabId, info) {
-      if (updatedTabId === tabId && info.status === 'complete') {
-        chrome.tabs.onUpdated.removeListener(listener);
-        setTimeout(injectAndSave, 1000);
-      }
-    }
-
-    timeoutId = setTimeout(fail, 30000);
-    chrome.tabs.onUpdated.addListener(listener);
-
-    const finalUrl = withJobviteStandaloneUrl(jobLink);
-    chrome.tabs.update(tabId, { url: finalUrl }).catch(() => {
-      chrome.tabs.get(tabId)
-        .then(tab => {
-          if (tab?.status === 'complete') setTimeout(injectAndSave, 1000);
-        })
-        .catch(fail);
-    });
-
     return true;
   }
 });

@@ -232,6 +232,7 @@
         'Associate Veterinarian',
         'Medical Director',
         'Anesthesiologist',
+        'Avian & Exotic Specialist',
         'Cardiologist',
         'Credentialed Veterinary Technician Specialist',
         'DABVP Specialist',
@@ -251,10 +252,10 @@
     const APPROVED_POSITION_SET = new Set(APPROVED_POSITIONS);
     const VALID_POSITIONS_BY_AOP = {
         'Emergency Care': ['Associate Veterinarian', 'Medical Director'],
-        'Exotic Pet Medicine': ['Associate Veterinarian'],
+        'Exotic Pet Medicine': ['Associate Veterinarian', 'Avian & Exotic Specialist'],
         'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
         'Specialty Care': [
-            'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
+            'Anesthesiologist', 'Avian & Exotic Specialist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
             'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
             'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
             'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
@@ -317,6 +318,7 @@
         const rules = [
             ['Medical Director', [/\bmedical director\b/i]],
             ['Lead Veterinarian', [/\blead veterinarian\b/i, /\blead vet\b/i]],
+            ['Avian & Exotic Specialist', [/\b(?:avian|exotic)\b[^\n]{0,80}\bspecialist\b/i, /\bspecialist\b[^\n]{0,80}\b(?:avian|exotic)\b/i]],
             ['Neurologist & Neurosurgeon', [/\bneurologist\b/i, /\bneurosurgeon\b/i, /\bboard certified\b.*\bneurolog/i, /\bresidency[-\s]+trained\b.*\bneurolog/i, /\bdacvim\b.*\bneurolog/i]],
             ['Dermatologist', [/\bdermatologist\b/i, /\bboard certified\b.*\bdermatolog/i, /\bresidency[-\s]+trained\b.*\bdermatolog/i, /\bdacvd\b/i]],
             ['Cardiologist', [/\bcardiologist\b/i, /\bboard certified\b.*\bcardiolog/i, /\bresidency[-\s]+trained\b.*\bcardiolog/i, /\bdacvim\b.*\bcardiolog/i]],
@@ -364,8 +366,12 @@
         const titleLower = title.toLowerCase();
         const qualSection = extractQualificationsSection(descriptionText) || '';
         if (shouldLeaveClinicalFieldsBlank(title, category)) return '';
-        if (isExoticRoleTitle(title)) return 'Exotic Pet Medicine';
+        // A specialist title or specialty credential requirement is more specific
+        // than the species treated. This keeps ordinary exotic-practice DVM roles
+        // in Exotic Pet Medicine while classifying credentialed specialists correctly.
+        if (/\b(?:avian|exotic)\b/i.test(titleLower) && /\bspecialist\b/i.test(titleLower)) return 'Specialty Care';
         if (/\b(?:board certified|board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained|diplomate)\b/i.test(qualSection)) return 'Specialty Care';
+        if (isExoticRoleTitle(title)) return 'Exotic Pet Medicine';
         // STEP 1: Use category from page (most reliable — directly from jobvite)
         const categoryLower = String(category || '').toLowerCase();
         if (categoryLower.includes('medical director')) {
@@ -474,6 +480,7 @@
         // Medical Director, NOT Medical Oncologist. The specialty word is the service name, not the role.
         if (t.includes('medical director')) return 'Medical Director';
         if (t.includes('lead veterinarian') || t.includes('lead vet')) return 'Lead Veterinarian';
+        if (/\b(?:avian|exotic)\b/.test(t) && /\bspecialist\b/.test(t)) return 'Avian & Exotic Specialist';
 
         // === SPECIALTY POSITION NAMES ===
         if (t.includes('neurologist') || t.includes('neurosurgeon') || t.includes('neurology')) return 'Neurologist & Neurosurgeon';
@@ -544,10 +551,10 @@
     function validatePositionForAOP(position, aop) {
         const validPositions = {
             'Emergency Care': ['Associate Veterinarian', 'Medical Director'],
-            'Exotic Pet Medicine': ['Associate Veterinarian'],
+            'Exotic Pet Medicine': ['Associate Veterinarian', 'Avian & Exotic Specialist'],
             'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
             'Specialty Care': [
-                'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
+                'Anesthesiologist', 'Avian & Exotic Specialist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
                 'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
                 'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
                 'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
@@ -775,22 +782,11 @@
     }
 
     function extractJobType(text) {
-        if (!text) return 'Full-Time';
-
-        const employmentLine = getDescriptionLines(text).find(line => /^(?:full|part)[-\s]?time$/i.test(line));
-        if (employmentLine) return /^part/i.test(employmentLine) ? 'Part-Time' : 'Full-Time';
-
-        const empTypeMatch = text.match(/employment type:\s*([^\n]+)/i);
-        if (empTypeMatch) {
-            const empType = empTypeMatch[1].trim().toLowerCase();
-            if (empType.includes('part') && !empType.includes('full')) return 'Part-Time';
-            return 'Full-Time';
-        }
-
+        if (!text) return 'Full Time';
         const hasPartTime = /\bpart[\s-]?time\b/i.test(text);
         const hasFullTime = /\bfull[\s-]?time\b/i.test(text);
-        if (hasPartTime && !hasFullTime) return 'Part-Time';
-        return 'Full-Time';
+        if (hasPartTime && !hasFullTime) return 'Part Time';
+        return 'Full Time';
     }
 
     // ===== Extract locations =====

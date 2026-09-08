@@ -38,29 +38,37 @@ if (!window.thriveJobScraperInitialized) {
     return document.querySelector('table.jv-listTable');
   }
 
-  function scrapeJobsFromDoc(doc) {
+  function readListingJobs(doc) {
     const jobs = [];
     const table = doc.querySelector('table.jv-listTable');
     if (!table) return jobs;
 
     const links = table.querySelectorAll('td:first-child a[href*="JobDescription.aspx"]');
+    const headings = Array.from(table.querySelectorAll('th')).map(cell => cleanText(cell.textContent).toLowerCase());
+    const categoryIndex = headings.findIndex(label => /^(?:job\s+)?category$|^department$/.test(label));
+    const companyIndex = headings.findIndex(label => /^(?:company|hospital|hospital name|employer|client)$/.test(label));
     links.forEach(linkEl => {
       const title = cleanText(linkEl.textContent);
       const link = absoluteUrl(linkEl.getAttribute('href') || linkEl.href);
       if (!title || !link) return;
+      const category = categoryIndex >= 0 ? cleanText(linkEl.closest('tr')?.cells[categoryIndex]?.textContent) : '';
+      const company = companyIndex >= 0 ? cleanText(linkEl.closest('tr')?.cells[companyIndex]?.textContent) : '';
 
       jobs.push({
         jobId: '',
         title,
+        category,
+        listingCategory: category,
         hospital: '',
         hospitalName: '',
-        company: '',
+        company,
+        listingCompany: company,
         postedDate: '',
         city: '',
         state: '',
         zipCode: '',
         postalCode: '',
-        jobType: '',
+        jobType: 'Full Time',
         location: '',
         country: 'USA',
         link
@@ -68,6 +76,10 @@ if (!window.thriveJobScraperInitialized) {
     });
 
     return jobs;
+  }
+
+  function scrapeJobsFromDoc(doc) {
+    return readListingJobs(doc).filter(ThriveJobFilter.isDvmJob);
   }
 
   function getFooterText() {
@@ -80,7 +92,7 @@ if (!window.thriveJobScraperInitialized) {
     const footerText = getFooterText();
     const match = footerText.match(/of\s+([\d,]+)\s+Jobs/i);
     if (match) return parseInt(match[1].replace(/,/g, ''), 10);
-    return scrapeJobsFromDoc(document).length;
+    return readListingJobs(document).length;
   }
 
   function getCurrentRangeStart() {
@@ -90,7 +102,8 @@ if (!window.thriveJobScraperInitialized) {
   }
 
   function getPageSignature() {
-    const jobs = scrapeJobsFromDoc(document);
+    // Pagination must still advance across pages containing only excluded jobs.
+    const jobs = readListingJobs(document);
     const firstJob = jobs[0];
     return [
       getCurrentRangeStart(),
@@ -217,8 +230,10 @@ if (!window.thriveJobScraperInitialized) {
       sendStatsUpdate();
       sendResponse({ status: 'stopped' });
     } else if (request.action === 'scrapeCurrentPage') {
+      const listingJobs = isJobviteListingPage() ? readListingJobs(document) : [];
       sendResponse({
-        jobs: isJobviteListingPage() ? scrapeJobsFromDoc(document) : [],
+        jobs: listingJobs.filter(ThriveJobFilter.isDvmJob),
+        excludedJobs: listingJobs.filter(job => !ThriveJobFilter.isDvmJob(job)),
         totalJobs: isJobviteListingPage() ? getTotalResultsCount() : 0,
         hasNext: isJobviteListingPage() && hasNextPage(),
         rangeStart: isJobviteListingPage() ? getCurrentRangeStart() : 0,

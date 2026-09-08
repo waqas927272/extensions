@@ -1,11 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Thrive Job Scraper",
-  "version": "1.0",
+  "version": "1.0.3",
   "description": "Scrapes Thrive Pet Healthcare jobs from Jobvite recruiter listings.",
   "permissions": [
     "activeTab",
     "storage",
+    "unlimitedStorage",
+    "alarms",
     "scripting",
     "tabs"
   ],

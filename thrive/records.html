@@ -461,6 +461,10 @@
 
     thead {
       background: linear-gradient(135deg, #2c614f 0%, #1a3a2a 100%);
+      /* Keep the header background and labels together above scrolling rows. */
+      position: sticky;
+      top: 0;
+      z-index: 2;
     }
 
     th {
@@ -474,9 +478,6 @@
       cursor: pointer;
       transition: background 0.2s ease;
       user-select: none;
-      position: sticky;
-      top: 0;
-      z-index: 2;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -894,7 +895,7 @@
         </div>
         <div>
           <h1>Scraped Job Records</h1>
-          <p>Thrive Pet Healthcare Job Listings</p>
+          <p>Thrive Pet Healthcare — DVM roles only</p>
         </div>
       </div>
       <div class="stats-badge">
@@ -1052,7 +1053,9 @@
   </div>
 
   <div id="toastContainer"></div>
-  <script src="records.js"></script>
+  <script src="job-filter.js"></script>
+    <script src="detail-rules.js"></script>
+    <script src="records.js"></script>
 </body>
 </html>
 

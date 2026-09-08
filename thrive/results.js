@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
       });
   }
 
-  const STORAGE_KEY = 'thriveJobs';
+  const STORAGE_KEY = 'scrapedJobs';
   const PARENT_CLIENT_NAME = 'Thrive Pet Healthcare';
   const SOURCE_NAME = 'Thrive Job Scraper';
 

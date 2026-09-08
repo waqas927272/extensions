@@ -461,6 +461,10 @@ table {
 
 thead {
   background: linear-gradient(135deg, #1a3a2a 0%, #2c614f 100%);
+  /* Keep the header background and labels together above scrolling rows. */
+  position: sticky;
+  top: 0;
+  z-index: 2;
 }
 
 th {
@@ -471,9 +475,6 @@ th {
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.35px;
-  position: sticky;
-  top: 0;
-  z-index: 2;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
