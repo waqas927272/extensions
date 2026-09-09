@@ -12,12 +12,16 @@
 (async () => {
     const scrapeContext = globalThis.__AAH_ADDRESS_CONTEXT__ || {};
     try {
+        if (!globalThis.AAHAddressValidation) throw new Error('Address validation module was not loaded');
         const MAX_WAIT = Number(scrapeContext.maxWaitMs) || 15000;   // 15 seconds max total
         const POLL = Number(scrapeContext.pollMs) || 500;            // Check every 500ms
         const startTime = Date.now();
 
         // Helper: wait ms
         const wait = (ms) => new Promise(r => setTimeout(r, ms));
+        const collectContacts = () => globalThis.AAHAddressValidation.waitForContactDetails(
+            tryExtractFromPlaceDetail, shouldAcceptAddressData,
+            { maxWaitMs: Math.max(1, MAX_WAIT - (Date.now() - startTime)), pollMs: POLL });
 
         // ============================================================
         // PHASE 1: Wait for Google Maps to load something meaningful
@@ -28,7 +32,7 @@
         while (Date.now() - startTime < MAX_WAIT) {
             // Check if we're on a single place page (address button exists)
             addressData = tryExtractFromPlaceDetail();
-            if (addressData && shouldAcceptAddressData(addressData)) return addressData;
+            if (addressData && shouldAcceptAddressData(addressData)) return await collectContacts() || emptyResult();
 
             // Check if search results list has loaded
             const resultLinks = document.querySelectorAll('a.hfpxzc');
@@ -41,7 +45,7 @@
         }
 
         // If Maps auto-opened a single wrong branch, do not return it.
-        if (addressData && !shouldAcceptAddressData(addressData)) return emptyResult();
+        if (addressData && !shouldAcceptAddressData(addressData) && !document.querySelectorAll('a.hfpxzc').length) return emptyResult();
 
         // ============================================================
         // PHASE 2: Search results list is showing
@@ -90,13 +94,13 @@
                 target.click();
             }
 
-            const phase3End = Date.now() + 6500;
+            const phase3End = Math.min(Date.now() + 6500, startTime + MAX_WAIT);
             while (Date.now() < phase3End) {
                 await wait(POLL);
 
                 addressData = tryExtractFromPlaceDetail();
                 if (addressData) {
-                    if (shouldAcceptAddressData(addressData)) return addressData;
+                    if (shouldAcceptAddressData(addressData)) return await collectContacts() || emptyResult();
                     console.warn(`Skipping result outside expected location: ${addressData.fullAddress || [addressData.city, addressData.state, addressData.zipCode].filter(Boolean).join(', ')}`);
                     break;
                 }
@@ -125,52 +129,6 @@
 
     // ===== Find the search result that best matches the hospital name =====
     // Compares aria-label text against the hospital name using word overlap
-    function findBestMatch(links, searchQuery) {
-        if (!searchQuery || links.length === 0) return null;
-
-        const stopWords = new Set(['the', 'and', 'for', 'with', 'veterinary', 'animal', 'pet', 'hospital', 'clinic', 'center', 'centre']);
-
-        // Normalize for comparison: lowercase, remove special chars
-        const normalize = (str) => str.toLowerCase()
-            .replace(/&/g, 'and')
-            .replace(/[^a-z0-9\s]/g, '')
-            .replace(/\s+/g, ' ')
-            .replace(/\b(?:[a-z]\s+){2,}[a-z]\b/g, letters => letters.replace(/\s+/g, ''))
-            .trim();
-
-        const queryNorm = normalize(searchQuery);
-        const queryWords = queryNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w));
-
-        let bestLink = null;
-        let bestScore = 0;
-
-        for (const link of links) {
-            const label = (link.getAttribute('aria-label') || '').replace(/·.*$/, '').trim();
-            const normalizedLabel = label.split(',')[0].trim();
-            const labelNorm = normalize(normalizedLabel);
-            const labelWords = new Set(labelNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w)));
-
-            // Count how many query words appear in the label
-            let matchCount = 0;
-            for (const word of queryWords) {
-                if (labelNorm.includes(word) || labelWords.has(word)) {
-                    matchCount++;
-                }
-            }
-
-            // Score = percentage of query words that matched, with small boosts for close name matches
-            let score = queryWords.length > 0 ? matchCount / queryWords.length : 0;
-            if (labelNorm === queryNorm) score += 0.5;
-            if (labelNorm.startsWith(queryNorm) || queryNorm.startsWith(labelNorm)) score += 0.2;
-
-            if (score > bestScore) {
-                bestScore = score;
-                bestLink = link;
-            }
-        }
-
-        return bestScore >= 0.5 ? bestLink : null;
-    }
 
     function getBusinessNameFromPlaceDetail() {
         const selectors = ['h1.DUwDvf', 'h1[aria-level="1"]', '[role="main"] h1', '.DUwDvf', 'h1'];
@@ -183,41 +141,20 @@
     }
 
     function businessNameMatchesSearch(businessName) {
-        if (!businessName) return true;
+        if (!businessName) return false;
         const expectedNames = [
             getHospitalNameFromUrl(),
             String(scrapeContext.originalHospitalName || '').trim()
         ].filter(Boolean);
-        if (expectedNames.length === 0) return true;
+        if (expectedNames.length === 0) return false;
         return expectedNames.some(searchName =>
-            !!findBestMatch([{ getAttribute: () => businessName }], searchName)
+            globalThis.AAHAddressValidation.businessNameFuzzyMatches(searchName, businessName) ||
+            (scrapeContext.streetAddress && globalThis.AAHAddressValidation.businessNameVariantMatches(searchName, businessName))
         );
     }
 
     function scoreBusinessName(label, searchQuery) {
-        if (!searchQuery || !label) return 0;
-        const stopWords = new Set(['the', 'and', 'for', 'with', 'veterinary', 'animal', 'pet', 'hospital', 'clinic', 'center', 'centre']);
-        const normalize = (str) => String(str || '').toLowerCase()
-            .replace(/&/g, 'and')
-            .replace(/[^a-z0-9\s]/g, '')
-            .replace(/\s+/g, ' ')
-            .replace(/\b(?:[a-z]\s+){2,}[a-z]\b/g, letters => letters.replace(/\s+/g, ''))
-            .trim();
-
-        const queryNorm = normalize(searchQuery);
-        const labelNorm = normalize(String(label || '').replace(/·.*$/, '').split(',')[0]);
-        const queryWords = queryNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w));
-        const labelWords = new Set(labelNorm.split(' ').filter(w => w.length > 2 && !stopWords.has(w)));
-
-        let matchCount = 0;
-        for (const word of queryWords) {
-            if (labelNorm.includes(word) || labelWords.has(word)) matchCount++;
-        }
-
-        let score = queryWords.length > 0 ? matchCount / queryWords.length : 0;
-        if (labelNorm === queryNorm) score += 0.5;
-        if (labelNorm.startsWith(queryNorm) || queryNorm.startsWith(labelNorm)) score += 0.2;
-        return score;
+        return globalThis.AAHAddressValidation.businessNameMatchScore(searchQuery, String(label || '').replace(/·.*$/, '').trim());
     }
 
     function findMatchingResults(links, searchQuery) {
@@ -232,7 +169,10 @@
                     score: scoreBusinessName(label, searchQuery)
                 };
             })
-            .filter(item => item.score >= 0.5)
+            // Variants may be inspected, but only the numbered-street validator
+            // can accept them. Do not discard the right panel before reading it.
+            .filter(item => item.score >= 0.9 || (scrapeContext.streetAddress &&
+                globalThis.AAHAddressValidation.businessNameVariantMatches(searchQuery, item.label)))
             .sort((a, b) => b.score - a.score);
     }
 
@@ -302,37 +242,26 @@
     }
 
     function shouldAcceptAddressData(data) {
-        if (!data || !data.streetAddress) return false;
-
         const expected = getExpectedLocationFromUrl();
-        const expectedCity = normalizeForCompare(expected.city);
-        const expectedState = normalizeStateForCompare(expected.state);
-        if (!expectedCity || !expectedState || !data.city || !data.state) return true;
-
-        const resultCity = normalizeForCompare(data.city);
-        const resultState = normalizeStateForCompare(data.state);
-        if (resultCity === expectedCity && resultState === expectedState) return true;
-
-        const resultBusiness = normalizeForCompare(data.businessName);
-        const expectedBusiness = normalizeForCompare(getHospitalNameFromUrl());
-        if (resultBusiness && resultBusiness === expectedBusiness && resultState === expectedState) {
-            return true;
-        }
-
-        const cityFromHospitalName = getHospitalNameCityCandidates()
-            .some(candidate => normalizeForCompare(candidate) === resultCity);
-        if (cityFromHospitalName && resultState === expectedState) {
-            data.cityMatchedHospitalName = true;
-            return true;
-        }
-
-        return false;
+        return globalThis.AAHAddressValidation.validateGoogleResult(data, {
+            ...scrapeContext,
+            hospitalName: getHospitalNameFromUrl(),
+            originalHospitalName: scrapeContext.originalHospitalName,
+            location: [expected.city, expected.state].filter(Boolean).join(', ')
+        }).accepted;
     }
 
     // ===== Extract website URL from place detail panel =====
+    function getPlacePanel() {
+        const title = document.querySelector('h1.DUwDvf, h1[aria-level="1"], [role="main"] h1');
+        return title?.closest('[role="main"]') || document.querySelector('[role="main"]');
+    }
+
     function tryExtractWebsite() {
+        const panel = getPlacePanel();
+        if (!panel) return '';
         // Method 1: data-item-id="authority" is the website link
-        const websiteLink = document.querySelector('a[data-item-id="authority"]');
+        const websiteLink = panel.querySelector('a[data-item-id="authority"]');
         if (websiteLink) {
             const href = websiteLink.getAttribute('href') || '';
             if (href) return href;
@@ -341,14 +270,14 @@
             if (cleaned) return cleaned;
         }
         // Method 2: button with data-tooltip="Open website"
-        const websiteBtn = document.querySelector('button[data-tooltip="Open website"]');
+        const websiteBtn = panel.querySelector('button[data-tooltip="Open website"]');
         if (websiteBtn) {
             const ariaLabel = websiteBtn.getAttribute('aria-label') || '';
             const cleaned = ariaLabel.replace(/^Website:\s*/i, '').trim();
             if (cleaned) return cleaned;
         }
         // Method 3: any website-labelled link/button in the place panel
-        const websiteFallback = document.querySelector('a[aria-label^="Website:"], button[aria-label^="Website:"], a[data-tooltip="Open website"]');
+        const websiteFallback = panel.querySelector('a[aria-label^="Website:"], button[aria-label^="Website:"], a[data-tooltip="Open website"]');
         if (websiteFallback) {
             const href = websiteFallback.getAttribute('href') || '';
             if (href && !href.startsWith('javascript:')) return href;
@@ -361,8 +290,10 @@
 
     // ===== Extract phone number from place detail panel =====
     function tryExtractPhone() {
+        const panel = getPlacePanel();
+        if (!panel) return '';
         // Method 1: button with data-item-id starting with "phone:"
-        const phoneBtn = document.querySelector('button[data-item-id^="phone:"]');
+        const phoneBtn = panel.querySelector('button[data-item-id^="phone:"]');
         if (phoneBtn) {
             // data-item-id="phone:tel:+1-555-123-4567" or similar
             const dataId = phoneBtn.getAttribute('data-item-id') || '';
@@ -374,13 +305,13 @@
             if (cleaned) return cleaned;
         }
         // Method 2: look for tel: links
-        const telLinks = document.querySelectorAll('a[href^="tel:"]');
+        const telLinks = panel.querySelectorAll('a[href^="tel:"]');
         for (const link of telLinks) {
             const phone = link.getAttribute('href').replace('tel:', '').trim();
             if (phone) return phone;
         }
         // Method 3: generic phone-labelled buttons/spans
-        const phoneFallback = document.querySelector('button[aria-label^="Phone:"], button[data-item-id*="phone"], [aria-label^="Phone:"]');
+        const phoneFallback = panel.querySelector('button[aria-label^="Phone:"], button[data-item-id*="phone"], [aria-label^="Phone:"]');
         if (phoneFallback) {
             const dataId = phoneFallback.getAttribute('data-item-id') || '';
             const phoneFromId = dataId.replace(/^phone:tel:/, '').replace(/^phone:/, '').trim();
@@ -397,9 +328,11 @@
     function tryExtractFromPlaceDetail() {
         const businessName = getBusinessNameFromPlaceDetail();
         if (businessName && !businessNameMatchesSearch(businessName)) return null;
+        const panel = getPlacePanel();
+        if (!panel) return null;
 
         // Method 1: Address button (most reliable)
-        const addressButton = document.querySelector('button[data-item-id="address"]');
+        const addressButton = panel.querySelector('button[data-item-id="address"]');
         if (addressButton) {
             const ariaLabel = addressButton.getAttribute('aria-label') || '';
             const textCandidates = [
@@ -423,7 +356,7 @@
             '.LrzXr',
         ];
         for (const selector of infoSelectors) {
-            const elements = document.querySelectorAll(selector);
+            const elements = panel.querySelectorAll(selector);
             for (const el of elements) {
                 const result = buildAddressResult(el.textContent || el.getAttribute('aria-label') || '', businessName);
                 if (result) return result;
@@ -431,14 +364,16 @@
         }
 
         // Method 3: aria-label with full US address pattern
-        const allAria = document.querySelectorAll('[aria-label]');
+        const allAria = panel.querySelectorAll('[aria-label]');
         for (const el of allAria) {
             const label = el.getAttribute('aria-label') || '';
             const result = buildAddressResult(label, businessName);
             if (result) return result;
         }
 
-        return null;
+        const locality = globalThis.AAHAddressValidation.extractContactLocality(panel.innerText || panel.textContent);
+        return locality.city ? { businessName, ...locality, fullAddress: '',
+            website: tryExtractWebsite(), phone: tryExtractPhone() } : null;
     }
 
     // ===== Try to extract address from page body text =====
@@ -467,7 +402,11 @@
 
     function buildAddressResult(rawAddress, businessName) {
         const fullAddress = cleanAddressCandidate(rawAddress);
-        if (!looksLikeAddressCandidate(fullAddress)) return null;
+        if (!looksLikeAddressCandidate(fullAddress)) {
+            const locality = globalThis.AAHAddressValidation.extractContactLocality(fullAddress);
+            return locality.city ? { businessName, ...locality, fullAddress: '',
+                website: tryExtractWebsite(), phone: tryExtractPhone() } : null;
+        }
 
         const parsed = parseAddress(fullAddress);
         if (!parsed.streetAddress) return null;
@@ -493,8 +432,10 @@
 
     function looksLikeAddressCandidate(value) {
         const address = cleanAddressCandidate(value);
-        if (!address || !/\d/.test(address) || !address.includes(',')) return false;
-        return new RegExp(`\\b(?:[A-Z]{2}|${getStateNamePattern()})\\s+\\d{5}(?:-\\d{4})?\\b`, 'i').test(address);
+        if (!address || !address.includes(',')) return false;
+        const parsed = parseAddress(address);
+        return globalThis.AAHAddressValidation.isUsableStreetAddress(parsed.streetAddress) &&
+            !!parsed.city && !!globalThis.AAHAddressValidation.getStateAbbrev(parsed.state);
     }
 
     function getStateNamePattern() {

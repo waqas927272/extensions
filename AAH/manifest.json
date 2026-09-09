@@ -21,7 +21,7 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["description-scraper.js", "description-address.js", "detail-extractor.js", "google-maps-scraper.js", "google-search-scraper.js"],
+      "resources": ["description-scraper.js", "description-address.js", "detail-extractor.js", "address-validation.js", "google-maps-scraper.js", "google-search-scraper.js"],
       "matches": ["<all_urls>"]
     }
   ]

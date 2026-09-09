@@ -3,8 +3,15 @@
 // for address, phone, and website, then fall back to visible result text.
 (async () => {
     try {
-        await waitForGoogleResults();
+        if (!globalThis.AAHAddressValidation) throw new Error('Address validation module was not loaded');
+        return await globalThis.AAHAddressValidation.waitForContactDetails(readPanel,
+            result => !!result.businessName && !!result.city && !!result.state,
+            globalThis.__AAH_ADDRESS_CONTEXT__ || {}) || readPanel();
+    } catch (error) {
+        return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: error.message };
+    }
 
+    function readPanel() {
         const panelText = getKnowledgePanelText();
         const businessName = extractBusinessNameFromPanel() || '';
         if (!panelText || !businessName) {
@@ -12,7 +19,8 @@
         }
 
         const address = extractAddress(panelText);
-        const parsed = parseAddress(address);
+        const parsed = address ? parseAddress(address)
+            : globalThis.AAHAddressValidation.extractContactLocality(panelText);
 
         return {
             businessName,
@@ -25,77 +33,34 @@
             website: extractWebsiteFromPanel() || '',
             panelText: panelText || ''
         };
-    } catch (error) {
-        return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: error.message };
     }
 
-    function wait(ms) {
-        return new Promise(resolve => setTimeout(resolve, ms));
-    }
-
-    async function waitForGoogleResults() {
-        const deadline = Date.now() + 15000;
-        let lastText = '';
-        let stableCount = 0;
-
-        while (Date.now() < deadline) {
-            await wait(500);
-            const panelText = getKnowledgePanelText();
-            const bodyText = cleanText(document.body.innerText || '');
-            const text = panelText || bodyText;
-
-            if (extractAddress(panelText) || extractAddress(bodyText)) return;
-
-            if (text && text === lastText) stableCount++;
-            else stableCount = 0;
-            lastText = text;
-
-            if (stableCount >= 2 && (document.querySelector('#search') || document.querySelector('#rhs') || document.querySelector('[role="complementary"]'))) {
-                return;
-            }
+    function getKnowledgePanel() {
+        for (const selector of ['#rhs', '[role="complementary"]', '.kp-wholepage', '.lu_map_section']) {
+            const panel = document.querySelector(selector);
+            if (panel && isVisible(panel)) return panel;
         }
+        return null;
     }
 
     function getKnowledgePanelText() {
-        const selectors = [
-            '#rhs',
-            '[role="complementary"]',
-            '.kp-wholepage',
-            '[data-attrid*="kc:/location"]',
-            '[data-attrid*="address"]',
-            '[data-local-attribute]',
-            '.lu_map_section'
-        ];
-
-        const chunks = [];
-        const seen = new Set();
-        for (const selector of selectors) {
-            for (const element of document.querySelectorAll(selector)) {
-                if (!isVisible(element)) continue;
-                const text = cleanText(element.innerText || element.textContent || '');
-                if (!text || seen.has(text)) continue;
-                seen.add(text);
-                chunks.push(text);
-            }
-        }
-
-        return chunks.join('\n');
+        const panel = getKnowledgePanel();
+        return panel ? cleanText(panel.innerText || panel.textContent || '') : '';
     }
 
     function extractBusinessNameFromPanel() {
+        const panel = getKnowledgePanel();
+        if (!panel) return '';
         const selectors = [
-            '#rhs [data-attrid="title"]',
-            '#rhs h2',
-            '#rhs h3',
-            '[role="complementary"] [data-attrid="title"]',
-            '[role="complementary"] h2',
-            '[role="complementary"] h3',
+            '[data-attrid="title"]',
+            'h2',
+            'h3',
             '.qrShPb',
             '.SPZz6b h2'
         ];
 
         for (const selector of selectors) {
-            for (const element of document.querySelectorAll(selector)) {
+            for (const element of panel.querySelectorAll(selector)) {
                 if (!isVisible(element)) continue;
                 const text = cleanText(element.innerText || element.textContent || '');
                 if (text && text.length <= 120 && !/^(?:Website|Directions|Call|Address|Hours)$/i.test(text)) {
@@ -116,13 +81,24 @@
         const source = cleanText(text || '');
         if (!source) return '';
 
+        // Structured address fields preserve wrapped lines and hyphenated
+        // building numbers (e.g. Queens' 25-62) before loose text patterns run.
+        const structuredAddress = extractAddressFromAttributes();
+        if (structuredAddress) return normalizeAddress(structuredAddress);
+
+        const labelledBlock = source.match(/\bAddress\s*[:\n]\s*([\s\S]+?)(?=\n(?:Phone|Call|Hours|Website|Directions|Open|Closed|Suggest an edit)\b|$)/i);
+        if (labelledBlock) {
+            const parsed = parseAddress(labelledBlock[1]);
+            if (parsed.streetAddress && parsed.city && parsed.state) return normalizeAddress(labelledBlock[1]);
+        }
+
         const stateToken = `(?:[A-Z]{2}|${getStateNamePattern()})`;
         const labelled = source.match(new RegExp(`(?:Address|Located in)\\s*[:\\n]\\s*([^\\n]+?\\b${stateToken}\\s+\\d{5}(?:-\\d{4})?)`, 'i'));
         if (labelled) return normalizeAddress(labelled[1]);
 
         const patterns = [
-            new RegExp(`(\\d{1,6}\\s+[\\w\\s.'#&/-]+?(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|NE|NW|SE|SW)\\b[\\w\\s.,#&/-]*?,\\s*[\\w\\s.'-]+,\\s*${stateToken}\\s+\\d{5}(?:-\\d{4})?)`, 'i'),
-            new RegExp(`(\\d{1,6}\\s+[\\w\\s.'#&/-]+?(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|NE|NW|SE|SW)\\b[\\w\\s.,#&/-]*?\\s+${stateToken}\\s+\\d{5}(?:-\\d{4})?)`, 'i')
+            new RegExp(`((?<![\\d-])\\d{1,6}(?:-\\d{1,6})?[a-z]?\\s+[\\w\\s.'#&/-]+?(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|NE|NW|SE|SW)\\b[\\w\\s.,#&/-]*?,\\s*[\\w\\s.'-]+,\\s*${stateToken}\\s+\\d{5}(?:-\\d{4})?)`, 'i'),
+            new RegExp(`((?<![\\d-])\\d{1,6}(?:-\\d{1,6})?[a-z]?\\s+[\\w\\s.'#&/-]+?(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|NE|NW|SE|SW)\\b[\\w\\s.,#&/-]*?\\s+${stateToken}\\s+\\d{5}(?:-\\d{4})?)`, 'i')
         ];
 
         for (const pattern of patterns) {
@@ -135,6 +111,8 @@
     }
 
     function extractAddressFromAttributes() {
+        const panel = getKnowledgePanel();
+        if (!panel) return '';
         const selectors = [
             '[data-attrid*="address"]',
             '[aria-label^="Address"]',
@@ -143,9 +121,10 @@
         ];
 
         for (const selector of selectors) {
-            for (const element of document.querySelectorAll(selector)) {
+            for (const element of panel.querySelectorAll(selector)) {
                 const text = cleanText(element.innerText || element.textContent || element.getAttribute('aria-label') || '');
-                if (/\d/.test(text) && new RegExp(`\\b(?:[A-Z]{2}|${getStateNamePattern()})\\s+\\d{5}`, 'i').test(text)) return text.replace(/^Address\s*[:\n]\s*/i, '');
+                const parsed = parseAddress(text);
+                if (parsed.streetAddress && parsed.city && parsed.state) return text.replace(/^Address\s*[:\n]\s*/i, '');
             }
         }
 
@@ -153,7 +132,9 @@
     }
 
     function extractPhoneFromPanel() {
-        const telLink = document.querySelector('#rhs a[href^="tel:"], [role="complementary"] a[href^="tel:"], a[href^="tel:"]');
+        const panel = getKnowledgePanel();
+        if (!panel) return '';
+        const telLink = panel.querySelector('a[href^="tel:"]');
         if (telLink) return telLink.getAttribute('href').replace(/^tel:/i, '').trim();
 
         const selectors = [
@@ -162,7 +143,7 @@
             '[data-local-attribute*="phone"]'
         ];
         for (const selector of selectors) {
-            for (const element of document.querySelectorAll(selector)) {
+            for (const element of panel.querySelectorAll(selector)) {
                 const text = cleanText(element.innerText || element.textContent || element.getAttribute('aria-label') || '');
                 const phone = extractPhone(text);
                 if (phone) return phone;
@@ -179,7 +160,8 @@
     }
 
     function extractWebsiteFromPanel() {
-        const panel = document.querySelector('#rhs') || document.querySelector('[role="complementary"]') || document;
+        const panel = getKnowledgePanel();
+        if (!panel) return '';
         const links = [...panel.querySelectorAll('a[href]')];
         for (const link of links) {
             const label = cleanText(`${link.innerText || ''} ${link.getAttribute('aria-label') || ''} ${link.getAttribute('title') || ''}`);
@@ -243,8 +225,10 @@
             .replace(/^Address\s*[:\n]\s*/i, '')
             .replace(/\s+/g, ' ')
             .replace(/\s*,\s*/g, ', ')
-            .replace(/\s+(?:United States|USA)\s*$/i, '')
+            // The attribute fallback includes ", United States". Remove its
+            // comma too, or the ZIP-at-end parser rejects wrapped addresses.
             .replace(/\s+(?:Website|Phone|Directions|Hours|Open|Closed).*$/i, '')
+            .replace(/,?\s*(?:United States|USA)\s*$/i, '')
             .trim();
     }
 
@@ -280,7 +264,11 @@
 
         const stateZipPattern = new RegExp(`\\b(${stateToken})\\s+(\\d{5}(?:-\\d{4})?)\\s*$`, 'i');
         const stateZipMatch = addr.match(stateZipPattern);
-        if (!stateZipMatch) return { streetAddress: '', city: '', state: '', zipCode: '' };
+        if (!stateZipMatch) {
+            const withoutZip = addr.match(new RegExp(`^([\\s\\S]+?),\\s*([^,]+?),\\s*(${stateToken})$`, 'i'));
+            return withoutZip ? { streetAddress: withoutZip[1].trim(), city: withoutZip[2].trim(), state: withoutZip[3].trim(), zipCode: '' }
+                : { streetAddress: '', city: '', state: '', zipCode: '' };
+        }
 
         const state = stateZipMatch[1];
         const zipCode = stateZipMatch[2];

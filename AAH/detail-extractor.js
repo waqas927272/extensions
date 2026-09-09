@@ -469,17 +469,16 @@
         if (!text) return '';
 
         const rolePattern = /\b(?:title:|job title:|medical director|lead veterinarian|lead vet|board certified|board[-\s]+certified|residency[-\s]+trained|residential[-\s]+trained|diplomate|criticalist|ecc specialist|emergency\s*(?:&|and)?\s*critical care specialist|internist|internal medicine specialist|cardiologist|dermatologist|oncologist|neurologist|neurosurgeon|ophthalmologist|radiologist|diagnostic imaging specialist|anesthesiologist|medical oncologist|radiation oncologist|veterinary dentist|dental specialist|oral surgeon|veterinary surgeon|credentialed veterinary technician specialist|technician specialist|\bvts\b|\bdacv(?:ecc|im|r|s|d|o|aa)?\b|\bdacvr[-\s]?ro\b|\bdavdc\b|\bdabvp\b)\b/i;
-        const blockedPattern = /\b(?:company description|additional information|our services|services include|specialties include|benefits|medical(?:,\s*|\s+)dental|dental insurance|our hospital|hospital was founded|was founded|founded by|our team has|state[-\s]?of[-\s]?the[-\s]?art|we offer|years of experience in specialty and emergency services|access to|supportive services|consultation)\b/i;
+        const blockedPattern = /\b(?:company description|additional information|our services|services include|specialties include|benefits|medical(?:,\s*|\s+)dental|dental insurance|our hospital|our practice has|hospital was founded|was founded|founded by|our team has|team of|staff includes|relationship with|mobile board[-\s]?certified|visits? (?:the )?practice|state[-\s]?of[-\s]?the[-\s]?art|we offer|years of experience in specialty and emergency services|access to|supportive services|consultation)\b/i;
         const qualificationsSection = extractQualificationsSection(text);
         const collected = [];
         const seen = new Set();
 
-        if (qualificationsSection) {
-            seen.add(qualificationsSection);
-            collected.push(qualificationsSection);
-        }
-
-        for (const rawLine of text.split('\n')) {
+        const roleLines = [
+            ...(qualificationsSection ? qualificationsSection.split(/\r?\n/) : []),
+            ...text.split(/\r?\n/)
+        ];
+        for (const rawLine of roleLines) {
             const line = rawLine.trim();
             if (!line || !rolePattern.test(line) || blockedPattern.test(line) || seen.has(line)) continue;
             seen.add(line);
@@ -679,6 +678,8 @@
             /(?:salary|pay|compensation)\s+range\s*[-:]\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|–|—|to)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
             /(?:range\s+for\s+a\s+)?base\s+salary\s+(?:is|of|from|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|–|—|to)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
             /(?:base\s+salary|salary|pay|compensation)\s+starting\s+at\s+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
+            /starting\s+(?:base\s+)?(?:salary|pay|compensation)\s+(?:at|from)\s+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
+            /(?:base\s+salary|salary|pay|compensation)\s+(?:is\s+)?(?:approximately|approx\.?|around|about)\s+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
             // "Base salary ranges: $150k - $171k" or "base salary range of $140,000 – 160,000"
             /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
             /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
@@ -764,6 +765,11 @@
         }
 
         for (const source of prioritizedLines) {
+            const idealPreferredMinimum = source.match(/\bideally\s+(\d+)\+\s*years?\b/i);
+            if (idealPreferredMinimum && /\b(?:experienced|experience|preferred|ideal)\b/i.test(source)) {
+                return `${idealPreferredMinimum[1]}+ years`;
+            }
+
             const writtenMinimum = source.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+or\s+more\s+years?\s+(?:of\s+)?(?:\w+\s+){0,3}experience\b/i);
             if (writtenMinimum) return `${wordYears[writtenMinimum[1].toLowerCase()]}+ years`;
 
@@ -884,10 +890,15 @@
         return isGenericHospitalName(name) ? '' : name;
     }
 
+    // Regional leadership postings may describe several practices. None of
+    // those practices should replace the hospital/company from the listing.
+    const isRegionalMultiPracticeRole = /\bregional\s+(?:veterinarian\s+)?medical\s+director\b/i.test(positionTitle) &&
+        /\b(?:multiple\s+(?:locations|clinics|practices|hospitals)|\w+\s+(?:general\s+practice\s+)?clinics|two\s+(?:of\s+our\s+)?(?:practices|hospitals|clinics)|across\s+both\s+(?:practices|hospitals|clinics))\b/i.test(fullDescription);
+
     // Get hospital name without letting the generic parent client overwrite the practice.
     let hospitalName = cleanHospitalName(domData.hospitalName || '');
     if (isGenericHospitalName(hospitalName)) hospitalName = '';
-    hospitalName = hospitalName
+    hospitalName = isRegionalMultiPracticeRole ? '' : (hospitalName
         || firstSpecificHospital(/Hospital Name:\s*([^\n]+)/i)
         || firstSpecificHospital(/Position at\s+([^\n]+)/i)
         || firstSpecificHospital(/^([A-Z][^,\n]{2,90}),\s+(?:a|an|our)\s+(?:well-established|full-service|small animal|AAHA|community|progressive|modern|brand-new|established)?[^.\n]*(?:practice|hospital|clinic|center)\b/im)
@@ -895,8 +906,8 @@
         || firstSpecificHospital(/at\s+((?:[\w'.&-]+\s+){1,5}(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)|The\s+[A-Z][\w\s]+Service))\b/i)
         || firstSpecificHospital(/^([A-Z][^.\n]{2,90}?(?:Animal\s+Hospital|Veterinary\s+(?:Hospital|Center|Clinic|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)|Urgent\s+Care|The\s+[A-Z][\w\s]+Service))\s+(?:is|has been|in\s+[A-Z][^,\n]+\s+is)\b/im)
         || firstSpecificHospital(/^([A-Z][A-Za-z0-9'.& -]{2,90}?(?:Animal\s+(?:Clinic|Hospital|Medical\s+Center|Care|Associates)|Animal\s+Medical\s+Center|Veterinary\s+(?:Clinic|Hospital|Center|Care|Specialists?)|Pet\s+(?:Hospital|Clinic|Care)|Emergency\s+(?:Hospital|Center|Clinic)|Urgent\s+Care|Clinic|Hospital))\s+(?:is|has been|in\s+[A-Z][^,\n]+\s+is|,\s+(?:just|a|an|our))\b/im)
-        || firstSpecificHospital(/\bAt\s+(PriorityPet(?:\s+Urgent\s+Care)?)\b/i);
-    if (!hospitalName && jsonLd?.hiringOrganization?.name && !isGenericHospitalName(jsonLd.hiringOrganization.name)) {
+        || firstSpecificHospital(/\bAt\s+(PriorityPet(?:\s+Urgent\s+Care)?)\b/i));
+    if (!isRegionalMultiPracticeRole && !hospitalName && jsonLd?.hiringOrganization?.name && !isGenericHospitalName(jsonLd.hiringOrganization.name)) {
         hospitalName = cleanHospitalName(jsonLd.hiringOrganization.name);
     }
 

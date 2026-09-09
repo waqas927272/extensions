@@ -33,7 +33,6 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentDetailsIndex = 0;
     let addressQueue = [];
     let currentAddressIndex = 0;
-    let addressCache = new Map();
     const getDescriptionsBtn = document.getElementById('getDescriptionsBtn');
     const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
     const fetchAddressesBtn = document.getElementById('fetchAddressesBtn');
@@ -144,12 +143,11 @@ document.addEventListener('DOMContentLoaded', () => {
         const seen = new Set();
         const qualificationsSection = extractQualificationsSection(source);
 
-        if (qualificationsSection) {
-            seen.add(qualificationsSection);
-            collected.push(qualificationsSection);
-        }
-
-        for (const rawLine of source.split(/\r?\n/)) {
+        const roleLines = [
+            ...(qualificationsSection ? qualificationsSection.split(/\r?\n/) : []),
+            ...source.split(/\r?\n/)
+        ];
+        for (const rawLine of roleLines) {
             const line = rawLine.trim();
             if (!line || seen.has(line) || !rolePattern.test(line) || blockedPattern.test(line)) continue;
             seen.add(line);
@@ -450,6 +448,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 /(?:range\s+for\s+a\s+)?base\s+salary\s+(?:is|of|from|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*(?:-|–|—|to)\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
                 // "base salary starting at $115,000"
                 /(?:base\s+salary|salary|pay|compensation)\s+starting\s+at\s+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
+                // "Starting Salary at $120,000"
+                /starting\s+(?:base\s+)?(?:salary|pay|compensation)\s+(?:at|from)\s+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
+                // "Compensation is around $160,000"
+                /(?:base\s+salary|salary|pay|compensation)\s+(?:is\s+)?(?:approximately|approx\.?|around|about)\s+\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
                 // "Base salary ranges: $150k - $171k" or "base salary range of $140,000 – 160,000"
                 /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s*[-–—]\s*\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
                 /(?:base\s+salary\s*(?:ranges?)?)\s*(?:of|from|is|:)\s*\$[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?\s+to\s+\$?[\d,]+(?:\.\d{2})?\s*(?:\/k|k)?/i,
@@ -780,6 +782,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 return isGenericHospitalName(name) ? '' : name;
             }
 
+            // A regional role can name several practices that share the job. The
+            // first one mentioned is not the record's hospital; preserve the
+            // hospital/company captured from the source listing instead.
+            const isRegionalMultiPracticeRole = /\bregional\s+(?:veterinarian\s+)?medical\s+director\b/i.test(positionTitle) &&
+                /\b(?:multiple\s+(?:locations|clinics|practices|hospitals)|\w+\s+(?:general\s+practice\s+)?clinics|two\s+(?:of\s+our\s+)?(?:practices|hospitals|clinics)|across\s+both\s+(?:practices|hospitals|clinics))\b/i.test(text);
+            if (isRegionalMultiPracticeRole) return '';
+
             const explicitHospital = firstSpecificHospital(/Hospital Name:\s*([^\n]+)/i);
             if (explicitHospital) return explicitHospital;
 
@@ -954,6 +963,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             for (const source of prioritizedLines) {
+                const idealPreferredMinimum = source.match(/\bideally\s+(\d+)\+\s*years?\b/i);
+                if (idealPreferredMinimum && /\b(?:experienced|experience|preferred|ideal)\b/i.test(source)) {
+                    return `${idealPreferredMinimum[1]}+ years`;
+                }
+
                 const writtenMinimum = source.match(/\b(one|two|three|four|five|six|seven|eight|nine|ten)\s+or\s+more\s+years?\s+(?:of\s+)?(?:\w+\s+){0,3}experience\b/i);
                 if (writtenMinimum) return `${wordYears[writtenMinimum[1].toLowerCase()]}+ years`;
 
@@ -997,409 +1011,65 @@ document.addEventListener('DOMContentLoaded', () => {
         };
     }
 
-    // Google Maps scraping function to get street address and zip code
-    // Opens a Google Maps search tab, injects scraper that:
-    //   1. Waits for search results to load
-    //   2. Matches the hospital name from aria-labels on search result links
-    //   3. Clicks the matching result
-    //   4. Waits for place detail panel and extracts address
-    // Retries with simplified search query if first attempt fails.
-    async function fetchAddressFromGoogleMaps(hospitalName, location, originalHospitalName = '', description = '') {
-        // Build search query: "Hospital Name, City, State"
-        const searchQuery = [hospitalName, location].filter(Boolean).join(', ');
-        const mapsUrl = `https://www.google.com/maps/search/${encodeURIComponent(searchQuery)}`;
-
-        function emptyAddressResult() {
-            return { businessName: '', streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', cityMatchedHospitalName: false };
-        }
-
-        function filterDataForExpectedLocation(data, sourceLabel) {
-            const validation = addressValidation.validateGoogleResult(data, {
-                hospitalName,
-                originalHospitalName,
-                location,
-                description
-            });
-            if (!validation.accepted) {
-                console.warn(`Ignoring Google result from "${sourceLabel}" (${validation.reason}).`);
-                return emptyAddressResult();
-            }
-            return { ...validation.result, validationReason: validation.reason };
-        }
-
-        function mergeMapsData(primary, secondary, sourceLabel = '') {
-            const safeSecondary = filterDataForExpectedLocation(secondary, sourceLabel);
-            return addressValidation.chooseCompleteAddressResult(primary, safeSecondary) || emptyAddressResult();
-        }
-
-        function needsMapsRetry(data) {
-            return !addressValidation.isCompleteAddressResult(data);
-        }
-
-        function uniqueQueries(names) {
-            const seen = new Set();
-            const queries = [];
-            for (const name of names) {
-                const normalizedName = (name || '').replace(/\s+/g, ' ').replace(/\s+,/g, ',').trim();
-                if (!normalizedName) continue;
-                const query = [normalizedName, location].filter(Boolean).join(', ').replace(/\s+/g, ' ').trim();
-                const key = query.toLowerCase();
-                if (seen.has(key)) continue;
-                seen.add(key);
-                queries.push(query);
-            }
-            return queries;
-        }
-
-        function buildHospitalNameVariants() {
-            const rawNames = [hospitalName, originalHospitalName].filter(Boolean);
-            const city = (location || '').split(',')[0]?.trim() || '';
-            const names = [];
-
-            for (const rawName of rawNames) {
-                const base = rawName.replace(/\s+/g, ' ').trim();
-                if (!base) continue;
-
-                const withoutLocationSuffix = base.replace(/\s*[-–—]\s*[A-Z][a-zA-Z\s.'-]+$/, '').trim();
-                const withoutParens = base.replace(/\s*\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
-                const expandedParens = base.replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim();
-                const plain = base.replace(/&/g, 'and').replace(/[-–—()]/g, ' ').replace(/\s+/g, ' ').trim();
-
-                names.push(base, withoutLocationSuffix, withoutParens, expandedParens, plain);
-
-                if (city) {
-                    for (const candidate of [withoutLocationSuffix, withoutParens, plain]) {
-                        if (candidate && !candidate.toLowerCase().includes(city.toLowerCase())) {
-                            names.push(`${candidate} ${city}`);
-                        }
-                    }
+    // Chrome transport only. Query order, matching and fallbacks live in the
+    // shared lookup module so the same workflow can be tested without Chrome.
+    function scrapeAddressPage(provider, query, context) {
+        return new Promise((resolve, reject) => {
+            let tabId = null;
+            let listener = null;
+            let settled = false;
+            let started = false;
+            const finish = async (result, error) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timeout);
+                if (listener) chrome.tabs.onUpdated.removeListener(listener);
+                if (tabId !== null) await chrome.tabs.remove(tabId).catch(() => {});
+                if (error) reject(error);
+                else resolve(result || {});
+            };
+            const timeout = setTimeout(() => finish(null, new Error('Google lookup timed out')), 30000);
+            const url = provider === 'maps'
+                ? `https://www.google.com/maps/search/${encodeURIComponent(query)}`
+                : `https://www.google.com/search?q=${encodeURIComponent(query)}`;
+            const extract = () => {
+                if (settled || started) return;
+                started = true;
+                chrome.scripting.executeScript({
+                    target: { tabId },
+                    func: (value) => { globalThis.__AAH_ADDRESS_CONTEXT__ = value; },
+                    args: [context]
+                }).then(() => {
+                    if (settled) return;
+                    return chrome.scripting.executeScript({ target: { tabId }, files: ['address-validation.js'] });
+                }).then(() => {
+                    if (settled) return;
+                    return chrome.scripting.executeScript({ target: { tabId },
+                        files: [provider === 'maps' ? 'google-maps-scraper.js' : 'google-search-scraper.js'] });
+                }).then(results => {
+                    const result = results?.[0]?.result || {};
+                    if (result.error) return finish(null, new Error(result.error));
+                    return finish({ ...result, sourceUrl: url });
+                }).catch(error => finish(null, error));
+            };
+            chrome.tabs.create({ url, active: false }, (tab) => {
+                const error = chrome.runtime.lastError;
+                if (settled) {
+                    if (tab?.id !== undefined) chrome.tabs.remove(tab.id).catch(() => {});
+                    return;
                 }
-            }
-
-            return names;
-        }
-
-        // Inner function: open a tab, wait for load, inject scraper, get results
-        function scrapeGoogleMapsTab(url, queryLabel) {
-            return new Promise((resolve) => {
-                // Safety timeout — 30 seconds max
-                const timeout = setTimeout(() => {
-                    console.warn(`✗ Google Maps timeout for: "${queryLabel}"`);
-                    resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
-                }, 30000);
-
-                chrome.tabs.create({ url: url, active: false }, (tab) => {
-                    if (!tab) {
-                        clearTimeout(timeout);
-                        resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
-                        return;
-                    }
-
-                    const tabId = tab.id;
-
-                    const listener = (updatedTabId, info) => {
-                        if (updatedTabId === tabId && info.status === 'complete') {
-                            chrome.tabs.onUpdated.removeListener(listener);
-
-                            // Wait 2s for Google Maps SPA to start rendering,
-                            // then inject the scraper which handles its own polling + clicking
-                            setTimeout(() => {
-                                chrome.scripting.executeScript({
-                                    target: { tabId: tabId },
-                                    func: (context) => {
-                                        globalThis.__AAH_ADDRESS_CONTEXT__ = context;
-                                    },
-                                    args: [{ hospitalName, originalHospitalName, location }]
-                                }).then(() => chrome.scripting.executeScript({
-                                    target: { tabId: tabId },
-                                    files: ['google-maps-scraper.js']
-                                })).then((results) => {
-                                    clearTimeout(timeout);
-                                    chrome.tabs.remove(tabId).catch(() => {});
-
-                                    const data = results?.[0]?.result || {};
-                                    resolve({
-                                        businessName: data.businessName || '',
-                                        streetAddress: data.streetAddress || '',
-                                        zipCode: data.zipCode || '',
-                                        city: data.city || '',
-                                        state: data.state || '',
-                                        fullAddress: data.fullAddress || '',
-                                        website: data.website || '',
-                                        phone: data.phone || '',
-                                        cityMatchedHospitalName: !!data.cityMatchedHospitalName
-                                    });
-                                }).catch((err) => {
-                                    console.error(`Google Maps script error for "${queryLabel}":`, err);
-                                    clearTimeout(timeout);
-                                    chrome.tabs.remove(tabId).catch(() => {});
-                                    resolve({ streetAddress: '', zipCode: '', city: '', state: '', website: '', phone: '' });
-                                });
-                            }, 2000);
-                        }
-                    };
-
-                    chrome.tabs.onUpdated.addListener(listener);
-                });
-            });
-        }
-
-        function scrapeGoogleMapsTabSafe(url, queryLabel) {
-            return new Promise((resolve) => {
-                let settled = false;
-                let mapsTabId = null;
-                let listener = null;
-
-                const finish = (result) => {
-                    if (settled) return;
-                    settled = true;
-                    clearTimeout(timeout);
-                    if (listener) chrome.tabs.onUpdated.removeListener(listener);
-                    if (mapsTabId) chrome.tabs.remove(mapsTabId).catch(() => {});
-                    resolve(result || emptyAddressResult());
+                if (error || !tab) return finish(null, new Error(error?.message || 'Unable to open Google'));
+                tabId = tab.id;
+                listener = (updatedId, info) => {
+                    if (updatedId === tabId && info.status === 'complete') extract();
                 };
-
-                const timeout = setTimeout(() => {
-                    console.warn(`Google Maps timeout for: "${queryLabel}"`);
-                    finish(emptyAddressResult());
-                }, 22000);
-
-                chrome.tabs.create({ url: url, active: false }, (tab) => {
-                    if (!tab) {
-                        finish(emptyAddressResult());
-                        return;
-                    }
-
-                    mapsTabId = tab.id;
-                    listener = (updatedTabId, info) => {
-                        if (updatedTabId === mapsTabId && info.status === 'complete') {
-                            chrome.tabs.onUpdated.removeListener(listener);
-                            listener = null;
-
-                            setTimeout(() => {
-                                if (settled) return;
-                                chrome.scripting.executeScript({
-                                    target: { tabId: mapsTabId },
-                                    func: (context) => {
-                                        globalThis.__AAH_ADDRESS_CONTEXT__ = context;
-                                    },
-                                    args: [{ hospitalName, originalHospitalName, location }]
-                                }).then(() => chrome.scripting.executeScript({
-                                    target: { tabId: mapsTabId },
-                                    files: ['google-maps-scraper.js']
-                                })).then((results) => {
-                                    const data = results?.[0]?.result || {};
-                                    finish({
-                                        businessName: data.businessName || '',
-                                        streetAddress: data.streetAddress || '',
-                                        zipCode: data.zipCode || '',
-                                        city: data.city || '',
-                                        state: data.state || '',
-                                        fullAddress: data.fullAddress || '',
-                                        website: data.website || '',
-                                        phone: data.phone || '',
-                                        cityMatchedHospitalName: !!data.cityMatchedHospitalName
-                                    });
-                                }).catch((err) => {
-                                    console.error(`Google Maps script error for "${queryLabel}":`, err);
-                                    finish(emptyAddressResult());
-                                });
-                            }, 1400);
-                        }
-                    };
-
-                    chrome.tabs.onUpdated.addListener(listener);
-                });
+                chrome.tabs.onUpdated.addListener(listener);
+                // A cached page can finish before the onUpdated listener exists.
+                chrome.tabs.get(tabId).then(current => {
+                    if (current.status === 'complete') extract();
+                }).catch(error => finish(null, error));
             });
-        }
-
-        function scrapeGoogleSearchTab(queryLabel) {
-            return new Promise((resolve) => {
-                let settled = false;
-                let searchTabId = null;
-
-                const finish = (result) => {
-                    if (settled) return;
-                    settled = true;
-                    clearTimeout(timeout);
-                    if (searchTabId) chrome.tabs.remove(searchTabId).catch(() => {});
-                    resolve(result || emptyAddressResult());
-                };
-
-                const timeout = setTimeout(() => {
-                    console.warn(`Google Search timeout for: "${queryLabel}"`);
-                    finish(emptyAddressResult());
-                }, 45000);
-
-                const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(queryLabel)}`;
-                chrome.tabs.create({ url: searchUrl, active: false }, (tab) => {
-                    if (!tab) {
-                        finish(emptyAddressResult());
-                        return;
-                    }
-
-                    const tabId = tab.id;
-                    searchTabId = tabId;
-                    const listener = (updatedTabId, info) => {
-                        if (updatedTabId === tabId && info.status === 'complete') {
-                            chrome.tabs.onUpdated.removeListener(listener);
-
-                            setTimeout(() => {
-                                chrome.scripting.executeScript({
-                                    target: { tabId: tabId },
-                                    files: ['google-search-scraper.js']
-                                }).then((results) => {
-                                    const data = results?.[0]?.result || {};
-                                    finish({
-                                        businessName: data.businessName || '',
-                                        streetAddress: data.streetAddress || '',
-                                        zipCode: data.zipCode || '',
-                                        city: data.city || '',
-                                        state: data.state || '',
-                                        fullAddress: data.fullAddress || '',
-                                        website: data.website || '',
-                                        phone: data.phone || '',
-                                        cityMatchedHospitalName: !!data.cityMatchedHospitalName
-                                    });
-                                }).catch((err) => {
-                                    console.error(`Google Search script error for "${queryLabel}":`, err);
-                                    finish(emptyAddressResult());
-                                });
-                            }, 2500);
-                        }
-                    };
-
-                    chrome.tabs.onUpdated.addListener(listener);
-                });
-            });
-        }
-
-        function scrapeGoogleSearchTabSafe(queryLabel) {
-            return new Promise((resolve) => {
-                let settled = false;
-                let searchTabId = null;
-                let listener = null;
-
-                const finish = (result) => {
-                    if (settled) return;
-                    settled = true;
-                    clearTimeout(timeout);
-                    if (listener) chrome.tabs.onUpdated.removeListener(listener);
-                    if (searchTabId) chrome.tabs.remove(searchTabId).catch(() => {});
-                    resolve(result || emptyAddressResult());
-                };
-
-                const timeout = setTimeout(() => {
-                    console.warn(`Google Search timeout for: "${queryLabel}"`);
-                    finish(emptyAddressResult());
-                }, 26000);
-
-                const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(queryLabel)}`;
-                chrome.tabs.create({ url: searchUrl, active: false }, (tab) => {
-                    if (!tab) {
-                        finish(emptyAddressResult());
-                        return;
-                    }
-
-                    searchTabId = tab.id;
-                    listener = (updatedTabId, info) => {
-                        if (updatedTabId === searchTabId && info.status === 'complete') {
-                            chrome.tabs.onUpdated.removeListener(listener);
-                            listener = null;
-
-                            setTimeout(() => {
-                                if (settled) return;
-                                chrome.scripting.executeScript({
-                                    target: { tabId: searchTabId },
-                                    files: ['google-search-scraper.js']
-                                }).then((results) => {
-                                    const data = results?.[0]?.result || {};
-                                    finish({
-                                        businessName: data.businessName || '',
-                                        streetAddress: data.streetAddress || '',
-                                        zipCode: data.zipCode || '',
-                                        city: data.city || '',
-                                        state: data.state || '',
-                                        fullAddress: data.fullAddress || '',
-                                        website: data.website || '',
-                                        phone: data.phone || '',
-                                        cityMatchedHospitalName: !!data.cityMatchedHospitalName
-                                    });
-                                }).catch((err) => {
-                                    console.error(`Google Search script error for "${queryLabel}":`, err);
-                                    finish(emptyAddressResult());
-                                });
-                            }, 1200);
-                        }
-                    };
-
-                    chrome.tabs.onUpdated.addListener(listener);
-                });
-            });
-        }
-
-        // Attempt 1: search with exact hospital name + city, state
-        console.log(`🔍 Google Maps search: "${searchQuery}"`);
-        let data = mergeMapsData(emptyAddressResult(), await scrapeGoogleMapsTabSafe(mapsUrl, searchQuery), searchQuery);
-
-        // Attempt 2: if failed, try with & → and, remove dashes/parens
-        if (needsMapsRetry(data)) {
-            const simplifiedName = hospitalName
-                .replace(/&/g, 'and')
-                .replace(/[-–—()]/g, ' ')
-                .replace(/\s+/g, ' ')
-                .trim();
-            const altQuery = `${simplifiedName}, ${location}`;
-            if (altQuery !== searchQuery) {
-                console.log(`↻ Retry with: "${altQuery}"`);
-                const altUrl = `https://www.google.com/maps/search/${encodeURIComponent(altQuery)}`;
-                const altData = await scrapeGoogleMapsTabSafe(altUrl, altQuery);
-                data = mergeMapsData(data, altData, altQuery);
-            }
-        }
-
-        // Additional Maps attempts for names with location suffixes or parenthetical acronyms.
-        if (needsMapsRetry(data)) {
-            for (const query of uniqueQueries(buildHospitalNameVariants()).slice(0, 6)) {
-                if (!needsMapsRetry(data)) break;
-                if (query === searchQuery) continue;
-                console.log(`Maps variant search: "${query}"`);
-                const variantUrl = `https://www.google.com/maps/search/${encodeURIComponent(query)}`;
-                const variantData = await scrapeGoogleMapsTabSafe(variantUrl, query);
-                data = mergeMapsData(data, variantData, query);
-            }
-        }
-
-        // Last resort: use regular Google Search for any missing address or contact field.
-        if (needsMapsRetry(data) || !data.website || !data.phone) {
-            for (const query of uniqueQueries(buildHospitalNameVariants()).slice(0, 4)) {
-                if (!needsMapsRetry(data) && data.website && data.phone) break;
-                console.log(`Google Search fallback: "${query}"`);
-                const searchData = await scrapeGoogleSearchTabSafe(query);
-                data = mergeMapsData(data, searchData, query);
-            }
-        }
-
-        if (addressValidation.hasGoogleResultData(data)) {
-            console.log(`✓ SUCCESS: "${searchQuery}"`);
-            console.log(`  → Street="${data.streetAddress}", City="${data.city}", State="${data.state}", Zip="${data.zipCode}"`);
-            if (data.website) console.log(`  → Website="${data.website}"`);
-            if (data.phone) console.log(`  → Phone="${data.phone}"`);
-        } else {
-            console.warn(`✗ No address found for: "${searchQuery}"`);
-        }
-
-        return {
-            businessName: data.businessName || '',
-            streetAddress: data.streetAddress || '',
-            zipCode: data.zipCode || '',
-            city: data.city || '',
-            state: data.state || '',
-            fullAddress: data.fullAddress || '',
-            website: data.website || '',
-            phone: data.phone || '',
-            cityMatchedHospitalName: !!data.cityMatchedHospitalName
-        };
+        });
     }
 
     if (!tableBody) {
@@ -1518,7 +1188,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 row.classList.add('row-address-mismatch');
                 if (job.addressMismatchDetails) {
                     const mismatch = job.addressMismatchDetails;
-                    row.title = `Address mismatch — CSV: ${mismatch.existingStreetAddress || '-'} ${mismatch.existingZipCode || ''}; Google: ${mismatch.googleStreetAddress || '-'} ${mismatch.googleZipCode || ''}`;
+                    const corrected = mismatch.reason === 'verified-street-correction';
+                    row.title = corrected
+                        ? `Verified address differs from the description — Previous: ${mismatch.existingStreetAddress || '-'} ${mismatch.existingZipCode || ''}; Saved verified address: ${mismatch.googleStreetAddress || '-'} ${mismatch.googleZipCode || ''}. Row marked red for manual review.`
+                        : `Address needs review (${mismatch.reason || 'address mismatch'}) — Saved: ${mismatch.existingStreetAddress || '-'} ${mismatch.existingZipCode || ''}; Google: ${mismatch.googleStreetAddress || '-'} ${mismatch.googleZipCode || ''}. Saved address kept; missing contacts may be filled from the matched hospital result.`;
                 }
             }
 
@@ -2668,36 +2341,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ============ FETCH ADDRESSES ============
 
-    function normalizeAddressCacheValue(value) {
-        return (value || '')
-            .toLowerCase()
-            .replace(/&/g, ' and ')
-            .replace(/\([^)]*\)/g, ' ')
-            .replace(/[-–—]/g, ' ')
-            .replace(/\b(?:hospital|clinic|center|centre|veterinary|animal|pet)\b/g, ' ')
-            .replace(/[^a-z0-9]+/g, ' ')
-            .trim();
-    }
-
-    function makeAddressCacheKey(hospital, location) {
-        const hospitalKey = normalizeAddressCacheValue(hospital);
-        const locationKey = normalizeAddressCacheValue(location);
-        return hospitalKey && locationKey ? `${hospitalKey}|${locationKey}` : '';
-    }
-
-    function getAddressCacheKeys(hospital, location, originalHospital = '') {
-        const keys = new Set();
-        const names = [hospital, originalHospital].filter(Boolean);
-        for (const name of names) {
-            const key = makeAddressCacheKey(name, location);
-            if (key) keys.add(key);
-        }
-        return [...keys];
-    }
-
-    function hasUsableCachedAddress(data) {
-        return addressValidation.isCompleteAddressResult(data);
-    }
 
     function parseLocationParts(location) {
         const parts = (location || '').split(',').map(part => part.trim()).filter(Boolean);
@@ -2711,177 +2354,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return (value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
     }
 
-    function normalizeBusinessNameForCompare(value) {
-        return (value || '')
-            .toLowerCase()
-            .replace(/&/g, ' and ')
-            .replace(/\([^)]*\)/g, ' ')
-            .replace(/[-–—]/g, ' ')
-            .replace(/[^a-z0-9]+/g, ' ')
-            .replace(/\s+/g, ' ')
-            .trim();
-    }
-
-    function isPrioritypetUrgentCareHospitalName(value) {
-        const normalized = normalizeBusinessNameForCompare(value).replace(/\s+/g, '');
-        return normalized.includes('prioritypeturgentcare');
-    }
-
-    function getBusinessNameTokens(value) {
-        const stopWords = new Set(['the', 'and', 'for', 'with', 'of', 'at', 'veterinary', 'animal', 'pet', 'hospital', 'clinic', 'center', 'centre', 'care', 'urgent']);
-        const normalized = normalizeBusinessNameForCompare(value);
-        const tokens = normalized.split(' ').filter(token => token.length > 2 && !stopWords.has(token));
-        return tokens.length ? tokens : normalized.split(' ').filter(token => token.length > 2);
-    }
-
-    function businessNameFuzzyMatches(expectedName, scrapedName) {
-        const expected = normalizeBusinessNameForCompare(expectedName);
-        const scraped = normalizeBusinessNameForCompare(scrapedName);
-        if (!expected || !scraped) return true;
-        if (expected.includes(scraped) || scraped.includes(expected)) return true;
-
-        const expectedTokens = getBusinessNameTokens(expectedName);
-        const scrapedTokens = new Set(getBusinessNameTokens(scrapedName));
-        if (expectedTokens.length === 0 || scrapedTokens.size === 0) return false;
-
-        const matched = expectedTokens.filter(token => scraped.includes(token) || scrapedTokens.has(token)).length;
-        return matched / expectedTokens.length >= 0.5;
-    }
-
-    function businessNamesExactlyEqual(nameA, nameB) {
-        return normalizeBusinessNameForCompare(nameA) === normalizeBusinessNameForCompare(nameB);
-    }
-
-    function jobLocationMismatch(job) {
-        const expected = parseLocationParts(job.location);
-        return !!(
-            (expected.city && job.city && normalizedLocationPart(job.city) !== normalizedLocationPart(expected.city)) ||
-            (expected.state && job.state && normalizedLocationPart(getFullStateName(job.state)) !== normalizedLocationPart(getFullStateName(expected.state)))
-        );
-    }
-
-    function isPlaceholderAddressValue(value) {
-        return /^(?:tbd|n\/a|na|unknown|pending)$/i.test((value || '').trim());
-    }
-
-    function hasSuspiciousAddressValue(job) {
-        const street = job.streetAddress || '';
-        const city = job.city || '';
-        const state = job.state || '';
-        return !!(
-            isPlaceholderAddressValue(street) ||
-            isPlaceholderAddressValue(city) ||
-            isPlaceholderAddressValue(state) ||
-            street.length > 90 ||
-            city.length > 45 ||
-            state.length > 35 ||
-            /Company Description|Job Description|Qualifications|We offer|experienced veterinarian|Willingness to travel|drive practice growth/i.test(street) ||
-            /\b(?:located|practice|beautiful|community-driven|heart of|full-service|general practice)\b/i.test(city)
-        );
-    }
-
-    function needsAddressFieldUpdate(job) {
-        return !!(
-            !job.streetAddress ||
-            !job.city ||
-            !job.state ||
-            hasSuspiciousAddressValue(job) ||
-            jobLocationMismatch(job)
-        );
-    }
-
-    function needsZipUpdate(job) {
-        return !!(!job.zipCode || hasSuspiciousAddressValue(job) || jobLocationMismatch(job));
-    }
-
-    function needsContactUpdate(job) {
-        return !!(!job.website || !job.phone);
-    }
-
-    function hasCityStateForSearch(job) {
-        const locationParts = parseLocationParts(job.location);
-        const city = locationParts.city || job.city || '';
-        const state = locationParts.state || job.state || '';
-        return !!(city && state && !isPlaceholderAddressValue(city) && !isPlaceholderAddressValue(state));
-    }
-
-    function isStreetAddressComplete(job) {
-        const street = job.streetAddress || '';
-        return !!(
-            street &&
-            !isPlaceholderAddressValue(street) &&
-            !hasSuspiciousAddressValue({ ...job, city: job.city || 'City', state: job.state || 'State' }) &&
-            (/\d/.test(street) || /\bP\.?\s*O\.?\s*Box\b/i.test(street))
-        );
-    }
-
-    function hasCompleteAddressForContactSearch(job) {
-        return !!(
-            job.streetAddress &&
-            !isPlaceholderAddressValue(job.streetAddress) &&
-            job.city &&
-            job.state &&
-            job.zipCode &&
-            !hasSuspiciousAddressValue(job) &&
-            !jobLocationMismatch(job)
-        );
-    }
-
-    function hasNoZipButStreetIsNotTbd(job) {
-        return !!(
-            !job.zipCode &&
-            job.streetAddress &&
-            !isPlaceholderAddressValue(job.streetAddress) &&
-            job.city &&
-            job.state &&
-            hasCityStateForSearch(job)
-        );
-    }
-
-    function hasNoZipAndStreetIsTbd(job) {
-        return !!(
-            !job.zipCode &&
-            (
-                !job.streetAddress ||
-                isPlaceholderAddressValue(job.streetAddress) ||
-                hasSuspiciousAddressValue(job)
-            ) &&
-            hasCityStateForSearch(job)
-        );
-    }
-
-    function rememberAddressData(keys, data) {
-        if (!hasUsableCachedAddress(data)) return;
-        for (const key of keys) {
-            addressCache.set(key, { ...data });
-        }
-    }
-
-    function getRememberedAddress(keys) {
-        for (const key of keys) {
-            const cached = addressCache.get(key);
-            if (hasUsableCachedAddress(cached)) return { ...cached };
-        }
-        return null;
-    }
-
-    function primeAddressCache(jobs) {
-        addressCache = new Map();
-        for (const job of jobs) {
-            if (!job.hospital || !job.location || !job.streetAddress || !job.zipCode) continue;
-            if (jobLocationMismatch(job)) continue;
-            const cached = {
-                streetAddress: job.streetAddress || '',
-                zipCode: job.zipCode || '',
-                city: job.city || '',
-                state: job.state || '',
-                fullAddress: [job.streetAddress, job.city, [job.state, job.zipCode].filter(Boolean).join(' ')].filter(Boolean).join(', '),
-                website: job.website || '',
-                phone: job.phone || ''
-            };
-            rememberAddressData(getAddressCacheKeys(job.hospital, job.location), cached);
-        }
-    }
 
     fetchAddressesBtn.addEventListener('click', async () => {
         if (isFetchingAddresses) {
@@ -2893,15 +2365,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const jobs = data.scrapedJobs || [];
 
         addressQueue = jobs
-            .map((job, index) => ({ job, index }))
-            .filter(item => item.job.hospital);
+            .map((job, index) => ({ job, index }));
 
         if (addressQueue.length === 0) {
-            showToast('No jobs have hospital names to fetch address/contact data.', 'error');
+            showToast('No jobs available to fetch address/contact data.', 'error');
             return;
         }
 
-        addressCache = new Map();
         isFetchingAddresses = true;
         currentAddressIndex = 0;
         fetchAddressesBtn.disabled = true;
@@ -2926,7 +2396,7 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        const { job, index } = addressQueue[currentAddressIndex];
+        const { job } = addressQueue[currentAddressIndex];
 
         // Update progress
         const progressBar = document.getElementById('progressBar');
@@ -2935,14 +2405,15 @@ document.addEventListener('DOMContentLoaded', () => {
         progressBar.style.width = `${((currentAddressIndex + 1) / addressQueue.length) * 100}%`;
         fetchAddressesBtn.textContent = `Fetching... (${currentAddressIndex + 1}/${addressQueue.length})`;
 
-        async function markAddressNotFound(addressData = {}) {
+        async function markAddressNotFound() {
             const data = await chrome.storage.local.get(['scrapedJobs']);
             const jobs = data.scrapedJobs || [];
-            if (!jobs[index]) return;
+            const target = jobs.find(item => getJobSelectionKey(item) === getJobSelectionKey(job));
+            if (!target) return;
 
             // No Google result: preserve an existing description-derived street,
             // but never leave its ZIP blank. A missing street becomes TBD / 00000.
-            addressValidation.applyAddressOutcome(jobs[index], { accepted: false, result: null });
+            addressValidation.applyAddressOutcome(target, { accepted: false, result: null });
 
             await chrome.storage.local.set({ scrapedJobs: jobs });
             allJobs = jobs;
@@ -2950,77 +2421,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         try {
-            // Clean hospital name for search:
-            // Remove trailing location suffix for child rows: "Hospital-Leesburg" → "Hospital"
-            let searchHospital = job.hospital || '';
-            if (job.sourceLink && searchHospital) {
-                searchHospital = searchHospital.replace(/\s*[-–]\s*[A-Z][a-zA-Z\s.'-]+$/, '').trim();
-                if (!searchHospital) searchHospital = job.hospital;
-            }
-
-            // Only append "Hospital" when the name does not already look like a veterinary facility.
-            if (searchHospital && !/\b(?:hospital|clinic|center|centre|specialists?|specialty|service|services|care|emergency|referral|veterinary|animal|pet)\b/i.test(searchHospital)) {
-                searchHospital = searchHospital + ' Hospital';
-            }
-
-            // Parse city and state from location field (e.g. "Austin, TX")
-            let searchCity = '';
-            let searchState = '';
-            const locationParts = parseLocationParts(job.location);
-            searchCity = locationParts.city || job.city || '';
-            searchState = locationParts.state || job.state || '';
-            if (!searchState && job.location) {
-                const locParts = job.location.split(',').map(s => s.trim());
-                if (locParts.length === 1) {
-                    searchCity = locParts[0];
-                }
-            }
-
-            // Build search: "Hospital Name, City, State"
-            const searchLocation = [searchCity, searchState].filter(Boolean).join(', ');
-            if (!searchCity || !searchState) {
-                console.warn(`Skipping address update for "${job.hospital || ''}" because strict city/state is unavailable.`);
-                await markAddressNotFound();
-                currentAddressIndex++;
-                setTimeout(() => processNextAddress(), 250);
-                return;
-            }
-
-            const cacheKeys = getAddressCacheKeys(searchHospital, searchLocation, job.hospital || '');
-            let addressData = getRememberedAddress(cacheKeys);
-            if (addressData && needsContactUpdate(job) && (!addressData.website || !addressData.phone)) {
-                addressData = null;
-            }
-            if (addressData) {
-                console.log(`Using cached address for "${searchHospital}, ${searchLocation}"`);
-            } else {
-                addressData = await fetchAddressFromGoogleMaps(searchHospital, searchLocation, job.hospital || '', job.description || '');
-                rememberAddressData(cacheKeys, addressData);
-            }
-
-            // Update only fields allowed by the strict city/state match. When no
-            // strict match exists, preserve the street and use ZIP 00000 if missing.
+            const validation = await AAHAddressLookup.lookup(job, {
+                search: (query, context) => scrapeAddressPage('search', query, context),
+                maps: (query, context) => scrapeAddressPage('maps', query, context)
+            });
             const data = await chrome.storage.local.get(['scrapedJobs']);
             const jobs = data.scrapedJobs || [];
-
-            if (jobs[index]) {
-                const validation = addressValidation.validateGoogleResult(addressData, {
-                    hospitalName: searchHospital,
-                    originalHospitalName: job.hospital || '',
-                    location: searchLocation,
-                    description: job.description || ''
-                });
-                if (validation.accepted) {
-                    addressValidation.applyAddressOutcome(jobs[index], validation);
-
-                    await chrome.storage.local.set({ scrapedJobs: jobs });
-
-                    // Update display
-                    allJobs = jobs;
-                    displayRecords(allJobs);
-                } else {
-                    await markAddressNotFound(addressData);
-                }
+            // Identify by stable job key, not a potentially stale row index.
+            const target = jobs.find(item => getJobSelectionKey(item) === getJobSelectionKey(job));
+            if (target) {
+                addressValidation.applyAddressOutcome(target, validation);
+                target.addressLookupAttempts = validation.attempts;
+                await chrome.storage.local.set({ scrapedJobs: jobs });
+                allJobs = jobs;
+                displayRecords(allJobs);
             }
         } catch (error) {
             console.error('Error fetching address:', error);
@@ -3048,6 +2462,13 @@ document.addEventListener('DOMContentLoaded', () => {
             Fetch Addresses
         `;
         document.getElementById('progressSection').classList.add('hidden');
-        showToast(`Address fetching completed! Fetched ${addressQueue.length} addresses.`, 'success');
+        const statuses = addressQueue.reduce((counts, { job }) => {
+            const saved = allJobs.find(item => getJobSelectionKey(item) === getJobSelectionKey(job));
+            const status = saved?.addressVerificationStatus || 'not-found';
+            counts[status] = (counts[status] || 0) + 1;
+            return counts;
+        }, {});
+        const matched = (statuses.matched || 0) + (statuses.found || 0) + (statuses.corrected || 0);
+        showToast(`Processed ${addressQueue.length} jobs: ${matched} address matches, ${addressQueue.length - matched} partial, unconfirmed or skipped.`, 'success');
     }
 });
