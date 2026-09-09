@@ -1,6 +1,6 @@
-﻿// VIP Vet Job Scraper - Background Service Worker
+// VIP - Background Service Worker
 
-console.log("VIP Vet Job Scraper background script loaded");
+console.log("VIP background script loaded");
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "scrapeProgress") {
@@ -12,99 +12,68 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
-  if (request.action === 'fetchJobDetails') {
-    handleFetchDetails(request);
-    return true;
-  }
-
   return true;
 });
 
 function handleScrapeDescription(request) {
     const { tabId, jobIndex } = request;
+    let settled = false;
+    let extracting = false;
 
-    chrome.tabs.onUpdated.addListener(function listener(updatedTabId, info) {
-      if (updatedTabId === tabId && info.status === 'complete') {
-        chrome.tabs.onUpdated.removeListener(listener);
+    const listener = (updatedTabId, info) => {
+      if (updatedTabId === tabId && info.status === 'complete') extract();
+    };
 
-        chrome.scripting.executeScript({
-          target: { tabId: tabId },
+    const finish = (success, error = '') => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      chrome.tabs.onUpdated.removeListener(listener);
+      chrome.tabs.remove(tabId).catch(() => {});
+      chrome.runtime.sendMessage({
+        action: 'descriptionSaved',
+        jobIndex,
+        success,
+        error
+      }).catch(() => {});
+    };
+
+    const extract = async () => {
+      if (extracting || settled) return;
+      extracting = true;
+      chrome.tabs.onUpdated.removeListener(listener);
+      try {
+        const results = await chrome.scripting.executeScript({
+          target: { tabId },
           files: ['greenhouse-description-scraper.js']
-        }).then((results) => {
-          const description = (results && results[0] && results[0].result) ? results[0].result : '';
-
-          chrome.storage.local.get(['vipvetJobs'], (result) => {
-            const jobs = result.vipvetJobs || [];
-            if (jobs[jobIndex]) {
-              jobs[jobIndex].description = description;
-
-              chrome.storage.local.set({ vipvetJobs: jobs }, () => {
-                console.log(`Description saved for job ${jobIndex + 1}`);
-                chrome.tabs.remove(tabId).catch(() => {});
-                chrome.runtime.sendMessage({
-                  action: 'descriptionSaved',
-                  jobIndex: jobIndex,
-                  success: true
-                }).catch(() => {});
-              });
-            }
-          });
-        }).catch(err => {
-          console.error('Error extracting description:', err);
-          chrome.tabs.remove(tabId).catch(() => {});
-          chrome.runtime.sendMessage({
-            action: 'descriptionSaved',
-            jobIndex: jobIndex,
-            success: false
-          }).catch(() => {});
         });
+        const description = results?.[0]?.result || '';
+        if (!description || description.length < 50 || /^Error scraping description:/i.test(description)) {
+          throw new Error('No usable description was extracted.');
+        }
+
+        const result = await chrome.storage.local.get(['vipvetJobs']);
+        const jobs = result.vipvetJobs || [];
+        if (!jobs[jobIndex]) throw new Error('The target job no longer exists.');
+        jobs[jobIndex].description = description;
+        await chrome.storage.local.set({ vipvetJobs: jobs });
+        console.log(`Description saved for job ${jobIndex + 1}`);
+        finish(true);
+      } catch (error) {
+        console.error('Error extracting description:', error);
+        finish(false, error?.message || 'Description extraction failed.');
       }
-    });
-}
+    };
 
-function handleFetchDetails(request) {
-    const { url, jobIndex } = request;
-    if (!url) {
-        chrome.runtime.sendMessage({ action: 'detailsFetched', details: {}, jobIndex: jobIndex }).catch(() => {});
-        return;
-    }
-
-    chrome.tabs.create({ url: url, active: false }, (tab) => {
-        if (!tab) return;
-        chrome.tabs.onUpdated.addListener(function listener(tabId, info) {
-            if (tabId === tab.id && info.status === 'complete') {
-                chrome.tabs.onUpdated.removeListener(listener);
-                
-                // Small delay for Greenhouse dynamic content
-                setTimeout(() => {
-                    chrome.scripting.executeScript({
-                        target: { tabId: tab.id },
-                        files: ['detail-extractor.js']
-                    }).then((results) => {
-                        const details = (results && results[0] && results[0].result) ? results[0].result : {};
-                        chrome.tabs.remove(tab.id).catch(() => {});
-                        chrome.runtime.sendMessage({
-                            action: 'detailsFetched',
-                            details: details,
-                            jobIndex: jobIndex
-                        }).catch(() => {});
-                    }).catch(err => {
-                        console.error('Error extracting details:', err);
-                        chrome.tabs.remove(tab.id).catch(() => {});
-                        chrome.runtime.sendMessage({
-                            action: 'detailsFetched',
-                            details: {},
-                            jobIndex: jobIndex
-                        }).catch(() => {});
-                    });
-                }, 2000);
-            }
-        });
-    });
+    const timeout = setTimeout(() => finish(false, 'Description extraction timed out.'), 25000);
+    chrome.tabs.onUpdated.addListener(listener);
+    chrome.tabs.get(tabId).then(tab => {
+      if (tab?.status === 'complete') extract();
+    }).catch(error => finish(false, error?.message || 'Unable to access the job tab.'));
 }
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log("VIP Vet Job Scraper installed");
+  console.log("VIP installed");
 });
 
 

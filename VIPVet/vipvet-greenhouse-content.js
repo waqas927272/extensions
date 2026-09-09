@@ -2,13 +2,22 @@
     const wait = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     function getAbsoluteHref(rawHref) {
-        const href = (rawHref || '').trim();
+        let href = (rawHref || '').trim();
         if (!href || href === '#' || /^javascript:/i.test(href)) return '';
 
+        if (/^[\w.-]+\.[a-z]{2,}(?:\/[^\s]*)?$/i.test(href) && !/^https?:\/\//i.test(href)) {
+            href = `https://${href}`;
+        }
+
         try {
-            return new URL(href, window.location.href).href;
+            let url = new URL(href, window.location.href);
+            if (url.hostname.endsWith('linkedin.com') && url.pathname.includes('/safety/go/')) {
+                const destination = url.searchParams.get('url');
+                if (destination) url = new URL(destination);
+            }
+            return url.href;
         } catch (e) {
-            return href;
+            return '';
         }
     }
 
@@ -106,18 +115,32 @@
     }
 
     async function loadAllRows() {
-        let previousCount = 0;
-        for (let i = 0; i < 30; i++) {
-            const rows = document.querySelectorAll('#jobs tbody tr');
-            const showMoreButton = Array.from(document.querySelectorAll('button')).find(btn => /show more/i.test(btn.textContent || ''));
-            if (!showMoreButton) break;
+        function findShowMoreControl() {
+            const candidates = Array.from(document.querySelectorAll('button, [role="button"], [data-provides="stack"], div'));
+            const label = (el) => (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
+            const match = candidates.find(el => /^show more$/i.test(label(el)));
+            return match?.closest('button, [role="button"]') || match || null;
+        }
 
-            if (rows.length <= previousCount && i > 0) break;
-            previousCount = rows.length;
+        for (let i = 0; i < 60; i++) {
+            const beforeCount = document.querySelectorAll('#jobs tbody tr').length;
+            const showMoreControl = findShowMoreControl();
+            if (!showMoreControl) break;
 
-            showMoreButton.scrollIntoView({ block: 'center' });
-            showMoreButton.click();
-            await wait(900);
+            showMoreControl.scrollIntoView({ block: 'center' });
+            showMoreControl.click();
+
+            let changed = false;
+            for (let attempt = 0; attempt < 20; attempt++) {
+                await wait(250);
+                const currentCount = document.querySelectorAll('#jobs tbody tr').length;
+                if (currentCount > beforeCount || !findShowMoreControl()) {
+                    changed = true;
+                    break;
+                }
+            }
+
+            if (!changed) break;
         }
     }
 
@@ -246,6 +269,7 @@
                 title,
                 hospitalName: parsed.hospitalName || rawLocation || '',
                 hospital: parsed.hospitalName || rawLocation || '',
+                originalHospitalName: parsed.hospitalName || rawLocation || '',
                 city: parsed.city || '',
                 state: parsed.state || '',
                 country: 'USA',
@@ -256,7 +280,7 @@
                 streetAddress: '',
                 postalCode: '',
                 zipCode: '',
-                source: 'VIP Vet'
+                source: 'VIP'
             });
         }
 

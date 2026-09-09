@@ -1,13 +1,22 @@
 (() => {
     // This script is injected into a Greenhouse job page (embed format).
     function getAbsoluteHref(rawHref) {
-        const href = (rawHref || '').trim();
+        let href = (rawHref || '').trim();
         if (!href || href === '#' || /^javascript:/i.test(href)) return '';
 
+        if (/^[\w.-]+\.[a-z]{2,}(?:\/[^\s]*)?$/i.test(href) && !/^https?:\/\//i.test(href)) {
+            href = `https://${href}`;
+        }
+
         try {
-            return new URL(href, window.location.href).href;
+            let url = new URL(href, window.location.href);
+            if (url.hostname.endsWith('linkedin.com') && url.pathname.includes('/safety/go/')) {
+                const destination = url.searchParams.get('url');
+                if (destination) url = new URL(destination);
+            }
+            return url.href;
         } catch (e) {
-            return href;
+            return '';
         }
     }
 

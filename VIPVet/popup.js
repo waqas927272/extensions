@@ -1,4 +1,4 @@
-﻿// VIP Vet Job Scraper - Popup Script
+// VIP - Popup Script
 
 document.addEventListener('DOMContentLoaded', () => {
   const scrapeBtn = document.getElementById('scrape-btn');
@@ -57,8 +57,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function normalizeAgencyGreenhouseJobs(jobs) {
     return (jobs || []).map((job, index) => {
-      const reqId = job.reqId || job.jobId || job.id || `VIP-${index + 1}`;
-      const hospitalName = job.hospitalName || job.hospital || '';
+      const reqId = (job.reqId || job.jobId || job.id || `VIP-${index + 1}`).replace(/^VPP-/i, 'VIP-');
+      const hospitalName = job.originalHospitalName || job.hospitalName || job.hospital || '';
       const fullState = getFullStateName(job.state || '');
       return {
         ...job,
@@ -68,6 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
         title: job.title || job.jobTitle || '',
         hospitalName,
         hospital: hospitalName,
+        originalHospitalName: hospitalName,
         city: job.city || '',
         state: fullState,
         location: job.location ? formatLocation((job.location.split(',')[0] || '').trim(), fullState || (job.location.split(',')[1] || '').trim()) : formatLocation(job.city || '', fullState),
@@ -79,7 +80,7 @@ document.addEventListener('DOMContentLoaded', () => {
         streetAddress: job.streetAddress || '',
         postalCode: job.postalCode || job.zipCode || '',
         zipCode: job.zipCode || job.postalCode || '',
-        source: job.source || 'VIP Vet'
+        source: job.source || 'VIP'
       };
     });
   }
@@ -332,7 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
               const fullText = title + ' ' + hospitalName;
 
               // Pattern 1: "- City, ST" or "- City ST" at end of title
-              let match = title.match(/[-â€“]\s*([A-Za-z\s\.]+),?\s*([A-Z]{2})\s*$/);
+              let match = title.match(/[-–]\s*([A-Za-z\s\.]+),?\s*([A-Z]{2})\s*$/);
               if (match) {
                 city = match[1].trim();
                 state = match[2];
@@ -340,11 +341,11 @@ document.addEventListener('DOMContentLoaded', () => {
               }
 
               // Pattern 2: Just "- ST" at end (2-letter state code)
-              match = title.match(/[-â€“]\s*([A-Z]{2})\s*$/);
+              match = title.match(/[-–]\s*([A-Z]{2})\s*$/);
               if (match) {
                 state = match[1];
                 // Try to get city from earlier in title
-                const cityMatch = title.match(/[-â€“]\s*([A-Za-z\s\.]+)\s*[-â€“]\s*[A-Z]{2}\s*$/);
+                const cityMatch = title.match(/[-–]\s*([A-Za-z\s\.]+)\s*[-–]\s*[A-Z]{2}\s*$/);
                 if (cityMatch) {
                   city = cityMatch[1].trim();
                 }
@@ -384,7 +385,7 @@ document.addEventListener('DOMContentLoaded', () => {
               }
 
               // Pattern 5: State abbreviation anywhere in title after a dash
-              match = title.match(/[-â€“]\s*[^-â€“]*\b([A-Z]{2})\b/);
+              match = title.match(/[-–]\s*[^-–]*\b([A-Z]{2})\b/);
               if (match) {
                 const possibleState = match[1];
                 const validStates = ['AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','UT','VT','VA','WA','WV','WI','WY'];
@@ -432,6 +433,8 @@ document.addEventListener('DOMContentLoaded', () => {
                   title,
                   reqId,
                   hospitalName,
+                  hospital: hospitalName,
+                  originalHospitalName: hospitalName,
                   streetAddress: '',
                   city,
                   state,

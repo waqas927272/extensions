@@ -1,7 +1,7 @@
-﻿// VIP Vet Job Scraper - Content Script
+// VIP - Content Script
 // Scrapes job listings from vip-vet.com (Greenhouse embedded)
 
-console.log("VIP Vet Job Scraper content script loaded on:", window.location.href);
+console.log("VIP content script loaded on:", window.location.href);
 
 // Check if we're in the Greenhouse iframe
 const isGreenhouseFrame = window.location.href.includes('greenhouse.io');
@@ -11,13 +11,13 @@ function parseLocationFromTitle(title) {
   let city = '', state = '';
 
   // Look for state abbreviation pattern like "- TX" or "- NY" at the end
-  const stateMatch = title.match(/[-â€“]\s*([A-Z]{2})\s*$/);
+  const stateMatch = title.match(/[-–]\s*([A-Z]{2})\s*$/);
   if (stateMatch) {
     state = stateMatch[1];
   }
 
   // Try to extract city - often before state
-  const cityStateMatch = title.match(/[-â€“]\s*([A-Za-z\s\.]+),?\s*([A-Z]{2})\s*$/);
+  const cityStateMatch = title.match(/[-–]\s*([A-Za-z\s\.]+),?\s*([A-Z]{2})\s*$/);
   if (cityStateMatch) {
     city = cityStateMatch[1].trim();
     state = cityStateMatch[2];
@@ -73,6 +73,8 @@ function scrapeJobs() {
         title,
         reqId,
         hospitalName,
+        hospital: hospitalName,
+        originalHospitalName: hospitalName,
         streetAddress: '',
         city,
         state,
@@ -143,6 +145,8 @@ function scrapeJobs() {
           title,
           reqId,
           hospitalName,
+          hospital: hospitalName,
+          originalHospitalName: hospitalName,
           streetAddress: '',
           city,
           state,
@@ -255,5 +259,5 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 // Log when ready
-console.log("VIP Vet content script ready. isGreenhouse:", isGreenhouseFrame);
+console.log("VIP content script ready. isGreenhouse:", isGreenhouseFrame);
 
