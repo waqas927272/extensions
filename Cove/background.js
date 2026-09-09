@@ -149,8 +149,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } else if (request.action === 'stopScraping') {
     isScraping = false;
     sendResponse({ status: 'stopped' });
-  } else if (request.action === 'scrapeJobDescription') {
-    handleScrapeDescription(request);
+  } else if (request.action === 'fetchJobDescription') {
+    // Keep the message port open until this one description finishes so the
+    // service worker cannot be suspended between the direct fetch and fallback.
+    handleFetchJobDescription(request)
+      .finally(() => sendResponse({ status: 'complete' }));
     return true;
   } else if (request.action === 'fetchJobDetails') {
     handleFetchDetails(request);
@@ -261,26 +264,170 @@ async function handleStartScraping(sendResponse) {
     sendResponse({ status: 'scrapingStarted' });
 }
 
-function handleScrapeDescription(request) {
-    const { tabId, jobIndex } = request;
-    chrome.tabs.onUpdated.addListener(function listener(updatedTabId, info) {
-      if (updatedTabId === tabId && info.status === 'complete') {
-        chrome.tabs.onUpdated.removeListener(listener);
-        chrome.scripting.executeScript({ target: { tabId: tabId }, files: ['description-scraper.js'] }).then((results) => {
-          const description = (results && results[0] && results[0].result) ? results[0].result : '';
-          chrome.storage.local.get(['scrapedJobs'], (result) => {
-            const jobs = result.scrapedJobs || [];
-            if (jobs[jobIndex]) {
-              jobs[jobIndex].description = description;
-              chrome.storage.local.set({ scrapedJobs: jobs }, () => {
-                chrome.tabs.remove(tabId).catch(() => {});
-                chrome.runtime.sendMessage({ action: 'descriptionSaved', jobIndex: jobIndex }).catch(() => {});
-              });
-            }
-          });
-        }).catch(() => { chrome.tabs.remove(tabId).catch(() => {}); });
-      }
+function decodeHtmlEntities(value) {
+    const namedEntities = {
+        amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' '
+    };
+
+    return String(value || '').replace(/&(#x[\da-f]+|#\d+|amp|lt|gt|quot|apos|nbsp);/gi, (match, entity) => {
+        const normalized = entity.toLowerCase();
+        if (normalized.startsWith('#x')) {
+            return String.fromCodePoint(parseInt(normalized.slice(2), 16));
+        }
+        if (normalized.startsWith('#')) {
+            return String.fromCodePoint(parseInt(normalized.slice(1), 10));
+        }
+        return namedEntities[normalized] || match;
     });
+}
+
+function htmlToBackgroundText(html) {
+    return decodeHtmlEntities(String(html || '')
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<li\b[^>]*>/gi, '- ')
+        .replace(/<\/(?:p|div|li|h[1-6]|tr|section)>/gi, '\n')
+        .replace(/<[^>]+>/g, ' '))
+        .replace(/\u00a0/g, ' ')
+        .replace(/[ \t]+\n/g, '\n')
+        .replace(/\n[ \t]+/g, '\n')
+        .replace(/[ \t]{2,}/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
+function formatClearCompanyDescription(job) {
+    if (!job || !job.description) return '';
+
+    const lines = [
+        '=== JOB POSTING DATA ===',
+        `Title: ${job.positionTitle || ''}`,
+        `Date Posted: ${job.postedDate || job.openDate || ''}`,
+        `Industry/Category: ${job.departmentName || ''}`,
+        `Employment Type: ${job.employmentType || ''}`,
+        `Hiring Organization: ${job.officeName || job.brandName || ''}`,
+        `Office Name: ${job.officeName || ''}`,
+        `Brand Name: ${job.brandName || ''}`
+    ];
+
+    const locations = Array.isArray(job.locations) ? job.locations : [];
+    if (locations.length > 0) {
+        lines.push('Locations:');
+        locations.forEach(location => {
+            const city = location.city || '';
+            const state = location.subdivision || location.subdivisionFullName || '';
+            const country = location.country || '';
+            lines.push(`  - ${[city, state, country].filter(Boolean).join(', ')}`);
+        });
+    } else if (job.location) {
+        lines.push('Locations:', `  - ${job.location}`);
+    }
+
+    lines.push('', '=== FULL JOB DESCRIPTION ===', htmlToBackgroundText(job.description));
+    return lines.join('\n').trim();
+}
+
+async function fetchClearCompanyDescriptionDirectly(url) {
+    const parsedUrl = new URL(url);
+    const jobId = parsedUrl.searchParams.get('jobId') || parsedUrl.searchParams.get('jobid');
+    if (!jobId) throw new Error('The job URL does not contain a ClearCompany job ID.');
+
+    const siteIds = {
+        'www.coveanimalhealth.com': 'ca7d62b3-173f-f1c4-321f-8e9bff89d765',
+        'coveanimalhealth.com': 'ca7d62b3-173f-f1c4-321f-8e9bff89d765'
+    };
+    const siteId = siteIds[parsedUrl.hostname.toLowerCase()];
+    if (!siteId) throw new Error('The job URL is not a supported Cove ClearCompany URL.');
+
+    const apiUrl = `https://careers-api.clearcompany.com/v1/${siteId}/${encodeURIComponent(jobId)}?source=`;
+    const response = await fetch(apiUrl, {
+        cache: 'no-store',
+        credentials: 'omit',
+        redirect: 'follow'
+    });
+    if (!response.ok) throw new Error(`ClearCompany returned HTTP ${response.status}.`);
+
+    const description = formatClearCompanyDescription(await response.json());
+    if (!description) throw new Error('ClearCompany returned no usable description.');
+    return description;
+}
+
+function fetchDescriptionInBackgroundTab(url) {
+    return new Promise((resolve) => {
+        let settled = false;
+        let tabId = null;
+        let listener = null;
+
+        const finish = (description = '') => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timeout);
+            if (listener) chrome.tabs.onUpdated.removeListener(listener);
+            if (tabId !== null) chrome.tabs.remove(tabId).catch(() => {});
+            resolve(description);
+        };
+
+        const timeout = setTimeout(() => finish(''), 30000);
+
+        chrome.tabs.create({ url, active: false }, (tab) => {
+            if (!tab || chrome.runtime.lastError) {
+                finish('');
+                return;
+            }
+
+            tabId = tab.id;
+            listener = (updatedTabId, info) => {
+                if (updatedTabId !== tabId || info.status !== 'complete') return;
+                chrome.tabs.onUpdated.removeListener(listener);
+                listener = null;
+
+                setTimeout(() => {
+                    if (settled) return;
+                    chrome.scripting.executeScript({
+                        target: { tabId },
+                        files: ['description-scraper.js']
+                    }).then(results => {
+                        finish(results?.[0]?.result || '');
+                    }).catch(error => {
+                        console.warn('Background-tab description extraction failed:', error);
+                        finish('');
+                    });
+                }, 1200);
+            };
+            chrome.tabs.onUpdated.addListener(listener);
+        });
+    });
+}
+
+function sendDescriptionFetched(request, description, error = '') {
+    chrome.runtime.sendMessage({
+        action: 'descriptionFetched',
+        description: description || '',
+        error,
+        requestId: request.requestId || '',
+        jobIndex: request.jobIndex,
+        jobKey: request.jobKey || '',
+        jobLink: request.jobLink || request.url || ''
+    }).catch(() => {});
+}
+
+async function handleFetchJobDescription(request) {
+    try {
+        let description = '';
+        try {
+            description = await fetchClearCompanyDescriptionDirectly(request.url);
+        } catch (directError) {
+            console.log('Direct description fetch unavailable; using a background tab:', directError.message || directError);
+            description = await fetchDescriptionInBackgroundTab(request.url);
+        }
+
+        if (!description || /^Error scraping description:/i.test(description)) {
+            throw new Error(description || 'Description not found.');
+        }
+        sendDescriptionFetched(request, description);
+    } catch (error) {
+        console.error('Error fetching job description:', error);
+        sendDescriptionFetched(request, '', error.message || 'Description not found.');
+    }
 }
 
 async function handleFetchDetails(request) {

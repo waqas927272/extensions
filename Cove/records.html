@@ -422,7 +422,8 @@
     table {
       width: 100%;
       min-width: 0;
-      border-collapse: collapse;
+      border-collapse: separate;
+      border-spacing: 0;
       table-layout: fixed;
     }
 
@@ -452,6 +453,7 @@
     }
 
     th {
+      background: #4277b8;
       color: white;
       font-weight: 700;
       text-align: left;
@@ -464,7 +466,8 @@
       user-select: none;
       position: sticky;
       top: 0;
-      z-index: 2;
+      z-index: 3;
+      box-shadow: 0 1px 0 #35689f;
       white-space: normal;
       overflow: visible;
       text-overflow: clip;

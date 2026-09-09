@@ -1,4 +1,5 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    const detailRules = await import('./detail-rules.mjs');
     const tableBody = document.querySelector('#jobRecordsTable tbody');
     const tableHeaders = document.querySelectorAll('#jobRecordsTable th');
     const clearRecordsButton = document.getElementById('clearRecords');
@@ -22,18 +23,24 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentDisplayedJobs = [];
     let selectedJobKeys = new Set();
     let isGettingDescriptions = false;
+    let descriptionQueue = [];
+    let descriptionQueueIndex = 0;
+    let descriptionSuccessCount = 0;
+    let activeDescriptionRequest = null;
+    let descriptionRunId = 0;
     let isFetchingDetails = false;
     let isFetchingAddresses = false;
-    let currentJobIndex = 0;
     let detailsQueue = [];
     let currentDetailsIndex = 0;
     let addressQueue = [];
     let currentAddressIndex = 0;
     let addressCache = new Map();
+    let automaticReconciliationRunId = 0;
+    let automaticReconciliationPromise = Promise.resolve();
     const getDescriptionsBtn = document.getElementById('getDescriptionsBtn');
     const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
     const fetchAddressesBtn = document.getElementById('fetchAddressesBtn');
-    const AGGREGATOR_NAME = 'Cove Animal Health (Parent Aggregator)';
+    const AGGREGATOR_NAME = 'Cove Animal Health (Parent Client)';
 
     function normalizeCoveJobId(jobId) {
         return (jobId || '').replace(/^UVC-/i, 'COV-');
@@ -68,6 +75,36 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         return { normalizedJobs, changed };
+    }
+
+    function normalizeStoredAddresses(jobs) {
+        let repairedCount = 0;
+        for (const job of Array.isArray(jobs) ? jobs : []) {
+            if (!job || /^multiple locations$/i.test(String(job.city || '').trim())) continue;
+
+            const expectedLocation = parseLocationParts(job.location || '');
+            const normalized = detailRules.normalizeAddressData({
+                streetAddress: job.streetAddress || '',
+                city: job.city || '',
+                state: job.state || '',
+                zipCode: job.zipCode || ''
+            }, expectedLocation);
+            const nextState = normalized.state ? getFullStateName(normalized.state) : '';
+            const changed = normalized.streetAddress !== (job.streetAddress || '') ||
+                normalized.city !== (job.city || '') ||
+                nextState !== (job.state || '') ||
+                normalized.zipCode !== (job.zipCode || '');
+            if (!changed) continue;
+
+            job.streetAddress = normalized.streetAddress;
+            job.city = normalized.city;
+            job.state = nextState;
+            job.zipCode = normalized.zipCode;
+            job.cityMismatchFlag = false;
+            job.cityMismatchReason = '';
+            repairedCount++;
+        }
+        return { jobs, repairedCount };
     }
 
     // ============ WEBHOOK URL DYNAMIC CONFIGURATION ============
@@ -176,7 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function extractDescriptionField(text, fieldName) {
         const escapedField = fieldName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const pattern = new RegExp(`^\\s*${escapedField}\\s*:\\s*(.+)$`, 'im');
+        const pattern = new RegExp(`^[^\\S\\r\\n]*${escapedField}[^\\S\\r\\n]*:[^\\S\\r\\n]*([^\\r\\n]*)`, 'im');
         const match = String(text || '').match(pattern);
         return match ? match[1].trim() : '';
     }
@@ -391,6 +428,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // ============ LOCAL DETAIL EXTRACTION (mirrors detail-extractor.js) ============
 
     function extractDetailsFromDescription(positionTitle, descriptionText) {
+        return detailRules.extractDetailsFromDescription(positionTitle, descriptionText);
+
+        /* Legacy fallback retained temporarily below for reference. */
         // Format salary to standard "$X–$Y per year" or "$X per hour"
         function formatSalary(raw) {
             if (!raw) return '';
@@ -1027,7 +1067,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         function filterDataForExpectedLocation(data, sourceLabel) {
-            const result = data || emptyAddressResult();
+            const result = detailRules.normalizeAddressData(data || emptyAddressResult(), expectedLocation);
 
             if (result.businessName && !businessNameFuzzyMatches(hospitalName, result.businessName) && !businessNameFuzzyMatches(originalHospitalName, result.businessName)) {
                 console.warn(`Ignoring result because business name "${result.businessName}" does not fuzzy-match "${hospitalName}" from "${sourceLabel}"`);
@@ -1056,19 +1096,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         function mergeMapsData(primary, secondary, sourceLabel = '') {
             const safeSecondary = filterDataForExpectedLocation(secondary, sourceLabel);
-            return {
-                businessName: primary.businessName || safeSecondary.businessName || '',
-                streetAddress: primary.streetAddress || safeSecondary.streetAddress || '',
-                zipCode: primary.zipCode || safeSecondary.zipCode || '',
-                city: primary.city || safeSecondary.city || '',
-                state: primary.state || safeSecondary.state || '',
-                fullAddress: primary.fullAddress || safeSecondary.fullAddress || '',
-                website: primary.website || safeSecondary.website || '',
-                phone: primary.phone || safeSecondary.phone || '',
-                cityMatchedHospitalName: !!(primary.cityMatchedHospitalName || safeSecondary.cityMatchedHospitalName),
-                locationCorrected: !!(primary.locationCorrected || safeSecondary.locationCorrected),
-                locationCorrectionReason: primary.locationCorrectionReason || safeSecondary.locationCorrectionReason || ''
-            };
+            return detailRules.mergeAddressData(primary, safeSecondary);
         }
 
         function needsMapsRetry(data) {
@@ -1416,16 +1444,21 @@ document.addEventListener('DOMContentLoaded', () => {
             console.warn(`✗ No address found for: "${searchQuery}"`);
         }
 
+        const normalizedData = detailRules.normalizeAddressData(data, expectedLocation);
         return {
-            businessName: data.businessName || '',
-            streetAddress: data.streetAddress || '',
-            zipCode: data.zipCode || '',
-            city: data.city || '',
-            state: data.state || '',
-            fullAddress: data.fullAddress || '',
-            website: data.website || '',
-            phone: data.phone || '',
-            cityMatchedHospitalName: !!data.cityMatchedHospitalName
+            businessName: normalizedData.businessName || '',
+            streetAddress: normalizedData.streetAddress || '',
+            zipCode: normalizedData.zipCode || '',
+            city: normalizedData.city || '',
+            state: normalizedData.state || '',
+            fullAddress: normalizedData.fullAddress || '',
+            website: normalizedData.website || '',
+            phone: normalizedData.phone || '',
+            cityMatchedHospitalName: !!normalizedData.cityMatchedHospitalName,
+            locationCorrected: !!normalizedData.locationCorrected,
+            locationCorrectionReason: normalizedData.locationCorrectionReason || '',
+            addressRepaired: !!normalizedData.addressRepaired,
+            addressRepairReason: normalizedData.addressRepairReason || ''
         };
     }
 
@@ -1732,6 +1765,16 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        // Export must never preserve an older generic hospital value. Repair the
+        // in-memory records synchronously so the downloaded CSV is immediately
+        // correct, then persist the same values for future page loads.
+        const hospitalReconciliation = detailRules.reconcileStoredHospitalNames(allJobs);
+        const addressNormalization = normalizeStoredAddresses(hospitalReconciliation.jobs);
+        allJobs = addressNormalization.jobs;
+        if (hospitalReconciliation.repairedCount > 0 || addressNormalization.repairedCount > 0) {
+            void chrome.storage.local.set({ scrapedJobs: allJobs });
+        }
+
         const headers = ['#', 'Job Title', 'Job ID', 'Hospital', 'Aggregator', 'Street Address', 'City', 'State', 'Zip Code', 'Phone', 'Website', 'Location', 'Area of Practice', 'Position', 'Salary', 'Job Type', 'Experience', 'Link', 'Description'];
         const csvContent = [
             headers.join(','),
@@ -1751,7 +1794,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 `"${(job.areaOfPractice || '').replace(/"/g, '""')}"`,
                 `"${(job.position || '').replace(/"/g, '""')}"`,
                 `"${(job.salary || '').replace(/"/g, '""')}"`,
-                `"${(job.jobType || 'Full-Time').replace(/"/g, '""')}"`,
+                `"${(job.detailsFetched ? (job.jobType || 'Full-Time') : '').replace(/"/g, '""')}"`,
                 `"${(job.experience || '').replace(/"/g, '""')}"`,
                 `"${(job.link || '').replace(/"/g, '""')}"`,
                 `"${(job.description || '').replace(/"/g, '""')}"`
@@ -1776,11 +1819,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize
     chrome.storage.local.get(['scrapedJobs'], (result) => {
         const { normalizedJobs, changed } = normalizeStoredJobIds(result.scrapedJobs || []);
-        allJobs = normalizedJobs;
-        if (changed) {
+        const hospitalReconciliation = detailRules.reconcileStoredHospitalNames(normalizedJobs);
+        const addressNormalization = normalizeStoredAddresses(hospitalReconciliation.jobs);
+        allJobs = addressNormalization.jobs;
+        if (changed || hospitalReconciliation.repairedCount > 0 || addressNormalization.repairedCount > 0) {
             chrome.storage.local.set({ scrapedJobs: allJobs });
         }
         displayRecords(allJobs);
+
+        // Reconcile records saved by older rule versions. This runs locally and
+        // sequentially, so it repairs stale/generic hospital values and
+        // location-specific child rows without opening multiple job pages.
+        const reconciliationRunId = ++automaticReconciliationRunId;
+        automaticReconciliationPromise = analyzeExistingDescriptionsLive(reconciliationRunId).catch(error => {
+            console.error('Error reconciling saved job details:', error);
+        });
 
         tableHeaders.forEach(header => {
             header.addEventListener('click', () => {
@@ -1837,31 +1890,29 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Clear details only (area of practice, position, salary, experience)
     const clearDetailsBtn = document.getElementById('clearDetailsBtn');
-    clearDetailsBtn.addEventListener('click', () => {
-        if (confirm('Are you sure you want to clear all job details? This will remove Area of Practice, Position, Salary, Job Type, and Experience from all jobs.')) {
-            chrome.storage.local.get(['scrapedJobs'], (data) => {
-                const jobs = data.scrapedJobs || [];
-                let clearedCount = 0;
-
-                jobs.forEach(job => {
-                    if (job.areaOfPractice || job.position || job.salary || job.jobType || job.experience) {
-                        job.areaOfPractice = '';
-                        job.position = '';
-                        job.salary = '';
-                        job.jobType = '';
-                        job.experience = '';
-                        job.detailsFetched = false;
-                        clearedCount++;
-                    }
-                });
-
-                chrome.storage.local.set({ scrapedJobs: jobs }, () => {
-                    allJobs = jobs;
-                    displayRecords(allJobs);
-                    showToast(`Cleared details from ${clearedCount} jobs!`, 'success');
-                });
-            });
+    clearDetailsBtn.addEventListener('click', async () => {
+        if (isFetchingDetails) {
+            showToast('Please wait for Fetch Details to finish before clearing details.', 'error');
+            return;
         }
+        if (!confirm('Are you sure you want to clear all job details? This will remove Area of Practice, Position, Salary, Job Type, and Experience, plus generated location rows. Original jobs and descriptions will be kept.')) return;
+
+        // Prevent an in-progress startup reconciliation from writing details back
+        // after the user has explicitly cleared them.
+        automaticReconciliationRunId++;
+        await automaticReconciliationPromise.catch(() => {});
+
+        const data = await chrome.storage.local.get(['scrapedJobs']);
+        const cleared = detailRules.clearStoredJobDetails(data.scrapedJobs || []);
+        await chrome.storage.local.set({ scrapedJobs: cleared.jobs });
+
+        allJobs = cleared.jobs;
+        selectedJobKeys.clear();
+        displayRecords(allJobs);
+        const locationMessage = cleared.removedLocationCount
+            ? ` Removed ${cleared.removedLocationCount} generated location row${cleared.removedLocationCount === 1 ? '' : 's'}.`
+            : '';
+        showToast(`Cleared details from ${cleared.clearedCount} jobs.${locationMessage}`, 'success');
     });
 
     // Clear descriptions only
@@ -2087,14 +2138,20 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await chrome.storage.local.get(['scrapedJobs']);
         const jobs = data.scrapedJobs || [];
 
-        const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
+        const jobsWithoutDesc = jobs
+            .map((job, index) => ({ job, index, key: getJobSelectionKey(job) }))
+            .filter(item => !item.job.description && item.job.link);
         if (jobsWithoutDesc.length === 0) {
             showToast('All jobs already have descriptions!', 'success');
             return;
         }
 
         isGettingDescriptions = true;
-        currentJobIndex = 0;
+        descriptionQueue = jobsWithoutDesc;
+        descriptionQueueIndex = 0;
+        descriptionSuccessCount = 0;
+        activeDescriptionRequest = null;
+        descriptionRunId++;
 
         getDescriptionsBtn.disabled = true;
         getDescriptionsBtn.textContent = 'Getting Descriptions...';
@@ -2106,74 +2163,123 @@ document.addEventListener('DOMContentLoaded', () => {
         const progressLabel = document.getElementById('progressLabel');
         progressSection.classList.remove('hidden');
         progressLabel.textContent = 'Getting Descriptions';
-        progressText.textContent = `0 / ${jobsWithoutDesc.length}`;
+        progressText.textContent = `0 / ${descriptionQueue.length}`;
         progressBar.style.width = '0%';
 
         processNextJob();
     });
 
-    async function processNextJob() {
-        const data = await chrome.storage.local.get(['scrapedJobs']);
-        const jobs = data.scrapedJobs || [];
-
-        const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
-        const totalOriginal = jobs.filter(job => job.link).length;
-        const totalWithoutDesc = jobsWithoutDesc.length;
-        const processed = totalOriginal - totalWithoutDesc;
-
-        // Update progress
+    function updateDescriptionProgress() {
         const progressBar = document.getElementById('progressBar');
         const progressText = document.getElementById('progressText');
-        const totalToProcess = allJobs.filter(job => !job.description && job.link).length;
-        progressText.textContent = `${processed} / ${totalToProcess + processed}`;
-        progressBar.style.width = `${(processed / (totalToProcess + processed)) * 100}%`;
+        const completed = Math.min(descriptionQueueIndex, descriptionQueue.length);
+        progressText.textContent = `${completed} / ${descriptionQueue.length}`;
+        progressBar.style.width = `${descriptionQueue.length ? (completed / descriptionQueue.length) * 100 : 100}%`;
+    }
 
-        if (jobsWithoutDesc.length === 0) {
-            isGettingDescriptions = false;
-            getDescriptionsBtn.disabled = false;
-            getDescriptionsBtn.innerHTML = `
+    function finishDescriptionRun() {
+        if (!isGettingDescriptions) return;
+
+        const failedCount = descriptionQueue.length - descriptionSuccessCount;
+        isGettingDescriptions = false;
+        activeDescriptionRequest = null;
+        getDescriptionsBtn.disabled = false;
+        getDescriptionsBtn.innerHTML = `
                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
                     <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M13,13H11V18H13V13M13,9.5H11V11.5H13V9.5Z"/>
                 </svg>
                 Get Descriptions
             `;
-            document.getElementById('progressSection').classList.add('hidden');
+        updateDescriptionProgress();
+        document.getElementById('progressSection').classList.add('hidden');
+
+        if (failedCount > 0) {
+            showToast(`Fetched ${descriptionSuccessCount} descriptions; ${failedCount} could not be fetched.`, 'error');
+        } else {
             showToast('All descriptions have been fetched!', 'success');
-            return;
-        }
-
-        const job = jobsWithoutDesc[0];
-        const jobIndex = jobs.findIndex(j => j.link === job.link);
-
-        try {
-            // Add nl=1 param so Jobvite serves the standalone page instead of redirecting to the parent site iframe
-            const jobUrl = new URL(job.link);
-            jobUrl.searchParams.set('nl', '1');
-            const tab = await chrome.tabs.create({ url: jobUrl.toString(), active: false });
-            chrome.runtime.sendMessage({
-                action: 'scrapeJobDescription',
-                tabId: tab.id,
-                jobIndex: jobIndex,
-                jobLink: job.link
-            });
-        } catch (error) {
-            console.error('Error opening tab for job:', error);
-            setTimeout(() => processNextJob(), 1500);
         }
     }
 
-    // Listen for description saved messages from background.js
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.action === 'descriptionSaved') {
-            chrome.storage.local.get(['scrapedJobs'], (data) => {
-                const jobs = data.scrapedJobs || [];
-                allJobs = jobs;
-                displayRecords(allJobs);
+    async function processNextJob() {
+        // This guard is the concurrency limit: only dispatch when no description is active.
+        if (!isGettingDescriptions || activeDescriptionRequest) return;
+        if (descriptionQueueIndex >= descriptionQueue.length) {
+            finishDescriptionRun();
+            return;
+        }
 
-                if (isGettingDescriptions) {
-                    setTimeout(() => processNextJob(), 1500);
-                }
+        const queueItem = descriptionQueue[descriptionQueueIndex];
+        const data = await chrome.storage.local.get(['scrapedJobs']);
+        const jobs = data.scrapedJobs || [];
+        const jobIndex = jobs.findIndex(job => getJobSelectionKey(job) === queueItem.key);
+
+        if (jobIndex === -1 || !jobs[jobIndex].link) {
+            descriptionQueueIndex++;
+            updateDescriptionProgress();
+            setTimeout(processNextJob, 0);
+            return;
+        }
+
+        const job = jobs[jobIndex];
+        const requestId = `${descriptionRunId}:${descriptionQueueIndex}:${Date.now()}`;
+        activeDescriptionRequest = { requestId, key: queueItem.key };
+        getDescriptionsBtn.textContent = `Getting Description ${descriptionQueueIndex + 1}/${descriptionQueue.length}...`;
+
+        try {
+            await chrome.runtime.sendMessage({
+                action: 'fetchJobDescription',
+                requestId,
+                url: job.link,
+                jobIndex,
+                jobKey: queueItem.key,
+                jobLink: job.link,
+                jobId: job.jobId || '',
+                title: job.title || '',
+                location: job.location || ''
             });
+        } catch (error) {
+            console.error('Error requesting description:', error);
+            activeDescriptionRequest = null;
+            descriptionQueueIndex++;
+            updateDescriptionProgress();
+            setTimeout(processNextJob, 0);
+        }
+    }
+
+    async function handleDescriptionFetched(message) {
+        if (!isGettingDescriptions || !activeDescriptionRequest) return;
+        if (message.requestId !== activeDescriptionRequest.requestId) return;
+
+        try {
+            const data = await chrome.storage.local.get(['scrapedJobs']);
+            const jobs = data.scrapedJobs || [];
+            const jobIndex = jobs.findIndex(job => getJobSelectionKey(job) === activeDescriptionRequest.key);
+            const description = (message.description || '').trim();
+
+            if (jobIndex !== -1 && description) {
+                jobs[jobIndex].description = description;
+                await chrome.storage.local.set({ scrapedJobs: jobs });
+                allJobs = jobs;
+                descriptionSuccessCount++;
+                displayRecords(allJobs);
+            } else if (message.error) {
+                console.warn('Description was not saved:', message.error);
+            }
+        } catch (error) {
+            console.error('Error saving fetched description:', error);
+        } finally {
+            activeDescriptionRequest = null;
+            descriptionQueueIndex++;
+            updateDescriptionProgress();
+            // The next job starts only after this job has finished and storage is updated.
+            setTimeout(processNextJob, 250);
+        }
+    }
+
+    // Receive one completed background description before dispatching the next queue item.
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        if (message.action === 'descriptionFetched') {
+            handleDescriptionFetched(message);
         }
     });
 
@@ -2193,35 +2299,16 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Find jobs that need details (no areaOfPractice, position, or experience)
-        // Can work with job title even if no description exists
+        // Re-analyze every source job. Extraction is local and inexpensive, and
+        // this also replaces stale defaults produced by older rule versions.
         const jobsToFetch = jobs.map((job, index) => ({ job, index }))
-            .filter(item => {
-                if (!item.job.title) return false;
-                const description = item.job.description || '';
-                const hasNumericSalarySignal = /Salary Range:\s*[^\n]*\$\s*\d/i.test(description) || /\$\s*\d/.test(description);
-            const hasShortState = /^[A-Z]{2}$/.test(String(item.job.state || '').trim());
-            const needsDetails = !item.job.hospital ||
-                !item.job.city ||
-                hasShortState ||
-                !item.job.areaOfPractice ||
-                !item.job.position ||
-                !item.job.jobType ||
-                !item.job.experience ||
-                (!item.job.salary && hasNumericSalarySignal);
-            return needsDetails;
-        });
+            .filter(item => item.job.title && !item.job.parentJobId);
 
         if (jobsToFetch.length === 0) {
-            if (confirm('All jobs already have details. Do you want to re-analyze all jobs?')) {
-                detailsQueue = jobs.map((job, index) => ({ job, index }))
-                    .filter(item => item.job.title);
-            } else {
-                return;
-            }
-        } else {
-            detailsQueue = jobsToFetch;
+            showToast('No jobs with titles are available to analyze.', 'error');
+            return;
         }
+        detailsQueue = jobsToFetch;
 
         isFetchingDetails = true;
         currentDetailsIndex = 0;
@@ -2310,7 +2397,7 @@ document.addEventListener('DOMContentLoaded', () => {
             areaOfPractice: extracted.areaOfPractice,
             position: extracted.position,
             salary: extracted.salary,
-            hospitalName: extracted.hospitalName,
+            hospitalName: loc.hospitalName || extracted.hospitalName,
             jobType: extracted.jobType,
             experience: extracted.experience,
             description,
@@ -2320,15 +2407,43 @@ document.addEventListener('DOMContentLoaded', () => {
         }));
     }
 
-    function jobNeedsDescriptionAnalysis(job) {
+    function normalizeHospitalComparison(value) {
+        return String(value || '')
+            .toLowerCase()
+            .replace(/&/g, ' and ')
+            .replace(/[^a-z0-9]+/g, ' ')
+            .trim();
+    }
+
+    function hasStoredHospitalMismatch(job, jobs) {
+        if (!job || job.parentJobId || !job.description || !job.title) return false;
+
+        const detailsList = buildDetailResultsFromJob(job);
+        if (!detailsList.length) return false;
+
+        const rootJobId = job.jobId || job.link;
+        return detailsList.some((detail, index) => {
+            const storedJob = index === 0
+                ? job
+                : jobs.find(candidate =>
+                    candidate.parentJobId === rootJobId &&
+                    String(candidate.city || '').trim().toLowerCase() === String(detail.city || '').trim().toLowerCase()
+                );
+            const expectedHospital = detailRules.selectHospitalForLocation(
+                detail,
+                detailsList[0].hospitalName || job.hospital || ''
+            );
+
+            return !!expectedHospital && (!storedJob ||
+                normalizeHospitalComparison(storedJob.hospital) !== normalizeHospitalComparison(expectedHospital));
+        });
+    }
+
+    function jobNeedsAutomaticHospitalReconciliation(job, jobs = []) {
         if (!job || !job.description || !job.title) return false;
-        const stateValue = String(job.state || '').trim();
-        return !job.hospital ||
-            !job.city ||
-            !job.areaOfPractice ||
-            !job.position ||
-            !job.jobType ||
-            /^[A-Z]{2}$/.test(stateValue);
+        if (job.parentJobId) return false;
+        if (job.detailsClearedByUser) return false;
+        return detailRules.isGenericHospitalName(job.hospital) || hasStoredHospitalMismatch(job, jobs);
     }
 
     async function analyzeSavedDescriptionAtIndex(jobIndex) {
@@ -2344,21 +2459,23 @@ document.addEventListener('DOMContentLoaded', () => {
         return true;
     }
 
-    async function analyzeExistingDescriptionsLive() {
+    async function analyzeExistingDescriptionsLive(runId = automaticReconciliationRunId) {
         const data = await chrome.storage.local.get(['scrapedJobs']);
         const jobs = data.scrapedJobs || [];
         const jobIds = jobs
-            .filter(jobNeedsDescriptionAnalysis)
+            .filter(job => jobNeedsAutomaticHospitalReconciliation(job, jobs))
             .map(job => job.jobId || job.link)
             .filter(Boolean);
 
         for (const jobKey of jobIds) {
+            if (runId !== automaticReconciliationRunId) return;
             const latest = await chrome.storage.local.get(['scrapedJobs']);
             const latestJobs = latest.scrapedJobs || [];
             const index = latestJobs.findIndex(job => (job.jobId || job.link) === jobKey);
-            if (index === -1 || !jobNeedsDescriptionAnalysis(latestJobs[index])) continue;
+            if (index === -1 || !jobNeedsAutomaticHospitalReconciliation(latestJobs[index], latestJobs)) continue;
 
             try {
+                if (runId !== automaticReconciliationRunId) return;
                 await analyzeSavedDescriptionAtIndex(index);
             } catch (error) {
                 console.error('Error updating saved description details:', error);
@@ -2411,7 +2528,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     areaOfPractice: extracted.areaOfPractice,
                     position: extracted.position,
                     salary: extracted.salary,
-                    hospitalName: extracted.hospitalName,
+                    hospitalName: loc.hospitalName || extracted.hospitalName,
                     jobType: extracted.jobType,
                     experience: extracted.experience,
                     description: description,
@@ -2471,10 +2588,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Step 1: Determine AOP — prefer detail extractor's AOP (from page category), fall back to title
                 const hospitalAOP = getAOPFromHospitalName(firstDetail.hospitalName || originalJob.hospital || extractDescriptionField(descText, 'Hospital Name'));
                 const titleAOP = getAOPFromTitle(listingTitle);
-                let finalAOP = titleAOP ||
+                let finalAOP = detailAOP ||
+                    titleAOP ||
                     hospitalAOP ||
-                    (hasSpecialtyTrainingSignal(`${listingTitle}\n${descText}`) ? 'Specialty Care' : '') ||
-                    detailAOP ||
                     'General Practice Care';
 
                 // Step 2: Match position from listing title
@@ -2487,7 +2603,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 // Step 4: Validate position against AOP
                 if (finalPosition) {
-                    finalPosition = getValidatedPosition(finalPosition, finalAOP);
+                    const allowCredentialedExoticsAssociate = finalAOP === 'Specialty Care' &&
+                        finalPosition === 'Associate Veterinarian' &&
+                        detailRules.isCredentialedExoticsRole(listingTitle, descText);
+                    if (!allowCredentialedExoticsAssociate) {
+                        finalPosition = getValidatedPosition(finalPosition, finalAOP);
+                    }
                 }
                 if (!finalPosition) {
                     finalPosition = getDefaultPositionForAOP(finalAOP, listingTitle);
@@ -2505,10 +2626,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Update original job with extracted details
                 originalJob.areaOfPractice = finalAOP;
                 originalJob.position = finalPosition || '';
-                originalJob.salary = firstDetail.salary || originalJob.salary || '';
+                originalJob.salary = firstDetail.salary || '';
                 originalJob.hospital = firstDetail.hospitalName || originalJob.hospital || '';
-                originalJob.jobType = firstDetail.jobType || originalJob.jobType || 'Full-Time';
-                originalJob.experience = firstDetail.experience || originalJob.experience || '';
+                originalJob.jobType = firstDetail.jobType || 'Full-Time';
+                originalJob.experience = firstDetail.experience || '';
                 if (firstDetail.city) originalJob.city = firstDetail.city;
                 if (firstDetail.state) originalJob.state = getFullStateName(firstDetail.state);
                 if (firstDetail.location) originalJob.location = firstDetail.location;
@@ -2517,6 +2638,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     originalJob.description = firstDetail.description;
                 }
                 originalJob.detailsFetched = true;
+                originalJob.detailsClearedByUser = false;
+
+                const rootJobId = originalJob.parentJobId || originalJob.jobId;
 
                 // Handle multi-location jobs
                 if (detailsList.length > 1) {
@@ -2538,20 +2662,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     originalJob.isNewLocation = true;
                     const newJobs = [];
+                    const expectedChildIds = new Set();
                     for (let i = 1; i < detailsList.length; i++) {
                         const loc = detailsList[i];
-                        const baseJobId = originalJob.jobId.split('-')[0];
-                        // Only build city-specific hospital name if the original had a city suffix
-                        let childHospital = currentHospital;
-                        if (hasCitySuffix) {
-                            const childCity = loc.city || '';
-                            if (childCity) {
-                                childHospital = `${baseHospitalName}-${childCity}`;
-                            }
-                        }
+                        const locationKey = `${loc.city || 'unknown'}-${loc.state || ''}`
+                            .toLowerCase()
+                            .replace(/[^a-z0-9]+/g, '-')
+                            .replace(/^-|-$/g, '');
+                        const childJobId = `${rootJobId}--loc-${locationKey}`;
+                        expectedChildIds.add(childJobId);
+                        // Prefer a hospital explicitly tied to this location. If none
+                        // exists, preserve the legacy city-suffix behavior or fallback.
+                        const childHospital = detailRules.selectHospitalForLocation(
+                            loc,
+                            currentHospital,
+                            hasCitySuffix ? baseHospitalName : ''
+                        );
                         const newJob = {
                             ...originalJob,
-                            jobId: `${baseJobId}-${i + 1}`,
+                            jobId: childJobId,
+                            parentJobId: rootJobId,
                             hospital: childHospital,
                             city: loc.city || '',
                             state: getFullStateName(loc.state || ''),
@@ -2562,9 +2692,28 @@ document.addEventListener('DOMContentLoaded', () => {
                             isNewLocation: true,
                             sourceLink: originalJob.link || ''
                         };
-                        newJobs.push(newJob);
+                        const existingChild = jobs.find(job => job.jobId === childJobId && job.parentJobId === rootJobId);
+                        if (existingChild) {
+                            Object.assign(existingChild, newJob);
+                        } else {
+                            newJobs.push(newJob);
+                        }
                     }
-                    jobs.splice(jobIndex + 1, 0, ...newJobs);
+
+                    // Remove obsolete generated locations before inserting new ones.
+                    for (let i = jobs.length - 1; i >= 0; i--) {
+                        const candidate = jobs[i];
+                        if (candidate.parentJobId === rootJobId && !expectedChildIds.has(candidate.jobId)) {
+                            jobs.splice(i, 1);
+                        }
+                    }
+                    const refreshedRootIndex = jobs.indexOf(originalJob);
+                    jobs.splice(refreshedRootIndex + 1, 0, ...newJobs);
+                } else {
+                    originalJob.isNewLocation = false;
+                    for (let i = jobs.length - 1; i >= 0; i--) {
+                        if (jobs[i].parentJobId === rootJobId) jobs.splice(i, 1);
+                    }
                 }
 
                 chrome.storage.local.set({ scrapedJobs: jobs }, () => {
@@ -2577,6 +2726,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function finishDetailsFetching() {
+        const hospitalReconciliation = detailRules.reconcileStoredHospitalNames(allJobs);
+        allJobs = hospitalReconciliation.jobs;
+        if (hospitalReconciliation.repairedCount > 0) {
+            void chrome.storage.local.set({ scrapedJobs: allJobs });
+            displayRecords(allJobs);
+        }
+
         isFetchingDetails = false;
         fetchDetailsBtn.disabled = false;
         fetchDetailsBtn.innerHTML = `
@@ -2586,7 +2742,10 @@ document.addEventListener('DOMContentLoaded', () => {
             Fetch Details
         `;
         document.getElementById('progressSection').classList.add('hidden');
-        showToast(`Details fetched! Processed ${detailsQueue.length} jobs.`, 'success');
+        const repairMessage = hospitalReconciliation.repairedCount
+            ? ` Corrected ${hospitalReconciliation.repairedCount} stored hospital name${hospitalReconciliation.repairedCount === 1 ? '' : 's'}.`
+            : '';
+        showToast(`Details fetched! Processed ${detailsQueue.length} jobs.${repairMessage}`, 'success');
     }
 
     // ============ FETCH ADDRESSES ============
@@ -2827,7 +2986,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         addressQueue = jobs
             .map((job, index) => ({ job, index }))
-            .filter(item => item.job.hospital);
+            .filter(item => item.job.hospital && !/^multiple locations$/i.test(String(item.job.city || '').trim()));
 
         if (addressQueue.length === 0) {
             showToast('No jobs have hospital names to fetch address/contact data.', 'error');
@@ -2978,6 +3137,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const cityWasCorrected = !!(
                         addressData.locationCorrected ||
                         addressData.cityMatchedHospitalName ||
+                        addressData.addressRepaired ||
                         (correctedCity && normalizedLocationPart(searchCity) !== normalizedLocationPart(correctedCity))
                     );
 
@@ -2990,12 +3150,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                     if (correctedLocation) jobs[index].location = correctedLocation;
                     jobs[index].cityMismatchFlag = cityWasCorrected || existingLocationMismatch;
-                    jobs[index].cityMismatchReason = cityWasCorrected
+                    jobs[index].cityMismatchReason = addressData.addressRepaired
+                        ? (addressData.addressRepairReason || 'Mixed address fields were repaired from one complete address')
+                        : cityWasCorrected
                         ? `City corrected from "${searchCity}" to "${jobs[index].city}" using Google address`
                         : (existingLocationMismatch ? 'Stored city/state did not match search location' : '');
-                    if (!jobs[index].zipCode && zipCode) {
-                        jobs[index].zipCode = zipCode;
-                    }
+                    // ZIP belongs to the newly selected address. Always replace
+                    // an older value so a previous branch cannot survive here.
+                    jobs[index].zipCode = zipCode;
                     if (addressData.website) {
                         jobs[index].website = addressData.website;
                     }
