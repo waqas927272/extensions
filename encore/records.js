@@ -24,9 +24,9 @@
     let isGettingDescriptions = false;
     let isFetchingDetails = false;
     let isFetchingAddresses = false;
-    let currentJobIndex = 0;
     let detailsQueue = [];
     let currentDetailsIndex = 0;
+    let deletedMissingLocationCount = 0;
     let addressQueue = [];
     let currentAddressIndex = 0;
     let addressCache = new Map();
@@ -42,6 +42,23 @@
 
     function normalizeSalaryText(salary) {
         return (salary || '').replace(/â€“|â€”|–|—/g, '-');
+    }
+
+    function isInvalidSalaryText(salary) {
+        const text = normalizeSalaryText(String(salary || '')).trim();
+        if (!text || text === '-') return true;
+        return /^\$?0(?:\.0+)?\s*-\s*\$?0(?:\.0+)?\b/i.test(text);
+    }
+
+    function isInvalidHospitalName(hospital) {
+        const text = String(hospital || '').trim();
+        if (!text) return true;
+        return isUnavailableDetailValue(text) ||
+            /\b(?:profession\s*&?\s*a\s+strong\s+commitment|those\s+who\s+provide\s+veterinary\s+care)\b/i.test(text);
+    }
+
+    function isUnavailableDetailValue(value) {
+        return /^(?:unavailable|unknown|n\/?a)$/i.test(String(value || '').trim());
     }
 
     function normalizePhoneNumber(phone) {
@@ -73,6 +90,7 @@
             let normalizedSalary = normalizeSalaryText(job.salary);
             let normalizedPhone = normalizePhoneNumber(job.phone);
             let normalizedState = getFullStateName(job.state);
+            let normalizedLocation = normalizeLocationText(job.location, job.city, normalizedState);
             let normalizedExperience = normalizeExperienceText(job.experience);
 
             if (nextJob.description) {
@@ -82,10 +100,23 @@
                 if (extracted.position) nextJob.position = extracted.position;
                 if (extracted.jobType) nextJob.jobType = extracted.jobType;
                 nextJob.experience = normalizeExperienceText(extracted.experience);
+                if (!isInvalidHospitalName(extracted.hospitalName)) {
+                    nextJob.hospital = extracted.hospitalName;
+                } else if (isInvalidHospitalName(nextJob.hospital)) {
+                    nextJob.hospital = /\btalent community\b/i.test(nextJob.title || '') ? 'Encore Vet Group' : '';
+                }
                 if (extracted.locations && extracted.locations[0]) {
                     nextJob.city = extracted.locations[0].city || nextJob.city || '';
                     nextJob.state = getFullStateName(extracted.locations[0].state || nextJob.state || '');
-                    nextJob.location = extracted.locations[0].location || nextJob.location || '';
+                    nextJob.location = normalizeLocationText(
+                        extracted.locations[0].location || nextJob.location || '',
+                        nextJob.city,
+                        nextJob.state
+                    );
+                } else {
+                    if (isUnavailableDetailValue(nextJob.city)) nextJob.city = '';
+                    if (isUnavailableDetailValue(nextJob.state)) nextJob.state = '';
+                    if (/^\s*UNAVAILABLE\s*,\s*UNAVAILABLE\s*$/i.test(nextJob.location || '')) nextJob.location = '';
                 }
                 changed = true;
             }
@@ -93,6 +124,7 @@
             normalizedSalary = normalizeSalaryText(nextJob.salary);
             normalizedPhone = normalizePhoneNumber(nextJob.phone);
             normalizedState = getFullStateName(nextJob.state);
+            normalizedLocation = normalizeLocationText(nextJob.location, nextJob.city, normalizedState);
             normalizedExperience = normalizeExperienceText(nextJob.experience);
 
             if (normalizedJobId !== (job.jobId || '')) {
@@ -109,6 +141,10 @@
             }
             if (normalizedState !== (job.state || '')) {
                 nextJob.state = normalizedState;
+                changed = true;
+            }
+            if (normalizedLocation !== (job.location || '')) {
+                nextJob.location = normalizedLocation;
                 changed = true;
             }
             if (normalizedExperience !== (job.experience || '')) {
@@ -197,6 +233,62 @@
         }
         // Convert abbreviation to full name
         return stateAbbreviations[value.toUpperCase()] || value;
+    }
+
+    function normalizeLocationText(location, city = '', state = '') {
+        const rawLocation = String(location || '').trim();
+        const fallbackCity = String(city || '').trim();
+        const fallbackState = getFullStateName(state);
+
+        if (!rawLocation) {
+            return '';
+        }
+
+        const parts = rawLocation.split(',').map(part => part.trim()).filter(Boolean);
+        if (parts.length >= 2) {
+            parts[1] = getFullStateName(parts[1] || fallbackState);
+            return parts.join(', ');
+        }
+
+        if (fallbackCity && fallbackState && rawLocation.toLowerCase() === fallbackCity.toLowerCase()) {
+            return `${fallbackCity}, ${fallbackState}`;
+        }
+
+        return rawLocation;
+    }
+
+    function normalizeCompleteLocationDetail(detail = {}) {
+        const city = String(detail.city || '').trim();
+        const state = getFullStateName(detail.state);
+        if (!city || !state || isUnavailableDetailValue(city) || isUnavailableDetailValue(state)) {
+            return null;
+        }
+
+        return {
+            ...detail,
+            city,
+            state,
+            location: normalizeLocationText(
+                detail.location || `${city}, ${state}`,
+                city,
+                state
+            )
+        };
+    }
+
+    function getCompleteLocationDetails(detailsList = [], existingJob = {}) {
+        const completeDetails = detailsList
+            .map(normalizeCompleteLocationDetail)
+            .filter(Boolean);
+        if (completeDetails.length > 0) return completeDetails;
+
+        const existingLocation = normalizeCompleteLocationDetail({
+            ...(detailsList[0] || {}),
+            city: existingJob.city,
+            state: existingJob.state,
+            location: existingJob.location
+        });
+        return existingLocation ? [existingLocation] : [];
     }
 
     const APPROVED_POSITIONS = [
@@ -400,6 +492,16 @@
     // ============ LOCAL DETAIL EXTRACTION (mirrors detail-extractor.js) ============
 
     function extractDetailsFromDescription(positionTitle, descriptionText) {
+        descriptionText = String(descriptionText || '')
+            .replace(/&nbsp;/gi, ' ')
+            .replace(/&amp;/gi, '&')
+            .replace(/&rsquo;/gi, '\u2019')
+            .replace(/&lsquo;/gi, '\u2018')
+            .replace(/&rdquo;/gi, '\u201d')
+            .replace(/&ldquo;/gi, '\u201c')
+            .replace(/&ndash;/gi, '\u2013')
+            .replace(/&mdash;/gi, '\u2014');
+
         // Format salary to standard "$Xâ€“$Y per year" or "$X per hour"
         function formatSalary(raw) {
             if (!raw) return '';
@@ -415,7 +517,7 @@
                 }
                 if (num > 0) amounts.push(num);
             }
-            if (amounts.length === 0) return raw;
+            if (amounts.length === 0) return '';
             const fmt = (n) => {
                 if (Number.isInteger(n)) return '$' + n.toLocaleString('en-US');
                 return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -436,8 +538,13 @@
             // Try to extract from JSON-LD data in the text
             const jsonLdMatch = text.match(/Salary Range:\s*([^\n]+)/i);
             if (jsonLdMatch) {
-                return formatSalary(jsonLdMatch[1].trim());
+                const structuredSalary = formatSalary(jsonLdMatch[1].trim());
+                if (structuredSalary) return structuredSalary;
             }
+
+            // Do not let an invalid structured "$0 - $0" line shadow the real
+            // compensation range later in the description body.
+            const salarySearchText = text.replace(/^Salary Range:\s*[^\n]*$/gim, '');
 
             // Fallback to text pattern matching
             const salaryPatterns = [
@@ -469,8 +576,11 @@
                 /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hour|hr|\/hr)/i,
             ];
             for (const pattern of salaryPatterns) {
-                const m = text.match(pattern);
-                if (m) return formatSalary(m[0].trim());
+                const m = salarySearchText.match(pattern);
+                if (m) {
+                    const formatted = formatSalary(m[0].trim());
+                    if (formatted) return formatted;
+                }
             }
             return '';
         }
@@ -704,6 +814,7 @@
                     if (parts.length >= 2) {
                         const city = parts[0];
                         let state = parts[1];
+                        if ([city, state].some(isUnavailableDetailValue)) continue;
                         // Try to find a 2-letter state abbreviation elsewhere in the text for this city
                         if (state.length > 2) {
                             const stateAbbrev = text.match(new RegExp(`${city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')},\\s*([A-Z]{2})\\b`));
@@ -711,7 +822,8 @@
                                 state = stateAbbrev[1];
                             }
                         }
-                        locations.push({ city, state, location: `${city}, ${state}` });
+                        state = getFullStateName(state);
+                        locations.push({ city, state, location: normalizeLocationText(`${city}, ${state}`, city, state) });
                     }
                 }
             }
@@ -727,11 +839,11 @@
                 const matches = searchText.matchAll(/\b([A-Za-z][\w\s.'()-]*[A-Za-z])\s*,\s*([A-Z]{2})\b/g);
                 for (const match of matches) {
                     let city = match[1].trim();
-                    const state = match[2].trim();
+                    const state = getFullStateName(match[2].trim());
 
                     const invalidWords = ['description', 'position', 'associate', 'veterinarian', 'hospital', 'care', 'center', 'clinic', 'location'];
                     if (!invalidWords.some(word => city.toLowerCase().includes(word)) && city.length > 1 && city.length < 50) {
-                        locations.push({ city, state, location: `${city}, ${state}` });
+                        locations.push({ city, state, location: normalizeLocationText(`${city}, ${state}`, city, state) });
                     }
                 }
             }
@@ -770,6 +882,7 @@
             name = name.replace(/\s+and\s+/gi, ' & ');
             if (!name || /^(?:encore vet group|united veterinary care|alliance animal health)\b/i.test(name)) return '';
             if (/\b(?:our|their|your|this|the)\s+(?:team|hospital|clinic|practice|profession|community)\b/i.test(name)) return '';
+            if (/^[a-z]/.test(name) || /\b(?:profession\s*&?\s*a\s+strong\s+commitment|those\s+who\s+provide\s+veterinary\s+care)\b/i.test(name)) return '';
             return name;
         }
 
@@ -1544,7 +1657,7 @@
                 websiteCell.textContent = '-';
             }
 
-            setCompactCell(row, job.location);
+            setCompactCell(row, normalizeLocationText(job.location, job.city, job.state));
             setCompactCell(row, hasDetails ? job.areaOfPractice : '');
             setCompactCell(row, hasDetails ? job.position : '');
             setCompactCell(row, hasDetails ? normalizeSalaryText(job.salary) : '');
@@ -1686,7 +1799,7 @@
                 `"${(job.zipCode || '').replace(/"/g, '""')}"`,
                 `"${normalizePhoneNumber(job.phone).replace(/"/g, '""')}"`,
                 `"${(job.website || '').replace(/"/g, '""')}"`,
-                `"${(job.location || '').replace(/"/g, '""')}"`,
+                `"${normalizeLocationText(job.location, job.city, job.state).replace(/"/g, '""')}"`,
                 `"${(job.areaOfPractice || '').replace(/"/g, '""')}"`,
                 `"${(job.position || '').replace(/"/g, '""')}"`,
                 `"${normalizeSalaryText(job.salary).replace(/"/g, '""')}"`,
@@ -1907,7 +2020,7 @@
             zip_code: job.zipCode || '',
             phone: normalizePhoneNumber(job.phone),
             website: job.website || '',
-            location: job.location,
+            location: normalizeLocationText(job.location, job.city, job.state),
             area_of_practice: job.areaOfPractice || '',
             position: job.position || '',
             salary: normalizeSalaryText(job.salary),
@@ -2008,104 +2121,111 @@
 
     // ============ GET DESCRIPTIONS ============
 
+    function hasUsableDescription(description) {
+        const text = String(description || '').trim();
+        if (!text) return false;
+        if (/^(?:description not found|error (?:scraping|fetching) description|timeout fetching description)/i.test(text)) return false;
+        if (/&(?:nbsp|rsquo|lsquo|rdquo|ldquo|ndash|mdash|hellip);/i.test(text)) return false;
+        if (/^Industry\/Category:\s*(?:unavailable|unknown|n\/?a)\s*$/im.test(text)) return false;
+        if (/^Salary Range:\s*\$?0(?:\.0+)?\s*-\s*\$?0(?:\.0+)?\b/im.test(text)) return false;
+        return true;
+    }
+
+    function updateDescriptionProgress(state = {}) {
+        const progressBar = document.getElementById('progressBar');
+        const progressText = document.getElementById('progressText');
+        const completed = Number(state.completed) || 0;
+        const total = Number(state.total) || 0;
+        progressText.textContent = `${completed} / ${total}`;
+        progressBar.style.width = `${total > 0 ? (completed / total) * 100 : 0}%`;
+    }
+
+    function setDescriptionUiRunning(state = {}) {
+        isGettingDescriptions = true;
+        getDescriptionsBtn.disabled = true;
+        getDescriptionsBtn.textContent = 'Getting Descriptions...';
+        document.getElementById('progressSection').classList.remove('hidden');
+        document.getElementById('progressLabel').textContent = state.currentJobId
+            ? `Background Description: ${state.currentJobId}`
+            : 'Getting Descriptions in Background';
+        updateDescriptionProgress(state);
+    }
+
+    function finishDescriptionUi(state = {}, showResult = true) {
+        isGettingDescriptions = false;
+        getDescriptionsBtn.disabled = false;
+        getDescriptionsBtn.innerHTML = `
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M13,13H11V18H13V13M13,9.5H11V11.5H13V9.5Z"/>
+            </svg>
+            Get Descriptions
+        `;
+        updateDescriptionProgress(state);
+        document.getElementById('progressSection').classList.add('hidden');
+
+        if (!showResult) return;
+        const failed = Number(state.failed) || 0;
+        if (failed > 0) {
+            showToast(`${failed} description${failed === 1 ? '' : 's'} could not be fetched after retrying.`, 'error');
+        } else {
+            showToast('All descriptions have been fetched in the background!', 'success');
+        }
+    }
+
+    async function reloadDescriptionResults() {
+        const data = await chrome.storage.local.get(['scrapedJobs']);
+        allJobs = data.scrapedJobs || [];
+        refreshRecordsView();
+    }
+
     getDescriptionsBtn.addEventListener('click', async () => {
         if (isGettingDescriptions) {
-            showToast('Already getting descriptions. Please wait...', 'error');
+            showToast('Descriptions are already being fetched in the background.', 'error');
             return;
         }
 
         const data = await chrome.storage.local.get(['scrapedJobs']);
         const jobs = data.scrapedJobs || [];
-
-        const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
-        if (jobsWithoutDesc.length === 0) {
+        const missingCount = jobs.filter(job => job.link && !hasUsableDescription(job.description)).length;
+        if (missingCount === 0) {
             showToast('All jobs already have descriptions!', 'success');
             return;
         }
 
-        isGettingDescriptions = true;
-        currentJobIndex = 0;
-
-        getDescriptionsBtn.disabled = true;
-        getDescriptionsBtn.textContent = 'Getting Descriptions...';
-
-        // Show progress
-        const progressSection = document.getElementById('progressSection');
-        const progressBar = document.getElementById('progressBar');
-        const progressText = document.getElementById('progressText');
-        const progressLabel = document.getElementById('progressLabel');
-        progressSection.classList.remove('hidden');
-        progressLabel.textContent = 'Getting Descriptions';
-        progressText.textContent = `0 / ${jobsWithoutDesc.length}`;
-        progressBar.style.width = '0%';
-
-        processNextJob();
-    });
-
-    async function processNextJob() {
-        const data = await chrome.storage.local.get(['scrapedJobs']);
-        const jobs = data.scrapedJobs || [];
-
-        const jobsWithoutDesc = jobs.filter(job => !job.description && job.link);
-        const totalOriginal = jobs.filter(job => job.link).length;
-        const totalWithoutDesc = jobsWithoutDesc.length;
-        const processed = totalOriginal - totalWithoutDesc;
-
-        // Update progress
-        const progressBar = document.getElementById('progressBar');
-        const progressText = document.getElementById('progressText');
-        const totalToProcess = allJobs.filter(job => !job.description && job.link).length;
-        progressText.textContent = `${processed} / ${totalToProcess + processed}`;
-        progressBar.style.width = `${(processed / (totalToProcess + processed)) * 100}%`;
-
-        if (jobsWithoutDesc.length === 0) {
-            isGettingDescriptions = false;
-            getDescriptionsBtn.disabled = false;
-            getDescriptionsBtn.innerHTML = `
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M18,20H6V4H13V9H18V20M13,13H11V18H13V13M13,9.5H11V11.5H13V9.5Z"/>
-                </svg>
-                Get Descriptions
-            `;
-            document.getElementById('progressSection').classList.add('hidden');
-            showToast('All descriptions have been fetched!', 'success');
-            return;
-        }
-
-        const job = jobsWithoutDesc[0];
-        const jobIndex = jobs.findIndex(j => j.link === job.link);
-
-        try {
-            // Add nl=1 param so Jobvite serves the standalone page instead of redirecting to the parent site iframe
-            const jobUrl = new URL(job.link);
-            jobUrl.searchParams.set('nl', '1');
-            const tab = await chrome.tabs.create({ url: jobUrl.toString(), active: false });
-            chrome.runtime.sendMessage({
-                action: 'scrapeJobDescription',
-                tabId: tab.id,
-                jobIndex: jobIndex,
-                jobLink: job.link
-            });
-        } catch (error) {
-            console.error('Error opening tab for job:', error);
-            setTimeout(() => processNextJob(), 1500);
-        }
-    }
-
-    // Listen for description saved messages from background.js
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.action === 'descriptionSaved') {
-            chrome.storage.local.get(['scrapedJobs'], (data) => {
-                const jobs = data.scrapedJobs || [];
-                allJobs = jobs;
-                displayRecords(allJobs);
-
-                if (isGettingDescriptions) {
-                    setTimeout(() => processNextJob(), 1500);
+        setDescriptionUiRunning({ total: missingCount, completed: 0 });
+        chrome.runtime.sendMessage({ action: 'startBackgroundDescriptionScrape' })
+            .then(response => {
+                if (response?.status === 'error') {
+                    finishDescriptionUi({ total: missingCount, completed: 0, failed: missingCount }, false);
+                    showToast(`Background description scraping failed: ${response.message}`, 'error');
+                } else if (response?.status === 'completed' && isGettingDescriptions) {
+                    reloadDescriptionResults()
+                        .catch(error => console.error('Error refreshing descriptions:', error))
+                        .finally(() => finishDescriptionUi(response));
                 }
+            })
+            .catch(error => {
+                finishDescriptionUi({ total: missingCount, completed: 0, failed: missingCount }, false);
+                showToast(`Could not start background description scraping: ${error.message}`, 'error');
             });
+    });
+
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        if (message.action === 'descriptionRunStarted' || message.action === 'descriptionRunProgress') {
+            setDescriptionUiRunning(message);
+            reloadDescriptionResults().catch(error => console.error('Error refreshing descriptions:', error));
+        } else if (message.action === 'descriptionRunCompleted') {
+            reloadDescriptionResults()
+                .catch(error => console.error('Error refreshing descriptions:', error))
+                .finally(() => finishDescriptionUi(message));
         }
     });
+
+    chrome.runtime.sendMessage({ action: 'getBackgroundDescriptionState' })
+        .then(state => {
+            if (state?.active) setDescriptionUiRunning(state);
+        })
+        .catch(() => {});
 
     // ============ FETCH DETAILS ============
 
@@ -2128,7 +2248,16 @@
         const jobsToFetch = jobs.map((job, index) => ({ job, index }))
             .filter(item => {
                 if (!item.job.title) return false;
-                const needsDetails = !item.job.areaOfPractice || !item.job.position || !item.job.experience;
+                const needsDetails = !item.job.detailsFetched ||
+                    !item.job.areaOfPractice ||
+                    !item.job.position ||
+                    isInvalidSalaryText(item.job.salary) ||
+                    isInvalidHospitalName(item.job.hospital) ||
+                    !normalizeCompleteLocationDetail({
+                        city: item.job.city,
+                        state: item.job.state,
+                        location: item.job.location
+                    });
                 return needsDetails;
             });
 
@@ -2145,6 +2274,7 @@
 
         isFetchingDetails = true;
         currentDetailsIndex = 0;
+        deletedMissingLocationCount = 0;
         fetchDetailsBtn.disabled = true;
         fetchDetailsBtn.textContent = 'Fetching Details...';
 
@@ -2267,7 +2397,7 @@
                     description: description,
                     city: loc.city || '',
                     state: loc.state || '',
-                    location: loc.location || ''
+                    location: normalizeLocationText(loc.location || '', loc.city || '', loc.state || '')
                 }));
             } else {
                 // No locations found â€” still create one entry with details
@@ -2308,6 +2438,20 @@
                     return;
                 }
 
+                const completeDetails = getCompleteLocationDetails(detailsList, originalJob);
+
+                if (completeDetails.length === 0) {
+                    jobs.splice(jobIndex, 1);
+                    deletedMissingLocationCount++;
+                    chrome.storage.local.set({ scrapedJobs: jobs }, () => {
+                        allJobs = jobs;
+                        displayRecords(allJobs);
+                        resolve({ deleted: true });
+                    });
+                    return;
+                }
+
+                detailsList = completeDetails;
                 const firstDetail = detailsList[0];
 
                 // --- POSITION: Always determine from the LISTING title (originalJob.title) ---
@@ -2351,14 +2495,29 @@
                 // Update original job with extracted details
                 originalJob.areaOfPractice = finalAOP;
                 originalJob.position = finalPosition || '';
-                originalJob.salary = normalizeSalaryText(firstDetail.salary || originalJob.salary || '');
-                originalJob.hospital = firstDetail.hospitalName || originalJob.hospital || '';
+                const extractedSalary = normalizeSalaryText(firstDetail.salary || '');
+                const existingSalary = normalizeSalaryText(originalJob.salary || '');
+                originalJob.salary = extractedSalary || (isInvalidSalaryText(existingSalary) ? '' : existingSalary);
+                originalJob.hospital = !isInvalidHospitalName(firstDetail.hospitalName)
+                    ? firstDetail.hospitalName
+                    : (isInvalidHospitalName(originalJob.hospital)
+                        ? (/\btalent community\b/i.test(listingTitle) ? 'Encore Vet Group' : '')
+                        : originalJob.hospital);
                 originalJob.jobType = firstDetail.jobType || originalJob.jobType || 'Full-Time';
                 originalJob.experience = normalizeExperienceText(firstDetail.experience || originalJob.experience);
                 originalJob.detailsFetched = true;
+                if (isUnavailableDetailValue(originalJob.city)) originalJob.city = '';
+                if (isUnavailableDetailValue(originalJob.state)) originalJob.state = '';
+                if (/^\s*UNAVAILABLE\s*,\s*UNAVAILABLE\s*$/i.test(originalJob.location || '')) originalJob.location = '';
                 if (firstDetail.city) originalJob.city = firstDetail.city;
                 if (firstDetail.state) originalJob.state = getFullStateName(firstDetail.state);
-                if (firstDetail.location) originalJob.location = firstDetail.location;
+                if (firstDetail.location || (firstDetail.city && firstDetail.state)) {
+                    originalJob.location = normalizeLocationText(
+                        firstDetail.location || [firstDetail.city, firstDetail.state].filter(Boolean).join(', '),
+                        firstDetail.city || originalJob.city || '',
+                        firstDetail.state || originalJob.state || ''
+                    );
+                }
                 // Update description if we got a better one
                 if (firstDetail.description && firstDetail.description.length > (originalJob.description || '').length) {
                     originalJob.description = firstDetail.description;
@@ -2399,9 +2558,13 @@
                             ...originalJob,
                             jobId: `${baseJobId}-${i + 1}`,
                             hospital: childHospital,
-                            city: '',
-                            state: '',
-                            location: loc.location || `${loc.city}, ${loc.state}`,
+                            city: loc.city,
+                            state: getFullStateName(loc.state),
+                            location: normalizeLocationText(
+                                loc.location || `${loc.city}, ${loc.state}`,
+                                loc.city || '',
+                                loc.state || ''
+                            ),
                             streetAddress: '',
                             zipCode: '',
                             isNewLocation: true,
@@ -2432,7 +2595,10 @@
             Fetch Details
         `;
         document.getElementById('progressSection').classList.add('hidden');
-        showToast(`Details fetched! Processed ${detailsQueue.length} jobs.`, 'success');
+        const deletionSummary = deletedMissingLocationCount > 0
+            ? ` Deleted ${deletedMissingLocationCount} record${deletedMissingLocationCount === 1 ? '' : 's'} without both city and state.`
+            : '';
+        showToast(`Details fetched! Processed ${detailsQueue.length} jobs.${deletionSummary}`, 'success');
     }
 
     // ============ FETCH ADDRESSES ============
@@ -2651,6 +2817,11 @@
                 // is accepted only when it matches this location.
                 jobs[index].city = searchCity || addressData.city || jobs[index].city || '';
                 jobs[index].state = getFullStateName(searchState || addressData.state || jobs[index].state || '');
+                jobs[index].location = normalizeLocationText(
+                    jobs[index].location,
+                    jobs[index].city,
+                    jobs[index].state
+                );
 
                 // Try to extract zip from fullAddress if parsing missed it
                 if (!jobs[index].zipCode && addressData.fullAddress) {

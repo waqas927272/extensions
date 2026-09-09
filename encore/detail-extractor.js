@@ -231,6 +231,28 @@
         return Object.values(STATE_NAMES).find(name => name.toLowerCase() === value.toLowerCase()) || value;
     }
 
+    function normalizeLocationText(location, city = '', state = '') {
+        const rawLocation = String(location || '').trim();
+        const fallbackCity = String(city || '').trim();
+        const fallbackState = getFullStateName(state);
+
+        if (!rawLocation) {
+            return '';
+        }
+
+        const parts = rawLocation.split(',').map(part => part.trim()).filter(Boolean);
+        if (parts.length >= 2) {
+            parts[1] = getFullStateName(parts[1] || fallbackState);
+            return parts.join(', ');
+        }
+
+        if (fallbackCity && fallbackState && rawLocation.toLowerCase() === fallbackCity.toLowerCase()) {
+            return `${fallbackCity}, ${fallbackState}`;
+        }
+
+        return rawLocation;
+    }
+
     function hasSpecialtyTrainingSignal(text) {
         return /\bboard certified\b|\bresidency[-\s]+trained\b|\bresidential[-\s]+trained\b/i.test(text || '');
     }
@@ -703,9 +725,9 @@
             for (const loc of jobLocs) {
                 if (loc.address) {
                     const city = loc.address.addressLocality || '';
-                    const state = loc.address.addressRegion || '';
+                    const state = getFullStateName(loc.address.addressRegion || '');
                     if (city && state) {
-                        locations.push({ city, state, location: `${city}, ${state}` });
+                        locations.push({ city, state, location: normalizeLocationText(`${city}, ${state}`, city, state) });
                     }
                 }
             }
@@ -715,8 +737,12 @@
         if (locations.length === 0 && domData.city) {
             locations.push({
                 city: domData.city,
-                state: domData.state || '',
-                location: domData.state ? `${domData.city}, ${domData.state}` : domData.city
+                state: getFullStateName(domData.state || ''),
+                location: normalizeLocationText(
+                    domData.state ? `${domData.city}, ${domData.state}` : domData.city,
+                    domData.city,
+                    domData.state || ''
+                )
             });
         }
 
@@ -730,10 +756,10 @@
                     const matches = text.matchAll(/\b([A-Za-z][\w\s.'()-]*[A-Za-z])\s*,\s*([A-Z]{2})\b/g);
                     for (const match of matches) {
                         const city = match[1].trim();
-                        const state = match[2].trim();
+                        const state = getFullStateName(match[2].trim());
                         const bad = ['description', 'position', 'associate', 'veterinarian', 'hospital', 'care'];
                         if (!bad.some(w => city.toLowerCase().includes(w)) && city.length > 1 && city.length < 50) {
-                            locations.push({ city, state, location: `${city}, ${state}` });
+                            locations.push({ city, state, location: normalizeLocationText(`${city}, ${state}`, city, state) });
                         }
                     }
                 }
@@ -746,7 +772,13 @@
             multiLoc.forEach(el => {
                 const parts = el.innerText.trim().split(',').map(s => s.trim());
                 if (parts.length >= 2) {
-                    locations.push({ city: parts[0], state: parts[1], location: el.innerText.trim() });
+                    const city = parts[0];
+                    const state = getFullStateName(parts[1]);
+                    locations.push({
+                        city,
+                        state,
+                        location: normalizeLocationText(el.innerText.trim(), city, state)
+                    });
                 }
             });
         }
@@ -857,6 +889,6 @@
         ...baseDetails,
         city: loc.city,
         state: getFullStateName(loc.state),
-        location: loc.location
+        location: normalizeLocationText(loc.location, loc.city, loc.state)
     }));
 })();
