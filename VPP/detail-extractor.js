@@ -115,13 +115,22 @@
     }
 
     function getAbsoluteHref(rawHref) {
-        const href = (rawHref || '').trim();
+        let href = (rawHref || '').trim();
         if (!href || href === '#' || /^javascript:/i.test(href)) return '';
 
+        if (/^[\w.-]+\.[a-z]{2,}(?:\/[^\s]*)?$/i.test(href) && !/^https?:\/\//i.test(href)) {
+            href = `https://${href}`;
+        }
+
         try {
-            return new URL(href, window.location.href).href;
+            let url = new URL(href, window.location.href);
+            if (url.hostname.endsWith('linkedin.com') && url.pathname.includes('/safety/go/')) {
+                const destination = url.searchParams.get('url');
+                if (destination) url = new URL(destination);
+            }
+            return url.href;
         } catch (e) {
-            return href;
+            return '';
         }
     }
 
@@ -247,7 +256,7 @@
     const APPROVED_POSITION_SET = new Set(APPROVED_POSITIONS);
     const VALID_POSITIONS_BY_AOP = {
         'Emergency Care': ['Associate Veterinarian'],
-        'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
+        'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director', 'Partner Veterinarian'],
         'Specialty Care': [
             'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
             'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
@@ -264,6 +273,14 @@
 
     function getAOPParts(aop) {
         return (aop || '').split('/').map(part => part.trim()).filter(Boolean);
+    }
+
+    function isSupportedVeterinaryRoleTitle(title) {
+        const value = (title || '').toLowerCase();
+        if (!value) return false;
+        if (matchPositionFromTitle(value)) return true;
+        return /\b(?:veterinarian|veterinary doctor|dvm)\b/.test(value) &&
+            !/\b(?:assistant|receptionist|client service|practice manager|office manager|technician)\b/.test(value);
     }
 
     function validateApprovedPositionForAOP(position, aop) {
@@ -284,11 +301,13 @@
         const aopParts = getAOPParts(aop);
         const t = (title || '').toLowerCase();
 
-        if (aopParts.includes('Urgent Care') && (t.includes('partner veterinarian') || t.includes('partner vet'))) {
+        if (aopParts.some(part => ['General Practice Care', 'Urgent Care'].includes(part)) &&
+            /\b(?:partner|partnership|co[-\s]?owner|owner)\b/.test(t)) {
             return 'Partner Veterinarian';
         }
 
-        if (aopParts.some(part => ['General Practice Care', 'Emergency Care', 'Urgent Care'].includes(part))) {
+        if (isSupportedVeterinaryRoleTitle(title) &&
+            aopParts.some(part => ['General Practice Care', 'Emergency Care', 'Urgent Care'].includes(part))) {
             return 'Associate Veterinarian';
         }
 
@@ -343,6 +362,7 @@
 
     // ===== Determine Area of Practice =====
     function determineAreaOfPractice(title, category, descriptionText) {
+        if (!isSupportedVeterinaryRoleTitle(title)) return '';
         if (hasSpecialtyTrainingSignal(descriptionText)) return 'Specialty Care';
         // STEP 1: Use category from page (most reliable — directly from jobvite)
         const aopFromCategory = categoryToAOP(category);
@@ -372,8 +392,7 @@
         if (titleLower.match(/\bsurgeon\b/)) return 'Specialty Care';
 
         // STEP 3: Emergency from title
-        if (titleLower.includes('emergency') || titleLower.match(/\ber\b/) ||
-            titleLower.includes('er vet') || titleLower.includes('er dvm')) {
+        if (/\b(?:emergency|er)\s+(?:veterinarian|vet|dvm)\b|\b(?:veterinarian|vet|dvm)\s*[-–—]?\s*(?:emergency|er)\b|\b(?:criticalist|ecc)\b/.test(titleLower)) {
             return 'Emergency Care';
         }
 
@@ -446,6 +465,7 @@
         // Medical Director, NOT Medical Oncologist. The specialty word is the service name, not the role.
         if (t.includes('medical director')) return 'Medical Director';
         if (t.includes('lead veterinarian') || t.includes('lead vet')) return 'Lead Veterinarian';
+        if (/\b(?:co[-\s]?owner|owner)\s+(?:veterinarian|vet|dvm)\b|\b(?:veterinarian|veterinary)\s+partnership\b|\bfounding\s+dvm\s+partner\b/.test(t)) return 'Partner Veterinarian';
 
         // === SPECIALTY POSITION NAMES ===
         if (t.includes('neurologist') || t.includes('neurosurgeon') || t.includes('neurology')) return 'Neurologist & Neurosurgeon';
@@ -511,40 +531,6 @@
         return position || getDefaultPositionForAOP(areaOfPractice, title);
     }
 
-    // ===== Validate that position is allowed for the given AOP =====
-    function validatePositionForAOP(position, aop) {
-        const validPositions = {
-            'Emergency Care': ['Associate Veterinarian'],
-            'General Practice Care': ['Associate Veterinarian', 'Lead Veterinarian', 'Medical Director'],
-            'Specialty Care': [
-                'Anesthesiologist', 'Cardiologist', 'Credentialed Veterinary Technician Specialist',
-                'DABVP Specialist', 'Dental Specialist', 'Dermatologist', 'ECC Specialist',
-                'Internal Medicine Specialist', 'Medical Director', 'Medical Oncologist',
-                'Neurologist & Neurosurgeon', 'Ophthalmologist', 'Radiation Oncologist',
-                'Radiologist', 'Surgeon'
-            ],
-            'Urgent Care': ['Associate Veterinarian', 'Partner Veterinarian'],
-        };
-
-        // For compound AOPs like "General Practice Care / Emergency Care / Urgent Care",
-        // accept the position if it's valid in ANY of the listed AOPs
-        const aopParts = aop.split('/').map(s => s.trim());
-        for (const part of aopParts) {
-            const allowed = validPositions[part];
-            if (allowed && allowed.includes(position)) return position;
-        }
-
-        // If we found at least one known AOP but position wasn't valid in any of them, default
-        const hasKnownAOP = aopParts.some(part => validPositions[part]);
-        if (hasKnownAOP) return 'Associate Veterinarian';
-
-        // Completely unknown AOP — still validate against all known positions
-        const allValid = new Set(Object.values(validPositions).flat());
-        if (allValid.has(position)) return position;
-
-        return 'Associate Veterinarian';
-    }
-
     // ===== Format salary to standard "$X–$Y per year" or "$X per hour" =====
     function formatSalary(raw) {
         if (!raw) return '';
@@ -566,7 +552,7 @@
             if (num > 0) amounts.push(num);
         }
 
-        if (amounts.length === 0) return raw;
+        if (amounts.length === 0) return '';
 
         // Format number with commas, no decimals for whole numbers
         const fmt = (n) => {
@@ -593,18 +579,17 @@
             const s = jsonLd.baseSalary.value;
             const minVal = s.minValue ? String(s.minValue).trim() : '';
             const maxVal = s.maxValue ? String(s.maxValue).trim() : '';
-            if (minVal && maxVal) {
+            const min = parseFloat(minVal.replace(/[$,\s]/g, ''));
+            const max = parseFloat(maxVal.replace(/[$,\s]/g, ''));
+            if (Number.isFinite(min) && Number.isFinite(max)) {
                 const unit = s.unitText || 'per year';
                 const isHourly = /hour/i.test(unit);
-                const min = parseFloat(minVal.replace(/,/g, ''));
-                const max = parseFloat(maxVal.replace(/,/g, ''));
                 const fmt = (n) => {
                     if (Number.isInteger(n)) return '$' + n.toLocaleString('en-US');
                     return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 };
                 return `${fmt(min)}–${fmt(max)} ${isHourly ? 'per hour' : 'per year'}`;
-            } else if (minVal) {
-                const min = parseFloat(minVal.replace(/,/g, ''));
+            } else if (Number.isFinite(min)) {
                 const fmt = (n) => {
                     if (Number.isInteger(n)) return '$' + n.toLocaleString('en-US');
                     return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -635,8 +620,6 @@
             /\$[\d,]+\s*(?:\/k|k)?\s+to\s+\$?[\d,]+\s*(?:\/k|k)/i,
             // "earn $250,000 annually"
             /(?:earn|earning)\s+\$[\d,]+(?:\.\d{2})?\s*(?:annually|per\s*year)?/i,
-            // "$250,000 annually" or "$250,000 per year"
-            /\$[\d,]+(?:\.\d{2})?\s*(?:annually|per\s*year|per\s*annum)/i,
             // "$95 per hour" or "$95/hr"
             /\$[\d,]+(?:\.\d{2})?\s*(?:per\s+)?(?:hour|hr|\/hr)/i,
         ];
@@ -647,23 +630,28 @@
         return '';
     }
 
+    function extractJobType(descriptionText) {
+        const text = String(descriptionText || '');
+        const hasPartTime = /\bpart[\s-]?time\b/i.test(text);
+        const hasFullTime = /\bfull[\s-]?time\b|\bfull\s*(?:\/|or|and)\s*part[\s-]?time\b/i.test(text);
+        return hasPartTime && !hasFullTime ? 'Part-Time' : 'Full-Time';
+    }
+
     function extractExperience(descriptionText) {
         if (!descriptionText) return '';
 
         const yearToken = '(?:years?|yrs?\\.?)';
         const qualificationsSection = extractQualificationsSection(descriptionText);
-        const candidateLines = [];
+        const qualificationLines = qualificationsSection ? qualificationsSection.split('\n') : [];
+        const generalLines = descriptionText.split('\n').filter(line =>
+            /\b(?:minimum|min\.?|at least|required|preferred|must|candidate|applicant|experience\s*:|you(?:'ll| will)?\s+(?:have|bring))\b|\b\d+\+\s*years?\b/i.test(line)
+        );
 
-        if (qualificationsSection) {
-            candidateLines.push(...qualificationsSection.split('\n'));
-        }
-        candidateLines.push(...descriptionText.split('\n'));
-
-        const prioritizedLines = candidateLines
+        const prioritizedLines = [...qualificationLines, ...generalLines]
             .map(line => line.trim())
             .filter(Boolean)
             .filter(line => /\b(?:experience|experienced|minimum|min\.?|at least|required|requirements?|qualifications?|practice setting|years in practice)\b/i.test(line))
-            .filter(line => !/\b(?:our team has|over\s+\d+\s+years of experience|years of experience in specialty and emergency services|serving\s+the\s+community|we offer|benefits|medical(?:,\s*|\s+)dental)\b/i.test(line));
+            .filter(line => !/\b(?:our team has|our (?:medical director|doctor|veterinarian|practice|hospital)|(?:over|more than)\s+\d+\s+years of experience|years of experience in specialty and emergency services|serving\s+the\s+community|has served|founded\s+in|we offer|benefits|medical(?:,\s*|\s+)dental)\b/i.test(line));
 
         const patterns = [
             new RegExp(`\\b(\\d+)\\s*[-–—]\\s*(\\d+)\\s*${yearToken}\\s+(?:of\\s+)?experience\\b`, 'i'),
@@ -805,6 +793,7 @@
     const areaOfPractice = determineAreaOfPractice(positionTitle, category, fullDescription);
     const position = determinePosition(positionTitle, areaOfPractice, fullDescription);
     const salary = extractSalary(jsonLd, fullDescription);
+    const jobType = extractJobType(fullDescription);
     const experience = extractExperience(fullDescription);
     const locations = extractLocations(jsonLd, domData);
 
@@ -813,6 +802,7 @@
         areaOfPractice,
         position,
         salary,
+        jobType,
         experience,
         hospitalName,
         description: fullDescription

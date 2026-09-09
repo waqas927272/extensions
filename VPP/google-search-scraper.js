@@ -1,263 +1,210 @@
-// google-search-scraper.js
-// Injected into Google Search. Prefer the right-side knowledge panel/business card
-// for address, phone, and website, then fall back to visible result text.
+// Injected after address-validation.js on Google Search.
+// Only a knowledge panel or organic result whose business name matches the
+// requested hospital may provide address/contact fields.
 (async () => {
+    const validation = globalThis.VppAddressValidation;
+    const emptyResult = (error = '') => ({
+        streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '',
+        website: '', phone: '', businessName: '', searchUrl: window.location.href,
+        matchScore: 0, source: 'google_search', error
+    });
+
     try {
-        await waitForGoogleResults();
+        if (!validation) return emptyResult('Address validation helpers were not loaded.');
+        const requestedHospital = getRequestedHospital();
+        if (!requestedHospital) return emptyResult('The requested hospital name was missing from the search URL.');
 
-        const panelText = getKnowledgePanelText();
-        const bodyText = cleanText(document.body.innerText || '');
-        const address = extractAddress(panelText) || extractAddress(bodyText);
-        const parsed = parseAddress(address);
+        await waitForResults();
+        const panelResult = extractKnowledgePanel(requestedHospital);
+        if (panelResult) return panelResult;
 
-        return {
-            fullAddress: address || '',
-            streetAddress: parsed.streetAddress || '',
-            city: parsed.city || '',
-            state: parsed.state || '',
-            zipCode: parsed.zipCode || '',
-            phone: extractPhoneFromPanel() || extractPhone(panelText) || extractPhone(bodyText) || '',
-            website: extractWebsiteFromPanel() || extractWebsiteFromResults() || '',
-            panelText: panelText || ''
-        };
+        const organicResult = extractMatchingOrganicResult(requestedHospital);
+        return organicResult || emptyResult('No Google Search result matched the requested hospital.');
     } catch (error) {
-        return { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '', error: error.message };
+        return emptyResult(error?.message || 'Google Search extraction failed.');
     }
 
     function wait(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    async function waitForGoogleResults() {
-        const deadline = Date.now() + 15000;
-        let lastText = '';
-        let stableCount = 0;
-
+    async function waitForResults() {
+        const deadline = Date.now() + 12000;
         while (Date.now() < deadline) {
-            await wait(500);
-            const panelText = getKnowledgePanelText();
-            const bodyText = cleanText(document.body.innerText || '');
-            const text = panelText || bodyText;
-
-            if (extractAddress(panelText) || extractAddress(bodyText)) return;
-
-            if (text && text === lastText) stableCount++;
-            else stableCount = 0;
-            lastText = text;
-
-            if (stableCount >= 2 && (document.querySelector('#search') || document.querySelector('#rhs') || document.querySelector('[role="complementary"]'))) {
-                return;
-            }
+            if (document.querySelector('#rhs, [role="complementary"], #search')) return;
+            await wait(400);
         }
     }
 
-    function getKnowledgePanelText() {
+    function getRequestedHospital() {
+        try {
+            const query = new URL(window.location.href).searchParams.get('q') || '';
+            return validation.cleanText(query.split(',')[0]);
+        } catch {
+            return '';
+        }
+    }
+
+    function extractKnowledgePanel(requestedHospital) {
+        const panel = document.querySelector('#rhs') || document.querySelector('[role="complementary"]');
+        if (!panel) return null;
+
+        const businessName = extractHeading(panel);
+        const matchScore = validation.bestNameMatch([requestedHospital], businessName).score;
+        if (!businessName || matchScore < 0.72) return null;
+
+        const panelText = cleanText(panel.innerText || panel.textContent || '');
+        const fullAddress = extractAddress(panelText, panel);
+        const parsed = parseAddress(fullAddress);
+        const phone = validation.normalizePhone(extractPhone(panelText, panel));
+        const website = extractWebsite(panel);
+        if (!fullAddress && !phone && !website) return null;
+
+        return {
+            fullAddress,
+            streetAddress: parsed.streetAddress,
+            city: parsed.city,
+            state: parsed.state,
+            zipCode: parsed.zipCode,
+            phone,
+            website,
+            businessName,
+            searchUrl: window.location.href,
+            matchScore,
+            source: 'google_search',
+            error: ''
+        };
+    }
+
+    function extractMatchingOrganicResult(requestedHospital) {
+        const cards = [...document.querySelectorAll('#search .MjjYud, #search .g')];
+        let best = null;
+        for (const card of cards) {
+            const businessName = validation.cleanText(card.querySelector('h3')?.textContent || '');
+            if (!businessName) continue;
+            const matchScore = validation.bestNameMatch([requestedHospital], businessName).score;
+            if (matchScore < 0.72 || (best && best.matchScore >= matchScore)) continue;
+
+            const cardText = cleanText(card.innerText || card.textContent || '');
+            const fullAddress = extractAddress(cardText, card);
+            const parsed = parseAddress(fullAddress);
+            const phone = validation.normalizePhone(extractPhone(cardText, card));
+            const website = extractWebsite(card);
+            if (!fullAddress && !phone && !website) continue;
+
+            best = {
+                fullAddress,
+                streetAddress: parsed.streetAddress,
+                city: parsed.city,
+                state: parsed.state,
+                zipCode: parsed.zipCode,
+                phone,
+                website,
+                businessName,
+                searchUrl: window.location.href,
+                matchScore,
+                source: 'google_search',
+                error: ''
+            };
+        }
+        return best;
+    }
+
+    function extractHeading(container) {
         const selectors = [
-            '#rhs',
-            '[role="complementary"]',
-            '.kp-wholepage',
-            '[data-attrid*="kc:/location"]',
-            '[data-attrid*="address"]',
-            '[data-local-attribute]',
-            '.lu_map_section'
+            '[data-attrid="title"] span', '[data-attrid="title"]',
+            'h2[data-attrid]', 'h2', '[role="heading"][aria-level="2"]', 'h1'
         ];
-
-        const chunks = [];
-        const seen = new Set();
         for (const selector of selectors) {
-            for (const element of document.querySelectorAll(selector)) {
-                if (!isVisible(element)) continue;
-                const text = cleanText(element.innerText || element.textContent || '');
-                if (!text || seen.has(text)) continue;
-                seen.add(text);
-                chunks.push(text);
+            const text = validation.cleanText(container.querySelector(selector)?.textContent || '');
+            if (text && !/see (?:photos|results)|web results/i.test(text)) return text;
+        }
+        return '';
+    }
+
+    function extractAddress(text, container) {
+        const selectors = ['[data-attrid*="address"]', '[aria-label^="Address"]', '[data-local-attribute="d3adr"]', '.LrzXr'];
+        for (const selector of selectors) {
+            for (const element of container.querySelectorAll(selector)) {
+                const value = cleanText(element.innerText || element.textContent || element.getAttribute('aria-label') || '')
+                    .replace(/^Address\s*[:\n]\s*/i, '');
+                if (/\d/.test(value) && /\b[A-Z]{2}\s+\d{5}(?:-\d{4})?\b/.test(value)) return normalizeAddress(value);
             }
         }
 
-        return chunks.join('\n');
-    }
-
-    function isVisible(element) {
-        const rect = element.getBoundingClientRect();
-        return rect.width > 0 && rect.height > 0;
-    }
-
-    function extractAddress(text) {
-        const source = cleanText(text || '');
-        if (!source) return '';
-
-        const labelled = source.match(/(?:Address|Located in)\s*[:\n]\s*([^\n]+?\b[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i);
+        const labelled = text.match(/(?:Address|Located in)\s*[:\n]\s*([^\n]+?\b[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i);
         if (labelled) return normalizeAddress(labelled[1]);
-
-        const patterns = [
-            /(\d{1,6}\s+[\w\s.'#&/-]+?(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|NE|NW|SE|SW)\b[\w\s.,#&/-]*?,\s*[\w\s.'-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i,
-            /(\d{1,6}\s+[\w\s.'#&/-]+?(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|NE|NW|SE|SW)\b[\w\s.,#&/-]*?\s+[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i
-        ];
-
-        for (const pattern of patterns) {
-            const match = source.match(pattern);
-            if (match) return normalizeAddress(match[1]);
-        }
-
-        const attrAddress = extractAddressFromAttributes();
-        return attrAddress ? normalizeAddress(attrAddress) : '';
+        const generic = text.match(/(\d{1,6}\s+[\w\s.'#&/-]+?(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|NE|NW|SE|SW)\b[\w\s.,#&/-]*?,\s*[\w\s.'-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?)/i);
+        return generic ? normalizeAddress(generic[1]) : '';
     }
 
-    function extractAddressFromAttributes() {
-        const selectors = [
-            '[data-attrid*="address"]',
-            '[aria-label^="Address"]',
-            '[data-local-attribute="d3adr"]',
-            '.LrzXr'
-        ];
-
-        for (const selector of selectors) {
-            for (const element of document.querySelectorAll(selector)) {
-                const text = cleanText(element.innerText || element.textContent || element.getAttribute('aria-label') || '');
-                if (/\d/.test(text) && /\b[A-Z]{2}\s+\d{5}/.test(text)) return text.replace(/^Address\s*[:\n]\s*/i, '');
-            }
-        }
-
-        return '';
+    function extractPhone(text, container) {
+        const telLink = container.querySelector('a[href^="tel:"]');
+        if (telLink) return (telLink.getAttribute('href') || '').replace(/^tel:/i, '');
+        const match = text.match(/(?:Phone|Call)\s*[:\n]?\s*(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/i);
+        return match ? match[1] : '';
     }
 
-    function extractPhoneFromPanel() {
-        const telLink = document.querySelector('#rhs a[href^="tel:"], [role="complementary"] a[href^="tel:"], a[href^="tel:"]');
-        if (telLink) return telLink.getAttribute('href').replace(/^tel:/i, '').trim();
-
-        const selectors = [
-            '[data-attrid*="phone"]',
-            '[aria-label^="Call"]',
-            '[data-local-attribute*="phone"]'
-        ];
-        for (const selector of selectors) {
-            for (const element of document.querySelectorAll(selector)) {
-                const text = cleanText(element.innerText || element.textContent || element.getAttribute('aria-label') || '');
-                const phone = extractPhone(text);
-                if (phone) return phone;
-            }
-        }
-        return '';
-    }
-
-    function extractPhone(text) {
-        const source = cleanText(text || '');
-        const match = source.match(/(?:Phone|Call)\s*[:\n]?\s*(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/i)
-            || source.match(/\b(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/);
-        return match ? (match[1] || match[0]).trim() : '';
-    }
-
-    function extractWebsiteFromPanel() {
-        const panel = document.querySelector('#rhs') || document.querySelector('[role="complementary"]') || document;
-        const links = [...panel.querySelectorAll('a[href]')];
-        for (const link of links) {
-            const label = cleanText(`${link.innerText || ''} ${link.getAttribute('aria-label') || ''} ${link.getAttribute('title') || ''}`);
-            const href = unwrapGoogleUrl(link.href || '');
-            if (!/^https?:\/\//i.test(href)) continue;
-            if (isBlockedUrl(href)) continue;
-            if (/\bwebsite\b/i.test(label) || looksLikeBusinessWebsite(href)) return href;
-        }
-        return '';
-    }
-
-    function extractWebsiteFromResults() {
-        const links = [...document.querySelectorAll('#search a[href], a[href]')];
-        for (const link of links) {
-            const href = unwrapGoogleUrl(link.href || '');
-            if (!/^https?:\/\//i.test(href)) continue;
-            if (isBlockedUrl(href)) continue;
-            if (looksLikeBusinessWebsite(href)) return href;
+    function extractWebsite(container) {
+        for (const link of container.querySelectorAll('a[href]')) {
+            const href = unwrapGoogleUrl(link.href || link.getAttribute('href') || '');
+            if (!/^https?:\/\//i.test(href) || isBlockedUrl(href)) continue;
+            return href;
         }
         return '';
     }
 
     function unwrapGoogleUrl(href) {
         try {
-            const url = new URL(href);
+            const url = new URL(href, window.location.href);
             if (url.hostname.includes('google.') && url.pathname === '/url') {
-                return url.searchParams.get('q') || url.searchParams.get('url') || href;
+                return url.searchParams.get('q') || url.searchParams.get('url') || '';
             }
+            return url.toString();
         } catch {
-            return href;
+            return '';
         }
-        return href;
     }
 
     function isBlockedUrl(href) {
-        let host = '';
         try {
-            host = new URL(href).hostname.replace(/^www\./i, '').toLowerCase();
+            const host = new URL(href).hostname.replace(/^www\./i, '').toLowerCase();
+            return [
+                'google.', 'gstatic.', 'googleusercontent.', 'youtube.', 'facebook.', 'linkedin.',
+                'instagram.', 'x.com', 'twitter.', 'indeed.', 'glassdoor.', 'ziprecruiter.',
+                'jobvite.', 'greenhouse.', 'yelp.', 'mapquest.', 'maps.apple.', 'yellowpages.',
+                'chamberofcommerce.', 'bbb.org', 'greatpetcare.', 'birdeye.', 'vetreceipt.',
+                'bing.', 'duckduckgo.'
+            ].some(blocked => host.includes(blocked));
         } catch {
             return true;
         }
-
-        return [
-            'google.', 'gstatic.', 'googleusercontent.', 'youtube.', 'facebook.', 'linkedin.',
-            'instagram.', 'x.com', 'twitter.', 'indeed.', 'glassdoor.', 'ziprecruiter.',
-            'jobvite.', 'unitedveterinarycare.', 'yelp.', 'mapquest.', 'bing.', 'duckduckgo.'
-        ].some(blocked => host.includes(blocked));
     }
 
-    function looksLikeBusinessWebsite(href) {
-        try {
-            const host = new URL(href).hostname.toLowerCase();
-            return /\b(vet|veterinary|animal|pet|clinic|hospital|emergency|specialty|care)\b/i.test(host);
-        } catch {
-            return false;
-        }
-    }
-
-    function normalizeAddress(address) {
-        return (address || '')
+    function normalizeAddress(value) {
+        return cleanText(value)
             .replace(/^Address\s*[:\n]\s*/i, '')
-            .replace(/\s+/g, ' ')
             .replace(/\s*,\s*/g, ', ')
-            .replace(/\s+(?:United States|USA)\s*$/i, '')
+            .replace(/,?\s*(?:United States|USA)\s*$/i, '')
             .replace(/\s+(?:Website|Phone|Directions|Hours|Open|Closed).*$/i, '')
             .trim();
     }
 
     function parseAddress(fullAddress) {
-        if (!fullAddress) return { streetAddress: '', city: '', state: '', zipCode: '' };
-
-        const addr = normalizeAddress(fullAddress);
-        const zipPattern = /^([\s\S]+?),\s*([^,]+?),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/;
-        const zipMatch = addr.match(zipPattern);
-        if (zipMatch) {
-            return {
-                streetAddress: zipMatch[1].trim(),
-                city: zipMatch[2].trim(),
-                state: zipMatch[3].trim(),
-                zipCode: zipMatch[4].trim()
-            };
-        }
-
-        const stateZipPattern = /\b([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/;
-        const stateZipMatch = addr.match(stateZipPattern);
-        if (!stateZipMatch) return { streetAddress: '', city: '', state: '', zipCode: '' };
-
-        const state = stateZipMatch[1];
-        const zipCode = stateZipMatch[2];
-        const beforeStateZip = addr
-            .substring(0, addr.lastIndexOf(stateZipMatch[0]))
-            .replace(/,\s*$/, '')
-            .trim();
-        const parts = beforeStateZip.split(',').map(part => part.trim()).filter(Boolean);
-
-        if (parts.length >= 2) {
-            return {
-                streetAddress: parts.slice(0, -1).join(', '),
-                city: parts[parts.length - 1],
-                state,
-                zipCode
-            };
-        }
-
-        return { streetAddress: beforeStateZip, city: '', state, zipCode };
+        const blank = { streetAddress: '', city: '', state: '', zipCode: '' };
+        if (!fullAddress) return blank;
+        const match = normalizeAddress(fullAddress).match(/^([\s\S]+?),\s*([^,]+?),\s*([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i);
+        if (!match) return blank;
+        return {
+            streetAddress: match[1].trim(),
+            city: match[2].trim(),
+            state: match[3].toUpperCase(),
+            zipCode: match[4]
+        };
     }
 
-    function cleanText(text) {
-        return (text || '')
+    function cleanText(value) {
+        return String(value || '')
             .replace(/\u00a0/g, ' ')
             .replace(/[ \t]+/g, ' ')
             .replace(/\n{2,}/g, '\n')

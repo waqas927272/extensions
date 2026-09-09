@@ -1,7 +1,7 @@
 ﻿{
   "manifest_version": 3,
   "name": "VPP Job Scraper",
-  "version": "1.0",
+  "version": "1.1",
   "description": "Scrapes job data from VPP careers page.",
   "permissions": ["activeTab", "storage", "scripting", "tabs"],
   "host_permissions": [
@@ -9,6 +9,7 @@
     "https://www.vip-vet.com/*",
     "https://boards.greenhouse.io/*",
     "https://job-boards.greenhouse.io/*",
+    "https://boards-api.greenhouse.io/*",
     "<all_urls>"
   ],
   "action": {
@@ -31,7 +32,7 @@
   ],
   "web_accessible_resources": [
     {
-      "resources": ["description-scraper.js", "greenhouse-description-scraper.js", "detail-extractor.js", "google-maps-scraper.js", "google-search-scraper.js", "vipvet-greenhouse-content.js"],
+      "resources": ["description-scraper.js", "greenhouse-description-scraper.js", "detail-extractor.js", "address-validation.js", "google-maps-scraper.js", "google-search-scraper.js", "vipvet-greenhouse-content.js"],
       "matches": ["<all_urls>"]
     }
   ]

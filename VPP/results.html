@@ -412,6 +412,8 @@
       overflow-x: auto;
       max-height: calc(100vh - 146px);
       overflow-y: auto;
+      position: relative;
+      isolation: isolate;
     }
 
     /* Make the horizontal scrollbar stick to the bottom of the viewport */
@@ -434,7 +436,9 @@
     table {
       width: 100%;
       min-width: 1820px;
-      border-collapse: collapse;
+      /* Collapsed borders can paint body cells over sticky headers in Chromium. */
+      border-collapse: separate;
+      border-spacing: 0;
       table-layout: fixed;
     }
 
@@ -464,6 +468,9 @@
     }
 
     th {
+      /* The background must live on each sticky cell, not only on <thead>. */
+      background: linear-gradient(135deg, #60a5fa 0%, #2563eb 100%);
+      background-clip: padding-box;
       color: white;
       font-weight: 700;
       text-align: left;
@@ -476,14 +483,16 @@
       user-select: none;
       position: sticky;
       top: 0;
-      z-index: 2;
+      z-index: 20;
+      border-bottom: 1px solid #1d4ed8;
+      box-shadow: 0 2px 5px rgba(15, 51, 92, 0.18);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
     th:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
     }
 
     th.sort-asc::after {
@@ -897,7 +906,7 @@
 </head>
 <body>
   <div class="header">
-    <span class="version-tag">v1.7</span>
+    <span class="version-tag">v1.8</span>
     <div class="header-content">
       <div class="header-left">
         <div class="logo-icon">
@@ -1059,6 +1068,7 @@
   </div>
 
   <div id="toastContainer"></div>
+  <script src="address-validation.js"></script>
   <script src="results.js"></script>
 </body>
 </html>
