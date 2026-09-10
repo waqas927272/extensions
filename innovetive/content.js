@@ -59,7 +59,9 @@
   }
 
   function shouldSkipListingJob(title) {
-    return /\binternship\b|\bintern\b|\bexternship\b|\bextern\b/i.test(title || '');
+    const value = title || '';
+    return /\binternship\b|\bintern\b|\bexternship\b|\bextern\b/i.test(value) ||
+      /\b(?:chief\s+(?:veterinary\s+)?medical\s+officer|veterinary\s+chief\s+medical\s+officer)\b/i.test(value);
   }
 
   async function applyDepartmentFilter() {

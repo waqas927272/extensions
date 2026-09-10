@@ -2,6 +2,10 @@ let allJobs = [];
 let filteredJobs = [];
 let currentSort = { field: null, direction: 'asc' };
 let isGettingDescriptions = false;
+let descriptionQueue = [];
+let currentDescriptionQueueIndex = 0;
+let descriptionFailureCount = 0;
+let activeDescriptionRequestId = '';
 let isFetchingDetails = false;
 let currentJobIndex = 0;
 let detailsQueue = [];
@@ -434,7 +438,9 @@ function isValidUrl(string) {
 
 // Listen for description saved messages from background script
 chrome.runtime.onMessage.addListener((request) => {
-  if (request.action === 'descriptionSaved') {
+  if (request.action === 'descriptionSaved' &&
+      isGettingDescriptions &&
+      request.requestId === activeDescriptionRequestId) {
     console.log(`Description saved for job ${request.jobIndex + 1}, success: ${request.success}`);
 
     // Refresh jobs from storage
@@ -454,6 +460,9 @@ chrome.runtime.onMessage.addListener((request) => {
       if (progressText) progressText.textContent = `${withDesc} / ${total}`;
 
       if (isGettingDescriptions) {
+        activeDescriptionRequestId = '';
+        currentDescriptionQueueIndex++;
+        if (request.success === false) descriptionFailureCount++;
         setTimeout(() => {
           processNextJob();
         }, 1500);
@@ -564,27 +573,29 @@ function processNextJob() {
   chrome.storage.local.get(['jobs'], (result) => {
     allJobs = result.jobs || [];
 
-    // Find next job without description
-    let foundJob = false;
-    for (let i = 0; i < allJobs.length; i++) {
-      if (!allJobs[i].description || allJobs[i].description.trim() === '') {
-        currentJobIndex = i;
-        foundJob = true;
-        break;
-      }
-    }
-
-    if (!foundJob) {
+    if (currentDescriptionQueueIndex >= descriptionQueue.length) {
       isGettingDescriptions = false;
+      activeDescriptionRequestId = '';
       const btn = document.getElementById('get-descriptions-btn');
       btn.textContent = 'Get Descriptions';
       btn.disabled = false;
       document.getElementById('progress-section').classList.add('hidden');
-      alert('All jobs have descriptions now!');
+      alert(descriptionFailureCount > 0
+        ? `Description fetching finished with ${descriptionFailureCount} failure(s).`
+        : 'All requested job descriptions were fetched!');
       return;
     }
 
+    const queueItem = descriptionQueue[currentDescriptionQueueIndex];
+    currentJobIndex = queueItem.jobIndex;
+    activeDescriptionRequestId = `${Date.now()}-${currentDescriptionQueueIndex}-${Math.random().toString(36).slice(2, 9)}`;
     const job = allJobs[currentJobIndex];
+    if (!job) {
+      currentDescriptionQueueIndex++;
+      descriptionFailureCount++;
+      processNextJob();
+      return;
+    }
     console.log(`Processing job ${currentJobIndex + 1} of ${allJobs.length}: ${job.jobTitle}`);
 
     // Update progress
@@ -595,14 +606,18 @@ function processNextJob() {
     progressBar.style.width = `${percent}%`;
     progressText.textContent = `${withDesc} / ${allJobs.length}`;
 
-    // Open tab and send message to background to scrape
-    chrome.tabs.create({ url: job.link, active: false }, (tab) => {
-      chrome.runtime.sendMessage({
-        action: 'scrapeJobDescription',
-        tabId: tab.id,
-        jobIndex: currentJobIndex,
-        jobLink: job.link
-      });
+    // Ask the service worker to fetch and scrape this page without opening a tab.
+    chrome.runtime.sendMessage({
+      action: 'scrapeJobDescription',
+      requestId: activeDescriptionRequestId,
+      jobIndex: currentJobIndex,
+      jobLink: job.link
+    }, () => {
+      if (chrome.runtime.lastError) {
+        currentDescriptionQueueIndex++;
+        descriptionFailureCount++;
+        setTimeout(processNextJob, 0);
+      }
     });
   });
 }
@@ -621,6 +636,11 @@ function startGetDescriptions() {
 
   if (confirm(`This will fetch descriptions for ${jobsWithoutDesc.length} jobs. Continue?`)) {
     isGettingDescriptions = true;
+    descriptionQueue = allJobs
+      .map((job, jobIndex) => ({ jobIndex, jobLink: job.link || '' }))
+      .filter(item => !allJobs[item.jobIndex].description || allJobs[item.jobIndex].description.trim() === '');
+    currentDescriptionQueueIndex = 0;
+    descriptionFailureCount = 0;
     const btn = document.getElementById('get-descriptions-btn');
     btn.disabled = true;
     btn.textContent = 'Processing...';

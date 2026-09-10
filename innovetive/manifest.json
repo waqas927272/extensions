@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Innovetive Petcare Job Scraper",
-  "version": "1.7",
+  "version": "1.12",
   "description": "Scrapes job data from the Innovetive Petcare careers page and saves it.",
   "permissions": [
     "activeTab",

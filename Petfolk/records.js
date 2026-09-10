@@ -35,6 +35,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentJobIndex = 0;
     let descriptionQueue = [];
     let failedDescriptionCount = 0;
+    let activeDescriptionRequest = false;
     let detailsQueue = [];
     let currentDetailsIndex = 0;
     let addressQueue = [];
@@ -1613,6 +1614,26 @@ document.addEventListener('DOMContentLoaded', () => {
         return cityStateMatch ? cityStateMatch[1].toUpperCase() : '';
     }
 
+    function replacePetfolkRoleLocation(text = '', replacementLocation = '') {
+        if (!text || !replacementLocation) return text;
+
+        const stateTokens = [
+            ...Object.keys(stateAbbreviations),
+            ...Object.values(stateAbbreviations)
+        ]
+            .sort((a, b) => b.length - a.length)
+            .map(value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+            .join('|');
+        const stateOnlyPattern = new RegExp(`\\bin the state of\\s+(?:${stateTokens})\\b`, 'i');
+        const cityStatePattern = new RegExp(
+            `\\bin\\s+[A-Z][A-Za-z.'’\\-]*(?:\\s+[A-Z][A-Za-z.'’\\-]*)*,\\s*(?:${stateTokens})\\b`
+        );
+
+        return text
+            .replace(stateOnlyPattern, `in ${replacementLocation}`)
+            .replace(cityStatePattern, `in ${replacementLocation}`);
+    }
+
     function inferPetfolkLocationGroup(locations = []) {
         const cityNames = locations.map(loc => loc?.city || parseLocationValue(loc?.location || '')?.city || '').filter(Boolean);
         const normalizedCities = cityNames.map(city => normalizeSimpleText(city));
@@ -1706,12 +1727,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         role = role.replace(/\b(?:\d+\s+(?:.+?\s+)?Locations:[\s\S]*)$/i, '').trim();
         if (selectedLocation?.location) {
-            role = role
-                .replace(/\bin the state of [A-Za-z\s]+/i, `in ${selectedLocation.location}`)
-                .replace(/\bin [A-Z][A-Za-z.' -]+,\s*[A-Z]{2}/i, `in ${selectedLocation.location}`);
+            role = replacePetfolkRoleLocation(role, selectedLocation.location);
         } else if (stateAbbr) {
             const stateName = getFullStateName(stateAbbr);
-            role = role.replace(/\bin [A-Z][A-Za-z.' -]+,\s*[A-Z]{2}/i, `in the state of ${stateName}`);
+            role = replacePetfolkRoleLocation(role, `the state of ${stateName}`);
         }
 
         const requirements = getPetfolkSection(body, 'Requirements', ['Additional Qualifications', 'Benefits', 'We believe']);
@@ -3561,6 +3580,7 @@ document.addEventListener('DOMContentLoaded', () => {
             .map((job, index) => ({
                 index,
                 jobId: job.jobId || '',
+                jobKey: getJobSelectionKey(job),
                 link: job.link || '',
                 attempts: 0
             }))
@@ -3574,6 +3594,7 @@ document.addEventListener('DOMContentLoaded', () => {
         isGettingDescriptions = true;
         currentJobIndex = 0;
         failedDescriptionCount = 0;
+        activeDescriptionRequest = false;
 
         getDescriptionsBtn.disabled = true;
         getDescriptionsBtn.textContent = 'Getting Descriptions...';
@@ -3668,115 +3689,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return jobIndex;
     }
 
-    function scrapeDescriptionFromTab(url, queueItem, fallbackJobIndex) {
-        return new Promise((resolve) => {
-            let settled = false;
-            let extractionStarted = false;
-            let descriptionTabId = null;
-            let listener = null;
-            let extractionDelay = null;
-
-            const finish = (payload = {}) => {
-                if (settled) return;
-                settled = true;
-
-                clearTimeout(timeout);
-                if (extractionDelay) clearTimeout(extractionDelay);
-                if (listener) {
-                    chrome.tabs.onUpdated.removeListener(listener);
-                    listener = null;
-                }
-                if (descriptionTabId) {
-                    chrome.tabs.remove(descriptionTabId).catch(() => {});
-                }
-
-                resolve({ success: false, ...payload });
-            };
-
-            const runExtraction = () => {
-                if (settled || extractionStarted || !descriptionTabId) return;
-                extractionStarted = true;
-
-                extractionDelay = setTimeout(() => {
-                    if (settled) return;
-
-                    chrome.scripting.executeScript({
-                        target: { tabId: descriptionTabId },
-                        files: ['description-scraper.js']
-                    }).then(async (results) => {
-                        const description = (results?.[0]?.result || '').trim();
-
-                        if (!description) {
-                            finish({
-                                success: false,
-                                error: 'No description text found after the job page finished loading.'
-                            });
-                            return;
-                        }
-
-                        try {
-                            const savedJobIndex = await saveDescriptionForQueueItem(description, queueItem, fallbackJobIndex);
-                            finish({
-                                success: true,
-                                jobIndex: savedJobIndex,
-                                length: description.length
-                            });
-                        } catch (error) {
-                            finish({
-                                success: false,
-                                error: error?.message || 'Could not save description.'
-                            });
-                        }
-                    }).catch((error) => {
-                        finish({
-                            success: false,
-                            error: error?.message || 'Could not inject description scraper.'
-                        });
-                    });
-                }, 1500);
-            };
-
-            const timeout = setTimeout(() => {
-                finish({
-                    success: false,
-                    error: 'Timed out waiting for the job detail page to load.'
-                });
-            }, 95000);
-
-            chrome.tabs.create({ url, active: false }, (tab) => {
-                const createError = chrome.runtime.lastError?.message;
-                if (createError || !tab?.id) {
-                    finish({
-                        success: false,
-                        error: createError || 'Could not open job detail tab.'
-                    });
-                    return;
-                }
-
-                descriptionTabId = tab.id;
-                listener = (updatedTabId, info) => {
-                    if (updatedTabId !== descriptionTabId || info.status !== 'complete') return;
-                    chrome.tabs.onUpdated.removeListener(listener);
-                    listener = null;
-                    runExtraction();
-                };
-
-                chrome.tabs.onUpdated.addListener(listener);
-                chrome.tabs.get(descriptionTabId, (tabInfo) => {
-                    if (chrome.runtime.lastError) return;
-                    if (tabInfo?.status === 'complete') {
-                        if (listener) {
-                            chrome.tabs.onUpdated.removeListener(listener);
-                            listener = null;
-                        }
-                        runExtraction();
-                    }
-                });
-            });
-        });
-    }
-
     async function processNextJob() {
+        if (!isGettingDescriptions || activeDescriptionRequest) return;
+
         // Update progress
         const progressBar = document.getElementById('progressBar');
         const progressText = document.getElementById('progressText');
@@ -3787,6 +3702,7 @@ document.addEventListener('DOMContentLoaded', () => {
             : '0%';
 
         if (currentJobIndex >= descriptionQueue.length) {
+            activeDescriptionRequest = false;
             isGettingDescriptions = false;
             getDescriptionsBtn.disabled = false;
             getDescriptionsBtn.innerHTML = `
@@ -3818,70 +3734,104 @@ document.addEventListener('DOMContentLoaded', () => {
         const job = jobs[jobIndex];
         getDescriptionsBtn.textContent = `Getting Descriptions... (${currentJobIndex + 1}/${descriptionQueue.length})`;
 
+        let url;
         try {
-            const result = await scrapeDescriptionFromTab(buildDescriptionPageUrl(job.link), queueItem, jobIndex);
+            url = buildDescriptionPageUrl(job.link);
+        } catch (error) {
+            activeDescriptionRequest = true;
+            handleDescriptionFetchResult({
+                action: 'descriptionFetched',
+                success: false,
+                error: error?.message || 'The job detail URL is invalid.',
+                jobIndex,
+                queueIndex: currentJobIndex
+            });
+            return;
+        }
+
+        const request = {
+            action: 'fetchJobDescription',
+            url,
+            jobIndex,
+            queueIndex: currentJobIndex,
+            jobId: job.jobId || '',
+            sourceJobId: job.sourceJobId || '',
+            jobKey: getJobSelectionKey(job),
+            jobLink: job.link || ''
+        };
+
+        activeDescriptionRequest = true;
+        chrome.runtime.sendMessage(request, (response) => {
+            const runtimeError = chrome.runtime.lastError?.message;
+            if (!runtimeError && response?.status !== 'error') return;
+
+            handleDescriptionFetchResult({
+                ...request,
+                action: 'descriptionFetched',
+                success: false,
+                error: runtimeError || response?.error || 'Could not start background description extraction.'
+            });
+        });
+    }
+
+    async function handleDescriptionFetchResult(message) {
+        if (!isGettingDescriptions || !activeDescriptionRequest) return;
+
+        const messageQueueIndex = Number.isInteger(message.queueIndex)
+            ? message.queueIndex
+            : currentJobIndex;
+        if (messageQueueIndex !== currentJobIndex) return;
+
+        const queueItem = descriptionQueue[currentJobIndex];
+        const isWrongJob = (message.jobId && queueItem?.jobId && message.jobId !== queueItem.jobId) ||
+            (message.jobKey && queueItem?.jobKey && message.jobKey !== queueItem.jobKey) ||
+            (message.jobLink && queueItem?.link && message.jobLink !== queueItem.link);
+        if (isWrongJob) return;
+
+        activeDescriptionRequest = false;
+        let success = message.success === true && !!message.description?.trim();
+        let error = message.error || 'Description scrape failed.';
+
+        if (success) {
+            try {
+                await saveDescriptionForQueueItem(message.description.trim(), queueItem, message.jobIndex);
+            } catch (saveError) {
+                success = false;
+                error = saveError?.message || 'Could not save description.';
+            }
+        }
+
+        try {
             const refreshed = await chrome.storage.local.get(['scrapedJobs']);
             allJobs = refreshed.scrapedJobs || [];
             renderCurrentView();
+        } catch (refreshError) {
+            console.warn('Could not refresh records after description extraction:', refreshError);
+        }
 
-            if (!result.success) {
-                const error = result.error || 'Description scrape failed.';
-                const canRetry = queueItem.attempts < 1 && !/quota|storage|save/i.test(error);
+        if (!success) {
+            const canRetry = queueItem && queueItem.attempts < 1 && !/quota|storage|save/i.test(error);
 
-                if (canRetry) {
-                    queueItem.attempts++;
-                    console.warn(`Retrying description for job ${queueItem.jobId || queueItem.link}: ${error}`);
-                    setTimeout(() => processNextJob(), 2000);
-                    return;
-                }
-
-                failedDescriptionCount++;
-                console.warn(`Description failed for job index ${jobIndex}: ${error}`);
+            if (canRetry) {
+                queueItem.attempts++;
+                console.warn(`Retrying description for job ${queueItem.jobId || queueItem.link}: ${error}`);
+                setTimeout(() => processNextJob(), 2000);
+                return;
             }
 
-            currentJobIndex++;
-            setTimeout(() => processNextJob(), 1500);
-        } catch (error) {
-            console.error('Error opening tab for job:', error);
             failedDescriptionCount++;
-            currentJobIndex++;
-            setTimeout(() => processNextJob(), 1500);
+            console.warn(`Description failed for job index ${message.jobIndex}: ${error}`);
         }
+
+        currentJobIndex++;
+        setTimeout(() => processNextJob(), 1500);
     }
 
-    // Listen for description saved messages from background.js
-    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.action === 'descriptionSaved') {
-            chrome.storage.local.get(['scrapedJobs'], (data) => {
-                const jobs = data.scrapedJobs || [];
-                allJobs = jobs;
-                renderCurrentView();
-
-                if (isGettingDescriptions) {
-                    const queueItem = descriptionQueue[currentJobIndex];
-                    const isCurrentQueueMessage = message.queueIndex === undefined || message.queueIndex === currentJobIndex;
-
-                    if (!message.success) {
-                        const error = message.error || 'Description scrape failed.';
-                        const canRetry = queueItem && queueItem.attempts < 1 && !/quota|storage|save/i.test(error);
-
-                        if (canRetry && isCurrentQueueMessage) {
-                            queueItem.attempts++;
-                            console.warn(`Retrying description for job ${queueItem.jobId || queueItem.link}: ${error}`);
-                            setTimeout(() => processNextJob(), 2000);
-                            return;
-                        }
-
-                        failedDescriptionCount++;
-                        console.warn(`Description failed for job index ${message.jobIndex}: ${error}`);
-                    }
-
-                    if (isCurrentQueueMessage) {
-                        currentJobIndex++;
-                    }
-
-                    setTimeout(() => processNextJob(), 1500);
-                }
+    // Background.js owns the hidden tab lifecycle and sends the extracted text back here.
+    chrome.runtime.onMessage.addListener((message) => {
+        if (message.action === 'descriptionFetched') {
+            handleDescriptionFetchResult(message).catch((error) => {
+                console.error('Error handling background description result:', error);
             });
         }
     });

@@ -1,3 +1,5 @@
+importScripts('description-parser.js');
+
 const SUPPORTED_URLS = [
     'ats.rippling.com/petfolk/jobs'
 ];
@@ -133,127 +135,64 @@ async function fetchDetailsAsync(url) {
     });
 }
 
-function handleScrapeDescription(request) {
-    const { tabId, jobIndex, queueIndex } = request;
-    let finished = false;
-    let extractionStarted = false;
-    let listener = null;
-    let timeoutId = null;
-
-    const finish = (payload = {}) => {
-        if (finished) return;
-        finished = true;
-
-        if (timeoutId) {
-            clearTimeout(timeoutId);
-        }
-
-        if (listener) {
-            chrome.tabs.onUpdated.removeListener(listener);
-            listener = null;
-        }
-
-        chrome.tabs.remove(tabId).catch(() => {});
+async function handleFetchJobDescription(request) {
+    const {
+        url,
+        jobIndex,
+        queueIndex,
+        jobId = '',
+        sourceJobId = '',
+        jobKey = '',
+        jobLink = url || ''
+    } = request;
+    const sendResult = (payload = {}) => {
         chrome.runtime.sendMessage({
-            action: 'descriptionSaved',
+            action: 'descriptionFetched',
             jobIndex,
             queueIndex,
+            jobId,
+            sourceJobId,
+            jobKey,
+            jobLink,
             success: false,
             ...payload
         }).catch(() => {});
     };
 
-    const runExtraction = () => {
-        if (finished || extractionStarted) return;
-        extractionStarted = true;
+    if (!url) {
+        sendResult({ success: false, error: 'No job detail URL was provided.' });
+        return;
+    }
 
-        setTimeout(() => {
-            chrome.scripting.executeScript({
-                target: { tabId },
-                files: ['description-scraper.js']
-            }).then((results) => {
-                const description = (results?.[0]?.result || '').trim();
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
 
-                if (!description) {
-                    finish({
-                        success: false,
-                        error: 'No description text found after the job page finished loading.'
-                    });
-                    return;
-                }
-
-                chrome.storage.local.get(['scrapedJobs'], (result) => {
-                    const getError = chrome.runtime.lastError?.message;
-                    if (getError) {
-                        finish({ success: false, error: `Could not read saved jobs: ${getError}` });
-                        return;
-                    }
-
-                    const jobs = result.scrapedJobs || [];
-
-                    if (!jobs[jobIndex]) {
-                        finish({ success: false, error: 'Job was not found in saved records.' });
-                        return;
-                    }
-
-                    jobs[jobIndex].description = description;
-                    chrome.storage.local.set({ scrapedJobs: jobs }, () => {
-                        const saveError = chrome.runtime.lastError?.message;
-                        if (saveError) {
-                            finish({
-                                success: false,
-                                error: `Could not save description: ${saveError}`
-                            });
-                            return;
-                        }
-
-                        finish({
-                            success: true,
-                            length: description.length
-                        });
-                    });
-                });
-            }).catch((error) => {
-                finish({
-                    success: false,
-                    error: error?.message || 'Could not inject description scraper.'
-                });
-            });
-        }, 1000);
-    };
-
-    timeoutId = setTimeout(() => {
-        finish({
-            success: false,
-            error: 'Timed out waiting for the job detail page to load.'
+    try {
+        const response = await fetch(url, {
+            cache: 'no-store',
+            credentials: 'omit',
+            redirect: 'follow',
+            signal: controller.signal
         });
-    }, 45000);
-
-    listener = (updatedTabId, info) => {
-        if (updatedTabId !== tabId || info.status !== 'complete') return;
-        chrome.tabs.onUpdated.removeListener(listener);
-        listener = null;
-        runExtraction();
-    };
-
-    chrome.tabs.onUpdated.addListener(listener);
-    chrome.tabs.get(tabId, (tab) => {
-        if (chrome.runtime.lastError) {
-            finish({
-                success: false,
-                error: chrome.runtime.lastError.message
-            });
-            return;
+        if (!response.ok) {
+            throw new Error(`Job page request failed with HTTP ${response.status}.`);
         }
 
-        if (tab?.status === 'complete') {
-            if (listener) {
-                chrome.tabs.onUpdated.removeListener(listener);
-                listener = null;
-            }
-            runExtraction();
-        }
-    });
+        const html = await response.text();
+        const description = PetfolkDescriptionParser.extractFromHtml(html, sourceJobId);
+        sendResult({
+            success: true,
+            description,
+            length: description.length
+        });
+    } catch (error) {
+        const errorMessage = error?.name === 'AbortError'
+            ? 'Timed out fetching the job description in the background.'
+            : (error?.message || 'Could not fetch the job description in the background.');
+        sendResult({ success: false, error: errorMessage });
+    } finally {
+        clearTimeout(timeoutId);
+    }
 }
 
 async function handleFetchDetails(request) {
@@ -277,8 +216,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
     }
 
-    if (request.action === 'scrapeJobDescription') {
-        handleScrapeDescription(request);
+    if (request.action === 'fetchJobDescription') {
+        handleFetchJobDescription(request);
+        sendResponse({ status: 'descriptionFetchStarted' });
         return false;
     }
 

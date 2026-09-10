@@ -29,6 +29,14 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentSortColumn = null;
   let currentSortDirection = 'asc';
   let isGettingDescriptions = false;
+  let descriptionQueue = [];
+  let currentDescriptionIndex = 0;
+  let descriptionFailureCount = 0;
+  let activeDescriptionRequestId = '';
+  let descriptionRetryRound = 0;
+  const MAX_DESCRIPTION_RETRY_ROUNDS = 1;
+  const SALARY_PARSER_VERSION = 2;
+  let detailsWereCleared = false;
   let isFetchingDetails = false;
   let currentJobIndex = 0;
   let detailsQueue = [];
@@ -85,7 +93,9 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchAddressesBtn.addEventListener('click', startFetchAddresses);
 
   chrome.runtime.onMessage.addListener((request) => {
-    if (request.action === 'descriptionSaved') {
+    if (request.action === 'descriptionSaved' &&
+        isGettingDescriptions &&
+        request.requestId === activeDescriptionRequestId) {
       handleDescriptionSaved(request);
     }
 
@@ -93,6 +103,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName !== 'local') return;
+
+    if (changes.detailsCleared) {
+      detailsWereCleared = changes.detailsCleared.newValue === true;
+    }
 
     const jobsChange = changes.scrapedJobs || changes.jobs;
     if (!jobsChange) return;
@@ -106,10 +120,46 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   async function loadRecords() {
-    const result = await chrome.storage.local.get(['scrapedJobs', 'jobs']);
+    const result = await chrome.storage.local.get(['scrapedJobs', 'jobs', 'salaryParserVersion', 'detailsCleared']);
     const sourceJobs = result.scrapedJobs || result.jobs || [];
-    syncRecordsFromStorage(sourceJobs);
-    await chrome.storage.local.set({ scrapedJobs: allJobs, jobs: allJobs });
+    const normalizedJobs = sourceJobs.map(normalizeJob);
+    const allDerivedFieldsAreBlank = normalizedJobs.length > 0 && normalizedJobs.every(job =>
+      !job.areaOfPractice && !job.position && !job.salary && !job.jobType && !job.experience
+    );
+    detailsWereCleared = result.detailsCleared === true ||
+      (result.detailsCleared === undefined &&
+       result.salaryParserVersion === SALARY_PARSER_VERSION &&
+       allDerivedFieldsAreBlank);
+    syncRecordsFromStorage(detailsWereCleared
+      ? normalizedJobs
+      : refreshSalariesFromDescriptions(normalizedJobs));
+    await chrome.storage.local.set({
+      scrapedJobs: allJobs,
+      jobs: allJobs,
+      salaryParserVersion: SALARY_PARSER_VERSION,
+      detailsCleared: detailsWereCleared
+    });
+  }
+
+  function refreshSalariesFromDescriptions(jobs) {
+    return (jobs || []).map(job => {
+      if (!job.description || !job.description.trim()) return job;
+      return {
+        ...job,
+        salary: extractSalaryFromText(job.description)
+      };
+    });
+  }
+
+  function clearDerivedDetailsFromJobs(jobs) {
+    return (jobs || []).map(job => ({
+      ...job,
+      areaOfPractice: '',
+      position: '',
+      salary: '',
+      jobType: '',
+      experience: ''
+    }));
   }
 
   function syncRecordsFromStorage(sourceJobs) {
@@ -122,8 +172,7 @@ document.addEventListener('DOMContentLoaded', () => {
     displayRecords(filteredJobs);
 
     if (isGettingDescriptions && allJobs.length > 0) {
-      const completed = allJobs.filter(job => job.description && job.description.trim()).length;
-      updateProgress(completed, allJobs.length);
+      updateProgress(currentDescriptionIndex, descriptionQueue.length);
     }
   }
 
@@ -359,35 +408,55 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!confirm(`This will fetch descriptions for ${missingDescriptions.length} jobs. Continue?`)) return;
 
     isGettingDescriptions = true;
+    descriptionQueue = buildMissingDescriptionQueue(allJobs);
+    currentDescriptionIndex = 0;
+    descriptionFailureCount = 0;
+    descriptionRetryRound = 0;
     getDescriptionsBtn.disabled = true;
     getDescriptionsBtn.textContent = 'Processing...';
-    showProgress('Getting Descriptions', 0, missingDescriptions.length);
+    showProgress('Getting Descriptions', 0, descriptionQueue.length);
     processNextDescription();
   }
 
+  function buildMissingDescriptionQueue(jobs) {
+    return jobs
+      .map((job, jobIndex) => ({
+        jobIndex,
+        jobKey: getRecordKey(job),
+        jobLink: job.link || ''
+      }))
+      .filter(item => !jobs[item.jobIndex].description || !jobs[item.jobIndex].description.trim());
+  }
+
   function processNextDescription() {
-    const nextIndex = allJobs.findIndex(job => !job.description || !job.description.trim());
-    if (nextIndex === -1) {
+    if (!isGettingDescriptions) return;
+
+    if (currentDescriptionIndex >= descriptionQueue.length) {
       finishDescriptions();
       return;
     }
 
-    currentJobIndex = nextIndex;
-    const completed = allJobs.filter(job => job.description && job.description.trim()).length;
-    updateProgress(completed, allJobs.length);
+    const queueItem = descriptionQueue[currentDescriptionIndex];
+    currentJobIndex = queueItem.jobIndex;
+    activeDescriptionRequestId = `${Date.now()}-${currentDescriptionIndex}-${Math.random().toString(36).slice(2, 9)}`;
+    updateProgress(currentDescriptionIndex, descriptionQueue.length);
 
-    chrome.tabs.create({ url: allJobs[currentJobIndex].link, active: false }, (tab) => {
-      if (!tab) {
-        finishDescriptions();
-        return;
+    chrome.runtime.sendMessage({
+      action: 'scrapeJobDescription',
+      requestId: activeDescriptionRequestId,
+      jobIndex: queueItem.jobIndex,
+      jobKey: queueItem.jobKey,
+      jobLink: queueItem.jobLink
+    }, () => {
+      if (chrome.runtime.lastError) {
+        handleDescriptionSaved({
+          action: 'descriptionSaved',
+          requestId: activeDescriptionRequestId,
+          jobIndex: queueItem.jobIndex,
+          success: false,
+          error: chrome.runtime.lastError.message
+        });
       }
-
-      chrome.runtime.sendMessage({
-        action: 'scrapeJobDescription',
-        tabId: tab.id,
-        jobIndex: currentJobIndex,
-        jobLink: allJobs[currentJobIndex].link
-      });
     });
   }
 
@@ -395,24 +464,44 @@ document.addEventListener('DOMContentLoaded', () => {
     const result = await chrome.storage.local.get(['scrapedJobs', 'jobs']);
     syncRecordsFromStorage(result.scrapedJobs || result.jobs || []);
 
-    const completed = allJobs.filter(job => job.description && job.description.trim()).length;
-    updateProgress(completed, allJobs.length);
-
     if (isGettingDescriptions) {
+      activeDescriptionRequestId = '';
+      currentDescriptionIndex++;
+      if (request.success === false) descriptionFailureCount++;
+      updateProgress(currentDescriptionIndex, descriptionQueue.length);
       setTimeout(processNextDescription, 1200);
     }
 
     if (request.success === false) {
-      showToast('A description could not be fetched.', 'error');
+      showToast(request.error || 'A description could not be fetched.', 'error');
     }
   }
 
-  function finishDescriptions() {
+  async function finishDescriptions() {
+    const result = await chrome.storage.local.get(['scrapedJobs', 'jobs']);
+    syncRecordsFromStorage(result.scrapedJobs || result.jobs || []);
+    const missingDescriptions = buildMissingDescriptionQueue(allJobs);
+
+    if (missingDescriptions.length > 0 && descriptionRetryRound < MAX_DESCRIPTION_RETRY_ROUNDS) {
+      descriptionRetryRound++;
+      descriptionQueue = missingDescriptions;
+      currentDescriptionIndex = 0;
+      activeDescriptionRequestId = '';
+      showProgress(`Retrying ${missingDescriptions.length} Missing Description(s)`, 0, missingDescriptions.length);
+      setTimeout(processNextDescription, 2400);
+      return;
+    }
+
     isGettingDescriptions = false;
+    activeDescriptionRequestId = '';
     getDescriptionsBtn.disabled = false;
     getDescriptionsBtn.textContent = 'Get Descriptions';
     hideProgress();
-    showToast('Descriptions fetched.', 'success');
+    if (missingDescriptions.length > 0) {
+      showToast(`${missingDescriptions.length} description(s) are still missing after automatic retries.`, 'error');
+    } else {
+      showToast(`Descriptions are available for all ${allJobs.length} jobs.`, 'success');
+    }
   }
 
   function extractDetailsFromSavedDescription(job) {
@@ -449,6 +538,7 @@ document.addEventListener('DOMContentLoaded', () => {
       .replace(/&amp;/gi, '&')
       .replace(/&#39;/g, "'")
       .replace(/&quot;/gi, '"')
+      .replace(/[\u2013\u2014]/g, '-')
       .replace(/[ \t]+/g, ' ')
       .replace(/\n{3,}/g, '\n\n')
       .trim();
@@ -478,6 +568,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (isExoticPetMedicineRole(titleText, description)) {
       return 'Exotic Pet Medicine';
+    }
+
+    // GP/ER hybrid roles are treated as Emergency Care even when their
+    // descriptions also mention general-practice or urgent-care duties.
+    if (/\b(?:gp\s*(?:\/|&|\+|-|and)\s*er|er\s*(?:\/|&|\+|-|and)\s*gp)\s+hybrid\b/i.test(titleText) ||
+        /\b(?:general practice\s*(?:\/|&|\+|-|and)\s*emergency|emergency\s*(?:\/|&|\+|-|and)\s*general practice)\s+hybrid\b/i.test(titleText)) {
+      return 'Emergency Care';
+    }
+
+    if (/\bmixed[-\s]+animal\b/i.test(titleText) ||
+        /\b(?:true\s+)?mixed[-\s]+animal\s+(?:practice|role|veterinarian|medicine)\b/i.test(focusText)) {
+      return 'General Practice Care';
+    }
+
+    if (/\bmedical director\b/i.test(titleText) &&
+        (/\bspecialty\b/i.test(titleText) ||
+         /\b(?:board[-\s]+certified specialist|residency[-\s]+trained veterinarian)\b[^.]{0,180}\bspecialty\b/i.test(focusText))) {
+      return 'Specialty Care';
+    }
+
+    // Broad recruiting posts that explicitly seek both emergency veterinarians
+    // and specialists stay represented as Emergency Care / Associate Veterinarian
+    // until one source posting can be split into multiple records.
+    if (/\bemergency\s+veterinarians?\b/i.test(titleText) &&
+        /\bveterinary\s+specialists?\b/i.test(titleText)) {
+      return 'Emergency Care';
     }
 
     if (/\b(board[-\s]+certified|residency[-\s]+trained|diplomate|dacv(?:ecc|im|r|s|d|o|aa)?|criticalist|oncologist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|anesthesiologist|internist|internal medicine|surgeon|specialist|dentist|dental)\b/i.test(titleText)) {
@@ -656,7 +772,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function extractSalaryFromText(text) {
     const source = normalizeParserText(text);
-    const salaryRange = source.match(/Salary Range:\s*(?:USD|\$)?\s*([\d,]+(?:\.\d{2})?)\s*(k)?\s*(?:-|to)\s*(?:USD|\$)?\s*([\d,]+(?:\.\d{2})?)\s*(k)?\s*(YEAR|HOUR|year|hour)?/i);
+    const salaryRange = source.match(/Salary Range:\s*(?:USD|\$)?\s*([\d,]+(?:\.\d{2})?)\s*(k)?\s*(?:-|\u2013|\u2014|to)\s*(?:USD|\$)?\s*([\d,]+(?:\.\d{2})?)\s*(k)?\s*(YEAR|HOUR|year|hour)?/i);
     if (salaryRange) {
       return formatSalaryFromAmounts([
         parseMoneyAmount(salaryRange[1], Boolean(salaryRange[2])),
@@ -664,7 +780,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ], salaryRange[5] || 'YEAR');
     }
 
-    const compensation = source.match(/Compensation:\s*\$?\s*([\d,]+(?:\.\d{2})?)\s*(k)?\s*(?:-|to)\s*\$?\s*([\d,]+(?:\.\d{2})?)\s*(k)?\s*(?:\/|\s+per\s+)?\s*(year|hour|hr)?/i);
+    const compensation = source.match(/Compensation:\s*\$?\s*([\d,]+(?:\.\d{2})?)\s*(k)?\s*(?:-|\u2013|\u2014|to)\s*\$?\s*([\d,]+(?:\.\d{2})?)\s*(k)?\s*(?:\/|\s+per\s+)?\s*(year|hour|hr)?/i);
     if (compensation) {
       return formatSalaryFromAmounts([
         parseMoneyAmount(compensation[1], Boolean(compensation[2])),
@@ -679,7 +795,7 @@ document.addEventListener('DOMContentLoaded', () => {
       ], singleCompensation[3] || 'YEAR');
     }
 
-    const moneyMatches = [...source.matchAll(/\$[\d,]+(?:\.\d{2})?\s*k?(?:\+)?(?:\s*(?:-|to)\s*\$?[\d,]+(?:\.\d{2})?\s*k?)?(?:\s*(?:\/|\bper\s+)?(?:year|annually|annual|hour|hr))?/gi)];
+    const moneyMatches = [...source.matchAll(/\$[\d,]+(?:\.\d{2})?\s*k?(?:\+)?(?:\s*(?:-|\u2013|\u2014|to)\s*\$?[\d,]+(?:\.\d{2})?\s*k?)?(?:\s*(?:\/|\bper\s+)?(?:year|annually|annual|hour|hr))?/gi)];
     for (const moneyMatch of moneyMatches) {
       const start = Math.max(0, moneyMatch.index - 90);
       const end = Math.min(source.length, moneyMatch.index + moneyMatch[0].length + 90);
@@ -756,6 +872,8 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    detailsWereCleared = false;
+    await chrome.storage.local.set({ detailsCleared: false });
     isFetchingDetails = true;
     currentDetailsIndex = 0;
     fetchDetailsBtn.disabled = true;
@@ -1472,7 +1590,21 @@ document.addEventListener('DOMContentLoaded', () => {
     };
   }
 
-  function exportCsv() {
+  async function exportCsv() {
+    if (!detailsWereCleared) {
+      const refreshedJobs = refreshSalariesFromDescriptions(allJobs);
+      const salariesChanged = refreshedJobs.some((job, index) => job.salary !== allJobs[index]?.salary);
+      if (salariesChanged) {
+        syncRecordsFromStorage(refreshedJobs);
+        await chrome.storage.local.set({
+          scrapedJobs: allJobs,
+          jobs: allJobs,
+          salaryParserVersion: SALARY_PARSER_VERSION,
+          detailsCleared: false
+        });
+      }
+    }
+
     const jobs = filteredJobs.length ? filteredJobs : allJobs;
     if (jobs.length === 0) {
       showToast('No records to export.', 'error');
@@ -1518,18 +1650,35 @@ document.addEventListener('DOMContentLoaded', () => {
 
   async function clearDetails() {
     if (!confirm('Clear Area of Practice, Position, Salary, Job Type, and Experience?')) return;
-    allJobs = allJobs.map(job => ({
-      ...job,
-      areaOfPractice: '',
-      position: '',
-      salary: '',
-      jobType: '',
-      experience: ''
-    }));
-    await chrome.storage.local.set({ scrapedJobs: allJobs, jobs: allJobs });
-    applySearch();
-    displayRecords(filteredJobs);
-    showToast('Details cleared.', 'success');
+
+    detailsWereCleared = true;
+    const clearedJobs = clearDerivedDetailsFromJobs(allJobs);
+    syncRecordsFromStorage(clearedJobs);
+
+    try {
+      await chrome.storage.local.set({
+        scrapedJobs: clearedJobs,
+        jobs: clearedJobs,
+        salaryParserVersion: SALARY_PARSER_VERSION,
+        detailsCleared: true
+      });
+
+      const verification = await chrome.storage.local.get(['scrapedJobs', 'jobs', 'detailsCleared']);
+      const storedJobs = (verification.scrapedJobs || verification.jobs || []).map(normalizeJob);
+      const detailsRemain = storedJobs.some(job =>
+        job.areaOfPractice || job.position || job.salary || job.jobType || job.experience
+      );
+
+      if (verification.detailsCleared !== true || detailsRemain) {
+        throw new Error('Cleared details could not be verified in storage.');
+      }
+
+      syncRecordsFromStorage(storedJobs);
+      showToast('Area, Position, Salary, Job Type, and Experience cleared.', 'success');
+    } catch (error) {
+      syncRecordsFromStorage(clearedJobs);
+      showToast(error?.message || 'Details could not be cleared from storage.', 'error');
+    }
   }
 
   async function clearAddresses() {

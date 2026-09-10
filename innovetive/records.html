@@ -464,6 +464,7 @@
     }
 
     th {
+      background: #234a73;
       color: white;
       font-weight: 700;
       text-align: left;
@@ -476,10 +477,12 @@
       user-select: none;
       position: sticky;
       top: 0;
-      z-index: 2;
+      z-index: 3;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      background-clip: padding-box;
+      box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.2), 0 2px 5px rgba(26, 54, 93, 0.28);
     }
 
     th:first-child,
@@ -489,7 +492,7 @@
     }
 
     th:hover {
-      background: rgba(255, 255, 255, 0.1);
+      background: #2c5d8f;
     }
 
     th.sort-asc::after {
