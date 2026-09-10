@@ -315,7 +315,7 @@ function handleFetchDetails(request) {
         setTimeout(() => {
           chrome.scripting.executeScript({
             target: { tabId: tab.id },
-            files: ['detail-extractor.js']
+            files: ['area-practice-utils.js', 'detail-extractor.js']
           }).then((results) => {
             const details = results?.[0]?.result || {};
             chrome.tabs.remove(tab.id).catch(() => {});

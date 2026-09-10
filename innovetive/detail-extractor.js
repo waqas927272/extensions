@@ -1,4 +1,6 @@
 (() => {
+  const areaPracticeUtils = globalThis.InnovetiveAreaPracticeUtils;
+  if (!areaPracticeUtils) throw new Error('Area-of-practice utilities failed to load.');
   const APPROVED_POSITIONS = [
     'Associate Veterinarian',
     'Medical Director',
@@ -241,14 +243,7 @@
   }
 
   function determineAreaOfPractice(title, description) {
-    const combined = `${title}\n${description}`;
-    if (isExoticPetMedicineRole(title, description)) return 'Exotic Pet Medicine';
-    if (hasSpecialtySignal(combined)) return 'Specialty Care';
-    if (/\burgent care\b/i.test(combined)) return 'Urgent Care';
-    if (/\b(emergency|er veterinarian|er vet|critical care|ecc)\b/i.test(combined)) return 'Emergency Care';
-    if (/\b(equine|bovine|large animal)\b/i.test(combined)) return 'General Practice Care / Emergency Care / Urgent Care';
-    if (/\b(veterinarian|dvm|vmd|medical director|lead veterinarian|general practice|clinic|hospital)\b/i.test(combined)) return 'General Practice Care';
-    return '';
+    return areaPracticeUtils.determineAreaOfPractice(title, description);
   }
 
   function matchPosition(text) {
