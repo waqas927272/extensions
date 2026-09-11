@@ -40,10 +40,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentDetailsIndex = 0;
     let addressQueue = [];
     let currentAddressIndex = 0;
+    let addressFetchSuccessCount = 0;
+    let addressFetchUnavailableCount = 0;
     let addressCache = new Map();
     let petfolkOfficialLocationsPromise = null;
+    const petfolkLocationPagePromises = new Map();
     const selectedJobKeys = new Set();
     const PETFOLK_HOSPITAL_NAME = 'Petfolk Veterinary & Urgent Care';
+    const DVM_JOB_TITLE_PATTERN = /\b(?:veterinarian|dvm|doctor of veterinary medicine|medical director|medical lead|chief medical officer|criticalist|internist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|anesthesiologist|oncologist|veterinary (?:dentist|surgeon|specialist))\b/i;
     const getDescriptionsBtn = document.getElementById('getDescriptionsBtn');
     const fetchDetailsBtn = document.getElementById('fetchDetailsBtn');
     const extractLocationsBtn = document.getElementById('extractLocationsBtn');
@@ -185,6 +189,12 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         return { jobs: normalizedJobs, changed };
+    }
+
+    function isDvmJobTitle(title = '') {
+        const normalizedTitle = String(title || '').replace(/\s+/g, ' ').trim();
+        if (/\bveterinary teleadvice support\b/i.test(normalizedTitle)) return false;
+        return DVM_JOB_TITLE_PATTERN.test(normalizedTitle);
     }
 
     function getStateAbbreviation(state) {
@@ -507,6 +517,7 @@ document.addEventListener('DOMContentLoaded', () => {
             'katy': 'Fulshear',
             'marietta': 'East Cobb Marietta',
             'miami': 'Pinecrest',
+            'north miami': 'North Miami Biscayne',
             'north miami beach': 'North Miami Biscayne',
             'oklahoma city': 'Nichols Hill',
             'orlando': 'Lake Buena Vista',
@@ -520,42 +531,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return normalizeSimpleText(value)
             .replace(/\bsouth park\b/g, 'southpark')
             .replace(/\bnichols hills\b/g, 'nichols hill');
-    }
-
-    function extractBalancedJsonObject(source, startIndex) {
-        let depth = 0;
-        let inString = false;
-        let escaped = false;
-
-        for (let i = startIndex; i < source.length; i++) {
-            const char = source[i];
-
-            if (inString) {
-                if (escaped) {
-                    escaped = false;
-                } else if (char === '\\') {
-                    escaped = true;
-                } else if (char === '"') {
-                    inString = false;
-                }
-                continue;
-            }
-
-            if (char === '"') {
-                inString = true;
-                continue;
-            }
-
-            if (char === '{') depth++;
-            if (char === '}') {
-                depth--;
-                if (depth === 0) {
-                    return source.slice(startIndex, i + 1);
-                }
-            }
-        }
-
-        return '';
     }
 
     function normalizePhoneForStorage(phone = '') {
@@ -577,50 +552,43 @@ document.addEventListener('DOMContentLoaded', () => {
         if (petfolkOfficialLocationsPromise) return petfolkOfficialLocationsPromise;
 
         petfolkOfficialLocationsPromise = (async () => {
+            if (!globalThis.PetfolkLocationParser) {
+                throw new Error('Petfolk location parser is unavailable.');
+            }
+
             const response = await fetch('https://petfolk.com/locations', { cache: 'no-store' });
             if (!response.ok) throw new Error(`Petfolk locations request failed: ${response.status}`);
 
             const html = await response.text();
-            const marker = '{"__typename":"LocationsPetCareCenter"';
-            const locations = [];
-            let cursor = 0;
-
-            while (cursor < html.length) {
-                const startIndex = html.indexOf(marker, cursor);
-                if (startIndex === -1) break;
-
-                const rawJson = extractBalancedJsonObject(html, startIndex);
-                cursor = startIndex + Math.max(rawJson.length, marker.length);
-                if (!rawJson) continue;
-
+            const regionUrls = PetfolkLocationParser.extractRegionUrls(html);
+            const regionResults = await Promise.all(regionUrls.map(async regionUrl => {
                 try {
-                    const source = JSON.parse(rawJson);
-                    const address = source.address || {};
-                    locations.push({
-                        name: source.name || '',
-                        slug: source.slug || '',
-                        status: source.statusDisplayName || source.status || '',
-                        dmaSlug: source.dma?.slug || '',
-                        address: {
-                            line1: address.line1 || '',
-                            line2: address.line2 || '',
-                            city: address.city || '',
-                            state: address.state || '',
-                            zip: address.zip || '',
-                            oneLineDisplay: address.oneLineDisplay || ''
-                        },
-                        phone: source.phoneNumber?.formattedNumber || '',
-                        website: getPetfolkOfficialLocationUrl({
-                            dmaSlug: source.dma?.slug || '',
-                            slug: source.slug || ''
-                        })
-                    });
+                    const regionResponse = await fetch(regionUrl, { cache: 'no-store' });
+                    if (!regionResponse.ok) throw new Error(`HTTP ${regionResponse.status}`);
+                    const regionHtml = await regionResponse.text();
+                    const dmaSlug = new URL(regionUrl).pathname.split('/').filter(Boolean).pop() || '';
+                    return PetfolkLocationParser.extractRegionLocations(regionHtml, dmaSlug);
                 } catch (error) {
-                    console.warn('Could not parse a Petfolk official location record:', error);
+                    console.warn(`Could not load Petfolk region ${regionUrl}:`, error);
+                    return [];
                 }
+            }));
+
+            const locations = [
+                ...PetfolkLocationParser.extractRegionLocations(html),
+                ...regionResults.flat()
+            ];
+            const uniqueLocations = new Map();
+            locations.forEach(locationRecord => {
+                const key = `${locationRecord.dmaSlug || ''}|${locationRecord.slug || locationRecord.id || locationRecord.name || ''}`.toLowerCase();
+                if (key && !uniqueLocations.has(key)) uniqueLocations.set(key, locationRecord);
+            });
+
+            if (!uniqueLocations.size) {
+                throw new Error('No official Petfolk care centers were found.');
             }
 
-            return locations;
+            return [...uniqueLocations.values()];
         })().catch(error => {
             petfolkOfficialLocationsPromise = null;
             console.warn('Could not load Petfolk official locations:', error);
@@ -630,12 +598,31 @@ document.addEventListener('DOMContentLoaded', () => {
         return petfolkOfficialLocationsPromise;
     }
 
+    function getPetfolkDescriptionLocationCandidates(job, officialLocations) {
+        const sourceDescription = ` ${normalizePetfolkOfficialKey(getPetfolkSourceDescription(job))} `;
+        if (!sourceDescription) return [];
+
+        return officialLocations
+            .map(locationRecord => {
+                const name = normalizePetfolkOfficialKey(locationRecord.name || '');
+                return {
+                    locationRecord,
+                    index: name ? sourceDescription.indexOf(` ${name} `) : -1
+                };
+            })
+            .filter(item => item.index !== -1)
+            .sort((a, b) => a.index - b.index)
+            .map(item => item.locationRecord);
+    }
+
     function findPetfolkOfficialLocationMatch(job, officialLocations = []) {
         if (!officialLocations.length) return null;
 
+        const parsedLocation = parseLocationValue(job?.location || '');
+        const eligibleLocations = officialLocations;
         const byName = new Map();
         const byCity = new Map();
-        officialLocations.forEach(locationRecord => {
+        eligibleLocations.forEach(locationRecord => {
             const nameKey = normalizePetfolkOfficialKey(locationRecord.name || '');
             if (nameKey) byName.set(nameKey, locationRecord);
 
@@ -645,20 +632,33 @@ document.addEventListener('DOMContentLoaded', () => {
             byCity.get(cityKey).push(locationRecord);
         });
 
-        const parsedLocation = parseLocationValue(job?.location || '');
         const hospitalSuffix = getPetfolkHospitalSuffixFromName(job?.hospital || '');
         const candidateNames = [
             hospitalSuffix,
-            getPetfolkOfficialAlias(hospitalSuffix),
             parsedLocation?.city || '',
-            getPetfolkOfficialAlias(parsedLocation?.city || ''),
             job?.city || '',
-            getPetfolkOfficialAlias(job?.city || '')
+            /\bFANC\b/i.test(job?.title || '') ? 'Far North Central' : ''
         ].filter(Boolean);
 
         for (const candidate of candidateNames) {
             const match = byName.get(normalizePetfolkOfficialKey(candidate));
             if (match) return match;
+        }
+
+        const sourceLocations = getJobLocations(job);
+        if (sourceLocations.length <= 1) {
+            const descriptionMatch = getPetfolkDescriptionLocationCandidates(job, eligibleLocations)[0];
+            if (descriptionMatch) return descriptionMatch;
+        } else {
+            const aliasCandidates = [
+                getPetfolkOfficialAlias(hospitalSuffix),
+                getPetfolkOfficialAlias(parsedLocation?.city || ''),
+                getPetfolkOfficialAlias(job?.city || '')
+            ].filter(Boolean);
+            for (const candidate of aliasCandidates) {
+                const match = byName.get(normalizePetfolkOfficialKey(candidate));
+                if (match) return match;
+            }
         }
 
         const cityKey = normalizeCityForCompare(parsedLocation?.city || job?.city || '');
@@ -673,24 +673,48 @@ document.addEventListener('DOMContentLoaded', () => {
             .join(', ');
     }
 
-    function makePetfolkOfficialAddressData(locationRecord) {
+    async function getPetfolkLocationPageDetails(locationRecord) {
+        const website = getPetfolkOfficialLocationUrl(locationRecord);
+        if (!website || website === 'https://petfolk.com/locations') return null;
+        if (petfolkLocationPagePromises.has(website)) return petfolkLocationPagePromises.get(website);
+
+        const requestPromise = (async () => {
+            const response = await fetch(website, { cache: 'no-store' });
+            if (!response.ok) throw new Error(`Petfolk center request failed: ${response.status}`);
+            const html = await response.text();
+            return PetfolkLocationParser.extractLocationPageDetails(html);
+        })().catch(error => {
+            petfolkLocationPagePromises.delete(website);
+            console.warn(`Could not load Petfolk center ${website}:`, error);
+            return null;
+        });
+
+        petfolkLocationPagePromises.set(website, requestPromise);
+        return requestPromise;
+    }
+
+    function makePetfolkOfficialAddressData(locationRecord, pageDetails = null) {
         const address = locationRecord?.address || {};
-        const streetAddress = formatPetfolkOfficialStreetAddress(address);
+        const streetAddress = pageDetails?.streetAddress || formatPetfolkOfficialStreetAddress(address);
         const fullAddress = address.oneLineDisplay ||
-            [streetAddress, address.city, [address.state, address.zip].filter(Boolean).join(' ')]
+            [
+                streetAddress,
+                pageDetails?.city || address.city,
+                [pageDetails?.state || address.state, pageDetails?.zipCode || address.zip].filter(Boolean).join(' ')
+            ]
                 .filter(Boolean)
                 .join(', ');
 
         return {
-            businessName: `${PETFOLK_HOSPITAL_NAME} - ${locationRecord.name}`,
+            businessName: pageDetails?.businessName || `${PETFOLK_HOSPITAL_NAME} - ${locationRecord.name}`,
             streetAddress,
-            zipCode: address.zip || '',
-            city: address.city || '',
-            state: address.state || '',
+            zipCode: pageDetails?.zipCode || address.zip || '',
+            city: pageDetails?.city || address.city || '',
+            state: pageDetails?.state || address.state || '',
             fullAddress,
-            website: 'https://petfolk.com/',
-            sourceUrl: locationRecord.website || 'https://petfolk.com/locations',
-            phone: normalizePhoneForStorage(locationRecord.phone || ''),
+            website: pageDetails?.website || getPetfolkOfficialLocationUrl(locationRecord),
+            sourceUrl: getPetfolkOfficialLocationUrl(locationRecord),
+            phone: normalizePhoneForStorage(pageDetails?.phone || locationRecord.phone || ''),
             isPetfolkOfficial: true
         };
     }
@@ -699,12 +723,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isPetfolkExpectedJob(job)) return null;
         const officialLocations = await getPetfolkOfficialLocations();
         const match = findPetfolkOfficialLocationMatch(job, officialLocations);
-        return match ? makePetfolkOfficialAddressData(match) : null;
+        if (!match) return null;
+        const pageDetails = await getPetfolkLocationPageDetails(match);
+        if (!pageDetails?.streetAddress || !pageDetails?.city || !pageDetails?.state || !pageDetails?.zipCode) {
+            return null;
+        }
+        const expectedState = getStateAbbreviation(parseLocationValue(job?.location || '')?.state || job?.state || '');
+        const fetchedState = getStateAbbreviation(pageDetails.state || '');
+        if (expectedState && fetchedState && expectedState !== fetchedState) return null;
+        return makePetfolkOfficialAddressData(match, pageDetails);
     }
 
     function resolveWebsiteForHospital(hospitalName, website = '') {
         const name = (hospitalName || '').trim();
-        if (isPetfolkHospitalNameValue(name)) return 'https://petfolk.com/';
+        if (isPetfolkHospitalNameValue(name)) return isPetfolkWebsite(website) ? website : 'https://petfolk.com/';
         if (/^mission pet health$/i.test(name)) return 'https://missionpethealth.com/';
         if (/livewell animal hospital/i.test(name)) return 'https://www.livewellanimal.com/';
         return website || '';
@@ -1389,9 +1421,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function extractPetfolkSalary(text = '') {
         const source = (text || '').replace(/\u00a0/g, ' ');
         const contextPatterns = [
-            /(?:salary|pay|compensation|base pay|base salary|pay range|salary range)[^\n.]{0,90}\$?\s*([\d,]+(?:\.\d+)?)\s*(k|m)?\s*(?:-|–|—|to)\s*\$?\s*([\d,]+(?:\.\d+)?)\s*(k|m)?[^\n.]{0,50}/i,
+            /(?:base\s+salary|base\s+pay|salary\s+range|pay\s+range|compensation\s+range|salary|pay|compensation)\b[^\n.$\d]{0,90}\$?\s*([\d,]+(?:\.\d+)?)\s*(k|m)?\s*(?:-|–|—|to)\s*\$?\s*([\d,]+(?:\.\d+)?)\s*(k|m)?[^\n.]{0,50}/i,
             /\$?\s*([\d,]+(?:\.\d+)?)\s*(k|m)?\s*(?:-|–|—|to)\s*\$?\s*([\d,]+(?:\.\d+)?)\s*(k|m)?\s*(?:per\s+)?(year|annum|annual|hour|hr|shift|day)\b/i,
-            /(?:salary|pay|compensation|base pay|base salary)[^\n.]{0,90}\$?\s*([\d,]+(?:\.\d+)?)\s*(k|m)?\s*(?:per\s+)?(year|annum|annual|hour|hr|shift|day)\b/i,
+            /(?:base\s+salary|base\s+pay|salary|pay|compensation)\b[^\n.$\d]{0,90}\$?\s*([\d,]+(?:\.\d+)?)\s*(k|m)?\s*(?:per\s+)?(year|annum|annual|hour|hr|shift|day)\b/i,
             /\$?\s*([\d,]+(?:\.\d+)?)\s*(k|m)?\s*(?:per\s+)?(hour|hr|shift|day)\b/i
         ];
 
@@ -1660,9 +1692,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function preparePetfolkDescriptionText(description = '') {
-        return getPetfolkDescriptionBody(description)
-            .replace(/\r/g, '')
-            .replace(/\s+/g, ' ')
+        return normalizePetfolkDescriptionWhitespace(getPetfolkDescriptionBody(description))
             .replace(/^(Associate Veterinarian|Partner Veterinarian|Medical Director|Lead Veterinarian|Medical Lead Veterinarian)\s+(At Petfolk,)/i, '$1\n\n$2')
             .replace(/experiences\.Petfolk provides/gi, 'experiences.\n\nPetfolk provides')
             .replace(/\b(Petfolk\s+[^.!?\n]+?\s+-\s+Coming soon\s+\d{4}!)/gi, '\n\n$1\n\n')
@@ -1696,6 +1726,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function formatPetfolkListSection(text = '') {
         return normalizePetfolkDescriptionWhitespace(text)
+            .replace(/^:\s*/, '')
             .split(/\n+/)
             .map(line => line.trim().replace(/^[-•]\s*/, ''))
             .filter(Boolean)
@@ -1771,14 +1802,7 @@ document.addEventListener('DOMContentLoaded', () => {
             `Locations:\n  - ${location.location}\n`
         );
 
-        const stateName = location.state || '';
-        const stateAbbr = location.stateAbbr || getStateAbbreviation(stateName);
-        if (stateName) {
-            localized = localized.replace(/\bin the state of [A-Za-z\s]+/i, `in ${location.location}`);
-        }
-        if (stateAbbr) {
-            localized = localized.replace(/\bin the state of [A-Z]{2}\b/i, `in ${location.location}`);
-        }
+        localized = replacePetfolkRoleLocation(localized, location.location);
 
         localized = localized.replace(/Join PetfolkFlex's Team of Relief Veterinarian in [A-Za-z\s]+!/i, `Join PetfolkFlex's Team of Relief Veterinarian in ${location.location}!`);
 
@@ -1790,7 +1814,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getPetfolkDescriptionTitleForJob(job) {
-        return job?.position || determinePetfolkPosition(job?.title || '') || job?.title || '';
+        return job?.title || job?.position || determinePetfolkPosition(job?.title || '') || '';
     }
 
     function getSelectedPetfolkLocationForJob(job, locations = []) {
@@ -1830,9 +1854,9 @@ document.addEventListener('DOMContentLoaded', () => {
             parseLocationValue(job.location || '');
         const position = determinePetfolkPosition(title);
         const formattedDescription = location?.location
-            ? localizeDescriptionForLocation(description, location, { title: position || title })
+            ? localizeDescriptionForLocation(description, location, { title })
             : formatPetfolkDescription(description, {
-                title: position || title,
+                title,
                 locations,
                 selectedLocation: null
             });
@@ -3236,12 +3260,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Initialize
     chrome.storage.local.get(['scrapedJobs'], (result) => {
-        const normalized = normalizeSavedPetfolkHospitals(result.scrapedJobs || []);
+        const savedJobs = result.scrapedJobs || [];
+        const dvmJobs = savedJobs.filter(job => isDvmJobTitle(job?.title || ''));
+        const removedNonDvmCount = savedJobs.length - dvmJobs.length;
+        const normalized = normalizeSavedPetfolkHospitals(dvmJobs);
         allJobs = normalized.jobs;
-        if (normalized.changed) {
+        if (normalized.changed || removedNonDvmCount > 0) {
             chrome.storage.local.set({ scrapedJobs: allJobs });
         }
         renderCurrentView();
+        if (removedNonDvmCount > 0) {
+            showToast(`Removed ${removedNonDvmCount} non-DVM job${removedNonDvmCount === 1 ? '' : 's'}.`, 'success');
+        }
 
         tableHeaders.forEach(header => {
             header.addEventListener('click', () => {
@@ -3576,18 +3606,27 @@ document.addEventListener('DOMContentLoaded', () => {
         const data = await chrome.storage.local.get(['scrapedJobs']);
         const jobs = data.scrapedJobs || [];
 
+        const queuedSourceKeys = new Set();
         descriptionQueue = jobs
             .map((job, index) => ({
                 index,
                 jobId: job.jobId || '',
+                sourceJobId: job.sourceJobId || extractRipplingJobIdFromLink(job.link || '') || '',
                 jobKey: getJobSelectionKey(job),
                 link: job.link || '',
-                attempts: 0
+                attempts: 0,
+                forceRefresh: true
             }))
-            .filter(item => needsDescriptionScrape(jobs[item.index]) && item.link);
+            .filter(item => {
+                if (!item.link) return false;
+                const sourceKey = item.sourceJobId || item.link;
+                if (queuedSourceKeys.has(sourceKey)) return false;
+                queuedSourceKeys.add(sourceKey);
+                return true;
+            });
 
         if (descriptionQueue.length === 0) {
-            showToast('All jobs already have descriptions!', 'success');
+            showToast('No job links are available for description refresh.', 'error');
             return;
         }
 
@@ -3647,7 +3686,15 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!description) return true;
 
         const compact = description.replace(/\s+/g, ' ').trim().toLowerCase();
-        return compact.length < 200 && /\bdescription body$/.test(compact);
+        if (compact.length < 200 && /\bdescription body$/.test(compact)) return true;
+        if (!isPetfolkJob(job)) return false;
+
+        const descriptionHeadingCount = (description.match(/(^|\n)Description(?=\n|$)/g) || []).length;
+        return descriptionHeadingCount !== 1 ||
+            !/\bRequirements\b/i.test(description) ||
+            !/\bBenefits\b/i.test(description) ||
+            /\b(?:TXxas|OKceptional|TXceptional)\b/i.test(description) ||
+            /\b[A-Z]{2}\(We will pay for it!\)/.test(description);
     }
 
     async function saveDescriptionForQueueItem(description, queueItem, fallbackJobIndex) {
@@ -3670,7 +3717,7 @@ document.addEventListener('DOMContentLoaded', () => {
         jobs.forEach(job => {
             const sameSourceJob = targetSourceId && job.sourceJobId === targetSourceId;
             const sameLink = targetLink && job.link === targetLink;
-            if ((sameSourceJob || sameLink) && needsDescriptionScrape(job)) {
+            if ((sameSourceJob || sameLink) && (queueItem.forceRefresh || needsDescriptionScrape(job))) {
                 job.description = description;
                 if (isPetfolkJob(job)) {
                     job.petfolkSourceDescription = description;
@@ -3678,7 +3725,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
 
-        if (needsDescriptionScrape(targetJob)) {
+        if (queueItem.forceRefresh || needsDescriptionScrape(targetJob)) {
             targetJob.description = description;
             if (isPetfolkJob(targetJob)) {
                 targetJob.petfolkSourceDescription = description;
@@ -3725,7 +3772,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const queueItem = descriptionQueue[currentJobIndex];
         const jobIndex = findQueuedJobIndex(jobs, queueItem);
 
-        if (jobIndex === -1 || !needsDescriptionScrape(jobs[jobIndex]) || !jobs[jobIndex]?.link) {
+        if (jobIndex === -1 || (!queueItem.forceRefresh && !needsDescriptionScrape(jobs[jobIndex])) || !jobs[jobIndex]?.link) {
             currentJobIndex++;
             setTimeout(() => processNextJob(), 50);
             return;
@@ -3827,7 +3874,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setTimeout(() => processNextJob(), 1500);
     }
 
-    // Background.js owns the hidden tab lifecycle and sends the extracted text back here.
+    // Background.js fetches the page directly and sends the extracted text back here.
     chrome.runtime.onMessage.addListener((message) => {
         if (message.action === 'descriptionFetched') {
             handleDescriptionFetchResult(message).catch((error) => {
@@ -3852,21 +3899,13 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        // Find jobs that need details (no areaOfPractice, position, or experience)
-        // Can work with job title even if no description exists
+        // Petfolk details are recalculated locally because a refreshed description
+        // may add or remove salary information after the other fields were filled.
         const jobsToFetch = jobs.map((job, index) => ({ job, index }))
             .filter(item => {
                 if (!item.job.title) return false;
                 if (isPetfolkJob(item.job)) {
-                    const expectedAreaOfPractice = determinePetfolkAreaOfPractice(
-                        item.job.title || '',
-                        item.job.petfolkSourceDescription || item.job.description || ''
-                    );
-                    const hasStaleAreaOfPractice = !!item.job.areaOfPractice &&
-                        !!expectedAreaOfPractice &&
-                        item.job.areaOfPractice !== expectedAreaOfPractice;
-
-                    return !item.job.areaOfPractice || !item.job.position || !item.job.jobType || hasStaleAreaOfPractice;
+                    return true;
                 }
                 const needsDetails = !item.job.areaOfPractice || !item.job.position || !item.job.experience;
                 return needsDetails;
@@ -4055,7 +4094,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (isPetfolkJob(originalJob)) {
                     originalJob.areaOfPractice = firstDetail.areaOfPractice || originalJob.areaOfPractice || '';
                     originalJob.position = firstDetail.position || originalJob.position || '';
-                    originalJob.salary = firstDetail.salary || originalJob.salary || '';
+                    originalJob.salary = firstDetail.salary || '';
                     originalJob.jobType = firstDetail.jobType || originalJob.jobType || 'Full-Time';
                     originalJob.experience = firstDetail.experience || originalJob.experience || '';
 
@@ -4652,6 +4691,8 @@ document.addEventListener('DOMContentLoaded', () => {
         primeAddressCache(jobs);
         isFetchingAddresses = true;
         currentAddressIndex = 0;
+        addressFetchSuccessCount = 0;
+        addressFetchUnavailableCount = 0;
         fetchAddressesBtn.disabled = true;
         fetchAddressesBtn.textContent = 'Fetching Addresses...';
 
@@ -4690,6 +4731,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (jobs[index]) {
                     applyMissingAddressDefaults(jobs[index]);
                     await chrome.storage.local.set({ scrapedJobs: jobs });
+                    addressFetchUnavailableCount++;
                     allJobs = jobs;
                     renderCurrentView();
                 }
@@ -4755,9 +4797,10 @@ document.addEventListener('DOMContentLoaded', () => {
                         ? 'Using override'
                         : 'Using cached';
                 console.log(`${sourceLabel} address for "${searchHospital}, ${searchLocation}"`);
-            } else if (isPetfolkAddressJob) {
-                addressData = { streetAddress: '', zipCode: '', city: '', state: '', fullAddress: '', website: '', phone: '' };
             } else {
+                if (isPetfolkAddressJob) {
+                    console.log(`No exact Petfolk location-page address found. Trying Google for "${searchHospital}, ${searchLocation}".`);
+                }
                 addressData = await fetchAddressFromGoogleMaps(searchHospital, searchLocation, job.hospital || '');
             }
 
@@ -4823,6 +4866,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 await chrome.storage.local.set({ scrapedJobs: jobs });
+                if (jobs[index].streetAddress && jobs[index].streetAddress !== 'TBD' && jobs[index].zipCode && jobs[index].zipCode !== '00000') {
+                    addressFetchSuccessCount++;
+                } else {
+                    addressFetchUnavailableCount++;
+                }
 
                 // Update display
                 allJobs = jobs;
@@ -4835,6 +4883,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (jobs[index]) {
                 applyMissingAddressDefaults(jobs[index]);
                 await chrome.storage.local.set({ scrapedJobs: jobs });
+                addressFetchUnavailableCount++;
                 allJobs = jobs;
                 renderCurrentView();
             }
@@ -4857,6 +4906,9 @@ document.addEventListener('DOMContentLoaded', () => {
             Fetch Addresses
         `;
         document.getElementById('progressSection').classList.add('hidden');
-        showToast(`Address fetching completed! Fetched ${addressQueue.length} addresses.`, 'success');
+        showToast(
+            `Address fetching completed. Found ${addressFetchSuccessCount}; unavailable ${addressFetchUnavailableCount}.`,
+            'success'
+        );
     }
 });

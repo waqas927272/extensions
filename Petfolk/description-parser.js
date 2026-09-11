@@ -135,13 +135,28 @@
         return `${lines.length}${group ? ` ${group}` : ''} Locations:\n\n${lines.join('\n')}`;
     }
 
+    function removeStandaloneHeading(text, heading) {
+        const escapedHeading = heading.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        return (text || '')
+            .replace(new RegExp(`(^|\\n)\\s*${escapedHeading}\\s*(?=\\n|$)`, 'gi'), '$1')
+            .replace(/\n{3,}/g, '\n\n')
+            .trim();
+    }
+
+    function replaceLocationList(role, locationBlock) {
+        if (!role || !locationBlock) return role;
+
+        const locationListPattern = /(^|\n)\s*\d+\s+[^\n]*?Locations:\s*\n[\s\S]*?(?=\n\s*(?:Requirements|Additional Qualifications|Benefits|We believe)\b|$)/i;
+        return role.replace(locationListPattern, (_match, lineStart) => `${lineStart}${locationBlock}\n`);
+    }
+
     function formatDescription(jobPost, apiData) {
         const description = jobPost?.description;
         if (!description) return '';
         if (typeof description !== 'object') return htmlToText(description);
 
         const company = getDescriptionPart(description, 'company');
-        let role = getDescriptionPart(description, 'role').replace(/^Description\s*/i, '').trim();
+        let role = removeStandaloneHeading(getDescriptionPart(description, 'role'), 'Description');
         const requirements = getDescriptionPart(description, 'requirements');
         const benefits = getDescriptionPart(description, 'benefits');
         const legal = getDescriptionPart(description, 'legal');
@@ -152,7 +167,7 @@
         const roleHasLocationBlock = /\b\d+\s+(?:.+?\s+)?Locations:\s*/i.test(role);
 
         if (roleHasLocationBlock && locationBlock) {
-            role = role.replace(/\b\d+\s+(?:.+?\s+)?Locations:\s*\n[\s\S]*$/i, locationBlock);
+            role = replaceLocationList(role, locationBlock);
         }
 
         const sections = [];

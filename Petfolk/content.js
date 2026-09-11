@@ -100,8 +100,11 @@ const EXCLUDED_JOB_TITLE_KEYWORDS = [
     { key: 'weekend', label: 'Weekend', terms: ['weekend'] }
 ];
 const EXCLUDED_JOB_TITLE_PHRASES = [
-    'regional medical partner'
+    'regional medical partner',
+    'veterinary teleadvice support'
 ];
+const DVM_JOB_TITLE_PATTERN = /\b(?:veterinarian|dvm|doctor of veterinary medicine|medical director|medical lead|chief medical officer|criticalist|internist|cardiologist|dermatologist|neurologist|neurosurgeon|ophthalmologist|radiologist|anesthesiologist|oncologist|veterinary (?:dentist|surgeon|specialist))\b/i;
+const NON_DVM_SKIP_LABEL = 'Non-DVM';
 
 const STATE_ABBR = {
     'alabama': 'AL',
@@ -167,16 +170,22 @@ function normalizeTitleForComparison(title) {
     return normalizeWhitespace(title).toLowerCase();
 }
 
+function isDvmJobTitle(title) {
+    return DVM_JOB_TITLE_PATTERN.test(normalizeWhitespace(title));
+}
+
 function getEmptySkippedJobCounts() {
-    return EXCLUDED_JOB_TITLE_KEYWORDS.reduce((counts, config) => {
-        counts[config.label] = 0;
-        return counts;
+    const counts = EXCLUDED_JOB_TITLE_KEYWORDS.reduce((result, config) => {
+        result[config.label] = 0;
+        return result;
     }, {});
+    counts[NON_DVM_SKIP_LABEL] = 0;
+    return counts;
 }
 
 function normalizeSkippedJobCounts(counts = {}) {
     const normalizedCounts = getEmptySkippedJobCounts();
-    EXCLUDED_JOB_TITLE_KEYWORDS.forEach(({ label }) => {
+    [...EXCLUDED_JOB_TITLE_KEYWORDS.map(({ label }) => label), NON_DVM_SKIP_LABEL].forEach(label => {
         normalizedCounts[label] = Number.isFinite(Number(counts[label])) ? Number(counts[label]) : 0;
     });
     return normalizedCounts;
@@ -191,7 +200,8 @@ function getSkippedKeywordMatches(title) {
 
 function formatSkippedJobSummary(counts = {}) {
     const normalizedCounts = normalizeSkippedJobCounts(counts);
-    const parts = EXCLUDED_JOB_TITLE_KEYWORDS.map(({ label }) => {
+    const labels = [...EXCLUDED_JOB_TITLE_KEYWORDS.map(({ label }) => label), NON_DVM_SKIP_LABEL];
+    const parts = labels.map(label => {
         return `${label} skipped: ${normalizedCounts[label]}`;
     });
     return `Skipped jobs - ${parts.join(', ')}.`;
@@ -201,15 +211,19 @@ function shouldSkipJobTitle(title, skipKey = '', skippedJobKeys = null, skippedJ
     const normalizedTitle = normalizeTitleForComparison(title);
     const keywordMatches = getSkippedKeywordMatches(title);
     const phraseMatch = EXCLUDED_JOB_TITLE_PHRASES.some(phrase => normalizedTitle.includes(phrase));
-    const shouldSkip = EXCLUDED_JOB_TITLES.has(normalizedTitle) || phraseMatch || keywordMatches.length > 0;
+    const isNonDvm = !isDvmJobTitle(title);
+    const shouldSkip = isNonDvm || EXCLUDED_JOB_TITLES.has(normalizedTitle) || phraseMatch || keywordMatches.length > 0;
 
-    if (keywordMatches.length > 0 && skippedJobKeys && skippedJobCounts) {
+    if ((keywordMatches.length > 0 || isNonDvm) && skippedJobKeys && skippedJobCounts) {
         const uniqueSkipKey = skipKey || `title:${normalizedTitle}`;
         if (!skippedJobKeys.has(uniqueSkipKey)) {
             skippedJobKeys.add(uniqueSkipKey);
             keywordMatches.forEach(({ label }) => {
                 skippedJobCounts[label] = (skippedJobCounts[label] || 0) + 1;
             });
+            if (isNonDvm) {
+                skippedJobCounts[NON_DVM_SKIP_LABEL] = (skippedJobCounts[NON_DVM_SKIP_LABEL] || 0) + 1;
+            }
         }
     }
 
