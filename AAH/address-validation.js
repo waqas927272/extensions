@@ -30,6 +30,7 @@
         // Spelling variants only; never substitute a neighbouring municipality.
         return normalizeCompact(String(value || '').toLowerCase()
             .replace(/\b(?:saint|st)\.?\s+/g, 'saint ')
+            .replace(/\b(?:mount|mt)\.?\s+/g, 'mount ')
             .replace(/\b(?:fort|ft)\.?\s+/g, 'fort '));
     }
 
@@ -84,6 +85,79 @@
         return normalizeBusinessName(value).replace(/\s+/g, '').includes('prioritypeturgentcare');
     }
 
+    function extractContactPhone(value) {
+        const text = String(value || '').replace(/[\u200b-\u200f\u202a-\u202e\u2060-\u2069]/g, '')
+            .replace(/[\u00a0\u202f]/g, ' ').replace(/[‐‑–—]/g, '-');
+        const match = text.match(/(?:^|[^\d])((?:\+?1[\s.()-]*)?\(?\d{3}\)?[\s.-]*\d{3}[\s.-]*\d{4})(?!\d)/);
+        return match ? match[1].trim() : '';
+    }
+
+    function normalizeContactWebsite(value) {
+        let text = String(value || '').trim().replace(/^Website\s*:\s*/i, '');
+        if (!text) return '';
+        try {
+            let url = new URL(/^https?:\/\//i.test(text) ? text : `https://${text}`);
+            if (/(^|\.)google\.[a-z.]+$/i.test(url.hostname) && url.pathname === '/url') {
+                text = url.searchParams.get('q') || url.searchParams.get('url') || '';
+                url = new URL(text);
+            }
+            if (!/^https?:$/.test(url.protocol) || url.username || url.password ||
+                !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(url.hostname)) return '';
+            if (/(^|\.)(?:google\.[a-z.]+|gstatic\.com|googleusercontent\.com|facebook\.com|instagram\.com|youtube\.com|yelp\.com|mapquest\.com|tripadvisor\.com|linkedin\.com|bing\.com|twitter\.com|x\.com)$/i.test(url.hostname)) return '';
+            for (const key of [...url.searchParams.keys()]) {
+                if (/^(?:utm_|gclid$|fbclid$)/i.test(key)) url.searchParams.delete(key);
+            }
+            return url.href;
+        } catch { return ''; }
+    }
+
+    function extractPanelContacts(panel) {
+        if (!panel) return { website: '', phone: '' };
+        const text = element => [element.innerText || element.textContent || '',
+            element.getAttribute('aria-label') || '', element.getAttribute('title') || ''].join(' ');
+        let phone = '', website = '';
+        for (const selector of ['a[href^="tel:"]', '[data-item-id^="phone:"]',
+            '[data-attrid*="phone"]', '[aria-label^="Phone"]', '[aria-label^="Call"]']) {
+            for (const element of panel.querySelectorAll(selector)) {
+                phone = extractContactPhone(`${element.getAttribute('href') || ''} ${element.getAttribute('data-item-id') || ''} ${text(element)}`);
+                if (phone) break;
+            }
+            if (phone) break;
+        }
+        const links = [...panel.querySelectorAll('a[href]')];
+        const controls = [...panel.querySelectorAll('[data-item-id="authority"], [aria-label^="Website"], [data-tooltip="Open website"]')];
+        for (const element of [...controls, ...links.filter(el => /\bwebsite\b/i.test(text(el)))]) {
+            website = normalizeContactWebsite(element.getAttribute('href') || element.href || '') ||
+                normalizeContactWebsite(element.getAttribute('data-url')) ||
+                normalizeContactWebsite(element.getAttribute('aria-label')) ||
+                normalizeContactWebsite(element.innerText || element.textContent);
+            if (website) break;
+        }
+        // Some panels display just "horizonvets.com", without a Website label.
+        // Require the displayed domain and destination to agree.
+        if (!website) for (const link of links) {
+            const href = normalizeContactWebsite(link.getAttribute('href') || link.href);
+            const label = normalizeContactWebsite((link.innerText || link.textContent || '').trim());
+            if (href && label && new URL(href).hostname.replace(/^www\./, '') === new URL(label).hostname.replace(/^www\./, '')) {
+                website = href;
+                break;
+            }
+        }
+        if (!phone) {
+            const lines = String(panel.innerText || panel.textContent || '').split('\n');
+            const labelled = lines.findIndex(line => /\b(?:Phone|Call)\s*:/i.test(line));
+            if (labelled >= 0) phone = extractContactPhone(lines.slice(labelled, labelled + 2).join(' '));
+            if (!phone) for (const line of lines) {
+                // Only a standalone number, never a review or another snippet.
+                if (/^[\s+()\d.\-\u202f\u00a0]+$/.test(line)) {
+                    phone = extractContactPhone(line);
+                    if (phone) break;
+                }
+            }
+        }
+        return { website, phone };
+    }
+
     function getBusinessNameTokens(value) {
         const stopWords = new Set([
             'the', 'and', 'for', 'with', 'of', 'at', 'veterinary', 'animal', 'pet',
@@ -132,6 +206,17 @@
         const right = core(second);
         return left.length > 0 && right.length > 0 &&
             left.filter(word => right.includes(word)).length / Math.max(left.length, right.length) >= 0.9;
+    }
+
+    function locationAwareNameMatches(first, second, city) {
+        // Remove only the confirmed locality, not arbitrary branch keywords.
+        const cityTokens = new Set(getBusinessNameTokens(city));
+        const descriptors = new Set(['24', 'hour', 'hours', 'specialty', 'park']);
+        const core = name => getBusinessNameTokens(name)
+            .filter(token => !cityTokens.has(token) && !descriptors.has(token));
+        const left = core(first), right = core(second);
+        return left.length > 0 && right.length > 0 &&
+            left.filter(token => right.includes(token)).length / Math.max(left.length, right.length) >= 0.9;
     }
 
     function hasStrongStreetMatch(first, second, state) {
@@ -214,8 +299,39 @@
             .filter(Boolean);
     }
 
+    function isSearchHeading(value) {
+        return /^(?:(?:search\s+)?results\s+for|showing\s+results\s+for|search\s+results\b|no\s+results\s+found\b|did\s+you\s+mean\b)/i.test(
+            String(value || '').replace(/\s+/g, ' ').trim()
+        );
+    }
+
+    function cleanStreetAddress(value) {
+        const street = String(value || '').replace(/\s+/g, ' ').trim();
+        const parts = street.split(',').map(part => part.trim());
+        // A neighbourhood label can precede the actual numbered street.
+        // Keep subsequent suite/building information intact.
+        if (parts.length > 1 && !isValidStreetAddress(parts[0]) &&
+            /^\d+[A-Za-z]?(?:-\d+)?\s+/.test(parts[1])) return parts.slice(1).join(', ');
+        return street;
+    }
+
+    function repairSearchHeadingAddress(job) {
+        if (!isSearchHeading(job.streetAddress)) return false;
+        const previous = job.addressVerification || {};
+        const restorePrevious = isUsableStreetAddress(previous.previousStreetAddress);
+        job.streetAddress = restorePrevious ? previous.previousStreetAddress : NOT_AVAILABLE_STREET;
+        job.zipCode = restorePrevious && isValidZipCode(previous.previousZipCode)
+            ? previous.previousZipCode : NOT_AVAILABLE_ZIP;
+        job.addressVerificationStatus = 'not-found';
+        job.addressMismatchFlag = false;
+        job.addressMismatchDetails = null;
+        delete job.addressVerification;
+        return true;
+    }
+
     function isValidStreetAddress(value) {
         const street = String(value || '').replace(/\s+/g, ' ').trim();
+        if (isSearchHeading(street)) return false;
         if (!street || street.length > 90) return false;
         if (/^(?:tbd|not available(?:\s*\(tbd\))?|n\/?a|na|unknown|pending)$/i.test(street)) return false;
         if (/Company Description|Job Description|Qualifications|We offer|experienced veterinarian|Willingness to travel|drive practice growth/i.test(street)) return false;
@@ -224,6 +340,7 @@
 
     function isUsableStreetAddress(value) {
         const street = String(value || '').replace(/\s+/g, ' ').trim();
+        if (isSearchHeading(street)) return false;
         if (isMissingValue(street) || street.length > 110) return false;
         return !/Company Description|Job Description|Qualifications|We offer|experienced veterinarian|Willingness to travel|drive practice growth/i.test(street);
     }
@@ -257,7 +374,7 @@
             boulevard: 'blvd', blvd: 'blvd', drive: 'dr', dr: 'dr', lane: 'ln', ln: 'ln',
             court: 'ct', ct: 'ct', circle: 'cir', cir: 'cir', highway: 'hwy', hwy: 'hwy',
             route: 'rt', rte: 'rt', rt: 'rt', parkway: 'pkwy', pkwy: 'pkwy', trail: 'trl', trl: 'trl',
-            place: 'pl', terrace: 'ter', crescent: 'cres',
+            place: 'pl', terrace: 'ter', crescent: 'cres', forest: 'frst', park: 'pk',
             north: 'n', south: 's', east: 'e', west: 'w',
             northeast: 'ne', northwest: 'nw', southeast: 'se', southwest: 'sw'
         };
@@ -365,6 +482,10 @@
         if (!hasGoogleResultData(result)) {
             return { accepted: false, reason: 'no-google-result', result: null };
         }
+        // Search UI headings are not business address/contact evidence.
+        if (isSearchHeading(result.streetAddress) || isSearchHeading(result.businessName)) {
+            return { accepted: false, reason: 'search-heading', result: null };
+        }
 
         const filterLocation = parseFilterLocation(context.location);
         const expectedState = filterLocation.stateAbbrev;
@@ -382,10 +503,16 @@
         }
 
         const nameMatchScore = Math.max(...expectedNames.map(name => businessNameMatchScore(name, result.businessName)));
-        const streetConfirmedVariant = hasStrongStreetMatch(context.streetAddress, result.streetAddress, result.state) &&
-            expectedNames.some(name => businessNameVariantMatches(name, result.businessName));
+        const streetMatch = compareStreetAddresses(context.streetAddress, result.streetAddress, result.state).status === 'match';
+        const zipMatch = zipCodesMatch(context.zipCode, result.zipCode);
+        const streetConfirmedVariant = (hasStrongStreetMatch(context.streetAddress, result.streetAddress, result.state) ||
+            (streetMatch && zipMatch)) && expectedNames.some(name =>
+                businessNameVariantMatches(name, result.businessName) ||
+                locationAwareNameMatches(name, result.businessName, filterLocation.city));
         const confirmedContact = context.confirmedResult && sameContactEntity(context.confirmedResult, result);
-        const nameMatches = nameMatchScore >= 0.9 || streetConfirmedVariant || confirmedContact;
+        const localityConfirmedVariant = normalizeCity(result.city) === normalizeCity(filterLocation.city) &&
+            expectedNames.some(name => locationAwareNameMatches(name, result.businessName, filterLocation.city));
+        const nameMatches = nameMatchScore >= 0.9 || streetConfirmedVariant || localityConfirmedVariant || confirmedContact;
         if (!nameMatches) {
             return { accepted: false, reason: 'business-name-mismatch', result: null };
         }
@@ -398,11 +525,12 @@
 
         return {
             accepted: true,
-            reason: streetConfirmedVariant && nameMatchScore < 0.9 ? 'street-confirmed-name-variant' : 'exact-city-state',
+            reason: localityConfirmedVariant && nameMatchScore < 0.9 ? 'location-confirmed-name-variant' :
+                streetConfirmedVariant && nameMatchScore < 0.9 ? 'street-confirmed-name-variant' : 'exact-city-state',
             nameMatchScore,
             result: {
                 ...result,
-                streetAddress: String(result.streetAddress || '').replace(/\s+/g, ' ').trim(),
+                streetAddress: cleanStreetAddress(result.streetAddress),
                 zipCode: String(result.zipCode || '').trim()
             }
         };
@@ -601,16 +729,22 @@
         isMissingValue,
         normalizeBusinessName,
         isPriorityPetName,
+        extractContactPhone,
+        normalizeContactWebsite,
+        extractPanelContacts,
         businessNameFuzzyMatches,
         businessNameMatchScore,
         businessNamesExactlyEqual,
         businessNameVariantMatches,
+        locationAwareNameMatches,
         hasStrongStreetMatch,
         sameContactEntity,
         extractContactLocality,
         waitForContactDetails,
         getHospitalNameCityCandidates,
         isValidStreetAddress,
+        isSearchHeading,
+        repairSearchHeadingAddress,
         isUsableStreetAddress,
         isValidZipCode,
         zipCodesMatch,

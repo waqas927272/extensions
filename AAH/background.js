@@ -1,5 +1,5 @@
 // background.js
-importScripts('smartrecruiters-posting.js');
+importScripts('smartrecruiters-posting.js', 'job-filter.js');
 
 const smartRecruitersPosting = globalThis.AAHSmartRecruitersPosting;
 let isScraping = false;
@@ -130,6 +130,10 @@ async function scrapeAndGoToNext() {
     if (scrapedJobsOnPage.length > 0) {
         for (const job of scrapedJobsOnPage) {
             if (!isScraping) break;
+            if (globalThis.AAHJobFilter.isExcludedHospital(job.hospital)) {
+                trackSkippedJobs([{ reason: 'excluded hospital name' }]);
+                continue;
+            }
             if (job.link && !uniqueJobLinks.has(job.link)) {
                 // Just add the job without fetching details
                 allScrapedJobs.push(job);
@@ -513,4 +517,3 @@ async function handleFetchDetails(request) {
     const detailsList = await fetchDetailsAsync(url);
     chrome.runtime.sendMessage({ action: 'detailsFetched', details: detailsList, jobIndex: jobIndex }).catch(() => {});
 }
-

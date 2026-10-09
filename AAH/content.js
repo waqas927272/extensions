@@ -124,6 +124,19 @@ function scrapeCurrentPage() {
       return { city: parts[0] || '', state, location: locationText };
     }
 
+    // "TBD", "N/A", blank, etc. are placeholders, not a real city/state — e.g.
+    // PriorityPet's recurring "National" posting where "let us know where you
+    // want to build" means the listing has no fixed location at all.
+    function isMissingLocationValue(value) {
+      return /^(?:|-|tbd-?|n\/?a|na|unknown|pending)$/i.test(String(value || '').trim());
+    }
+
+    function hasUsableLocation(city, state) {
+      const hasCity = !!city && !isMissingLocationValue(city);
+      const hasState = !!state && !isMissingLocationValue(state);
+      return hasCity || hasState;
+    }
+
     const skippedJobs = [];
     let totalJobs = 0;
     const table = document.getElementById('jobsListingContainer');
@@ -148,6 +161,10 @@ function scrapeCurrentPage() {
             const link = jobTitleEl.href;
             const locationText = locationEl.innerText.trim();
             const parsedLocation = parseLocationText(locationText);
+            if (!hasUsableLocation(parsedLocation.city, parsedLocation.state)) {
+              skippedJobs.push({ title: jobTitle, reason: 'no city or state' });
+              return;
+            }
             const rawJobId = link ? link.split('/').pop() : '';
             const jobId = rawJobId ? 'AAH-' + rawJobId : '';
 

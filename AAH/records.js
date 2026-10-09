@@ -1414,8 +1414,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Initialize
-    chrome.storage.local.get(['scrapedJobs'], (result) => {
-        allJobs = result.scrapedJobs || [];
+    chrome.storage.local.get(['scrapedJobs'], async (result) => {
+        const savedJobs = result.scrapedJobs || [];
+        allJobs = globalThis.AAHJobFilter.filterJobs(savedJobs);
+        let repairedAddresses = false;
+        for (const job of allJobs) {
+            if (addressValidation.repairSearchHeadingAddress(job)) repairedAddresses = true;
+        }
+        if (allJobs.length !== savedJobs.length || repairedAddresses) {
+            await chrome.storage.local.set({ scrapedJobs: allJobs });
+        }
         displayRecords(allJobs);
 
         tableHeaders.forEach(header => {
@@ -1964,7 +1972,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const data = await chrome.storage.local.get(['scrapedJobs']);
-        const jobs = data.scrapedJobs || [];
+        const savedJobs = data.scrapedJobs || [];
+        const jobs = globalThis.AAHJobFilter.filterJobs(savedJobs);
+        if (jobs.length !== savedJobs.length) {
+            await chrome.storage.local.set({ scrapedJobs: jobs });
+            allJobs = jobs;
+            displayRecords(allJobs);
+        }
 
         if (jobs.length === 0) {
             showToast('No jobs found. Please scrape jobs first.', 'error');

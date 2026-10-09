@@ -2,6 +2,7 @@
 // Injected into Google Search. Prefer the right-side knowledge panel/business card
 // for address, phone, and website, then fall back to visible result text.
 (async () => {
+    let activePanel = null;
     try {
         if (!globalThis.AAHAddressValidation) throw new Error('Address validation module was not loaded');
         return await globalThis.AAHAddressValidation.waitForContactDetails(readPanel,
@@ -12,6 +13,27 @@
     }
 
     function readPanel() {
+        const panels = [];
+        for (const selector of ['[role="dialog"]', '.knowledge-panel', '.kp-wholepage', '.xpdopen', '#rhs', '[role="complementary"]']) {
+            const matches = document.querySelectorAll ? document.querySelectorAll(selector) : [document.querySelector(selector)];
+            for (const panel of matches) if (panel && isVisible(panel) && !panels.includes(panel)) panels.push(panel);
+        }
+        const context = globalThis.__AAH_ADDRESS_CONTEXT__ || {};
+        let best = null, bestScore = -1;
+        try {
+            for (const panel of panels) {
+                activePanel = panel;
+                const candidate = readSelectedPanel();
+                const valid = globalThis.AAHAddressValidation.validateGoogleResult(candidate, context).accepted;
+                const score = (valid ? 100 : 0) + (candidate.businessName ? 1 : 0) +
+                    (candidate.streetAddress ? 2 : 0) + (candidate.phone ? 1 : 0) + (candidate.website ? 1 : 0);
+                if (score > bestScore) { best = candidate; bestScore = score; }
+            }
+        } finally { activePanel = null; }
+        return best || { businessName: '', streetAddress: '', city: '', state: '', zipCode: '', phone: '', website: '' };
+    }
+
+    function readSelectedPanel() {
         const panelText = getKnowledgePanelText();
         const businessName = extractBusinessNameFromPanel() || '';
         if (!panelText || !businessName) {
@@ -22,6 +44,7 @@
         const parsed = address ? parseAddress(address)
             : globalThis.AAHAddressValidation.extractContactLocality(panelText);
 
+        const contacts = globalThis.AAHAddressValidation.extractPanelContacts(activePanel);
         return {
             businessName,
             fullAddress: address || '',
@@ -29,18 +52,14 @@
             city: parsed.city || '',
             state: parsed.state || '',
             zipCode: parsed.zipCode || '',
-            phone: extractPhoneFromPanel() || extractPhone(panelText) || '',
-            website: extractWebsiteFromPanel() || '',
+            phone: contacts.phone,
+            website: contacts.website,
             panelText: panelText || ''
         };
     }
 
     function getKnowledgePanel() {
-        for (const selector of ['#rhs', '[role="complementary"]', '.kp-wholepage', '.lu_map_section']) {
-            const panel = document.querySelector(selector);
-            if (panel && isVisible(panel)) return panel;
-        }
-        return null;
+        return activePanel;
     }
 
     function getKnowledgePanelText() {
@@ -53,23 +72,34 @@
         if (!panel) return '';
         const selectors = [
             '[data-attrid="title"]',
+            '[data-attrid="kc:/local:one line"] h2',
+            '[role="heading"][aria-level="2"]',
+            '[role="heading"][aria-level="1"]',
+            '.kno-ecr-pt',
+            'h1',
             'h2',
             'h3',
             '.qrShPb',
             '.SPZz6b h2'
         ];
 
+        let fallback = '';
+        const context = globalThis.__AAH_ADDRESS_CONTEXT__ || {};
         for (const selector of selectors) {
             for (const element of panel.querySelectorAll(selector)) {
                 if (!isVisible(element)) continue;
                 const text = cleanText(element.innerText || element.textContent || '');
-                if (text && text.length <= 120 && !/^(?:Website|Directions|Call|Address|Hours)$/i.test(text)) {
-                    return text;
+                if (text && text.length <= 120 && !globalThis.AAHAddressValidation.isSearchHeading(text) &&
+                    !/^(?:Website|Directions|Call|Address|Hours|Reviews|Review summary|Popular times|Businesses|Places)$/i.test(text)) {
+                    if (!fallback) fallback = text;
+                    if (!context.hospitalName ||
+                        globalThis.AAHAddressValidation.businessNameFuzzyMatches(context.hospitalName, text) ||
+                        globalThis.AAHAddressValidation.locationAwareNameMatches(context.hospitalName, text, context.city)) return text;
                 }
             }
         }
 
-        return '';
+        return fallback;
     }
 
     function isVisible(element) {
@@ -96,6 +126,20 @@
         const labelled = source.match(new RegExp(`(?:Address|Located in)\\s*[:\\n]\\s*([^\\n]+?\\b${stateToken}\\s+\\d{5}(?:-\\d{4})?)`, 'i'));
         if (labelled) return normalizeAddress(labelled[1]);
 
+        // Expanded local panels can show an unlabelled address (including
+        // numbered highways). Inspect only this business panel, not all results.
+        const lines = source.split('\n').map(line => line.trim()).filter(Boolean);
+        for (let i = 0; i < lines.length; i++) {
+            for (const candidate of [lines[i], lines.slice(i, i + 2).join(' ')]) {
+                if (!/^(?:Address\s*:\s*)?(?:[^,\d]+,\s*)?(?:\d{1,6}(?:-\d+)?[A-Za-z]?\s|P\.?\s*O\.?\s*Box\s)/i.test(candidate)) continue;
+                const parsed = parseAddress(candidate);
+                if (globalThis.AAHAddressValidation.isValidStreetAddress(parsed.streetAddress) &&
+                    parsed.city && parsed.state && globalThis.AAHAddressValidation.isValidZipCode(parsed.zipCode)) {
+                    return normalizeAddress(candidate);
+                }
+            }
+        }
+
         const patterns = [
             new RegExp(`((?<![\\d-])\\d{1,6}(?:-\\d{1,6})?[a-z]?\\s+[\\w\\s.'#&/-]+?(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|NE|NW|SE|SW)\\b[\\w\\s.,#&/-]*?,\\s*[\\w\\s.'-]+,\\s*${stateToken}\\s+\\d{5}(?:-\\d{4})?)`, 'i'),
             new RegExp(`((?<![\\d-])\\d{1,6}(?:-\\d{1,6})?[a-z]?\\s+[\\w\\s.'#&/-]+?(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place|Pkwy|Parkway|Hwy|Highway|Cir|Circle|Trl|Trail|Loop|Ter|Terrace|NE|NW|SE|SW)\\b[\\w\\s.,#&/-]*?\\s+${stateToken}\\s+\\d{5}(?:-\\d{4})?)`, 'i')
@@ -117,107 +161,21 @@
             '[data-attrid*="address"]',
             '[aria-label^="Address"]',
             '[data-local-attribute="d3adr"]',
+            '[data-item-id="address"]',
+            'a[href*="/maps"]',
             '.LrzXr'
         ];
 
         for (const selector of selectors) {
             for (const element of panel.querySelectorAll(selector)) {
-                const text = cleanText(element.innerText || element.textContent || element.getAttribute('aria-label') || '');
+                const text = cleanText(element.getAttribute('aria-label')?.match(/^Address:/i)
+                    ? element.getAttribute('aria-label') : element.innerText || element.textContent || '');
                 const parsed = parseAddress(text);
                 if (parsed.streetAddress && parsed.city && parsed.state) return text.replace(/^Address\s*[:\n]\s*/i, '');
             }
         }
 
         return '';
-    }
-
-    function extractPhoneFromPanel() {
-        const panel = getKnowledgePanel();
-        if (!panel) return '';
-        const telLink = panel.querySelector('a[href^="tel:"]');
-        if (telLink) return telLink.getAttribute('href').replace(/^tel:/i, '').trim();
-
-        const selectors = [
-            '[data-attrid*="phone"]',
-            '[aria-label^="Call"]',
-            '[data-local-attribute*="phone"]'
-        ];
-        for (const selector of selectors) {
-            for (const element of panel.querySelectorAll(selector)) {
-                const text = cleanText(element.innerText || element.textContent || element.getAttribute('aria-label') || '');
-                const phone = extractPhone(text);
-                if (phone) return phone;
-            }
-        }
-        return '';
-    }
-
-    function extractPhone(text) {
-        const source = cleanText(text || '');
-        const match = source.match(/(?:Phone|Call)\s*[:\n]?\s*(\+?1?[\s.-]?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4})/i)
-            || source.match(/\b(?:\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}\b/);
-        return match ? (match[1] || match[0]).trim() : '';
-    }
-
-    function extractWebsiteFromPanel() {
-        const panel = getKnowledgePanel();
-        if (!panel) return '';
-        const links = [...panel.querySelectorAll('a[href]')];
-        for (const link of links) {
-            const label = cleanText(`${link.innerText || ''} ${link.getAttribute('aria-label') || ''} ${link.getAttribute('title') || ''}`);
-            const href = unwrapGoogleUrl(link.href || '');
-            if (!/^https?:\/\//i.test(href)) continue;
-            if (isBlockedUrl(href)) continue;
-            if (/\bwebsite\b/i.test(label) || looksLikeBusinessWebsite(href)) return href;
-        }
-        return '';
-    }
-
-    function extractWebsiteFromResults() {
-        const links = [...document.querySelectorAll('#search a[href], a[href]')];
-        for (const link of links) {
-            const href = unwrapGoogleUrl(link.href || '');
-            if (!/^https?:\/\//i.test(href)) continue;
-            if (isBlockedUrl(href)) continue;
-            if (looksLikeBusinessWebsite(href)) return href;
-        }
-        return '';
-    }
-
-    function unwrapGoogleUrl(href) {
-        try {
-            const url = new URL(href);
-            if (url.hostname.includes('google.') && url.pathname === '/url') {
-                return url.searchParams.get('q') || url.searchParams.get('url') || href;
-            }
-        } catch {
-            return href;
-        }
-        return href;
-    }
-
-    function isBlockedUrl(href) {
-        let host = '';
-        try {
-            host = new URL(href).hostname.replace(/^www\./i, '').toLowerCase();
-        } catch {
-            return true;
-        }
-
-        return [
-            'google.', 'gstatic.', 'googleusercontent.', 'youtube.', 'facebook.', 'linkedin.',
-            'instagram.', 'x.com', 'twitter.', 'indeed.', 'glassdoor.', 'ziprecruiter.',
-            'jobvite.', 'unitedveterinarycare.', 'yelp.', 'mapquest.', 'bing.', 'duckduckgo.'
-        ].some(blocked => host.includes(blocked));
-    }
-
-    function looksLikeBusinessWebsite(href) {
-        try {
-            const host = new URL(href).hostname.toLowerCase();
-            return /\b(vet|veterinary|animal|pet|clinic|hospital|emergency|specialty|care)\b/i.test(host);
-        } catch {
-            return false;
-        }
     }
 
     function normalizeAddress(address) {

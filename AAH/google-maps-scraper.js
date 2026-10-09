@@ -149,6 +149,7 @@
         if (expectedNames.length === 0) return false;
         return expectedNames.some(searchName =>
             globalThis.AAHAddressValidation.businessNameFuzzyMatches(searchName, businessName) ||
+            globalThis.AAHAddressValidation.locationAwareNameMatches(searchName, businessName, scrapeContext.city) ||
             (scrapeContext.streetAddress && globalThis.AAHAddressValidation.businessNameVariantMatches(searchName, businessName))
         );
     }
@@ -171,7 +172,8 @@
             })
             // Variants may be inspected, but only the numbered-street validator
             // can accept them. Do not discard the right panel before reading it.
-            .filter(item => item.score >= 0.9 || (scrapeContext.streetAddress &&
+            .filter(item => item.score >= 0.9 ||
+                globalThis.AAHAddressValidation.locationAwareNameMatches(searchQuery, item.label, scrapeContext.city) || (scrapeContext.streetAddress &&
                 globalThis.AAHAddressValidation.businessNameVariantMatches(searchQuery, item.label)))
             .sort((a, b) => b.score - a.score);
     }
@@ -258,69 +260,11 @@
     }
 
     function tryExtractWebsite() {
-        const panel = getPlacePanel();
-        if (!panel) return '';
-        // Method 1: data-item-id="authority" is the website link
-        const websiteLink = panel.querySelector('a[data-item-id="authority"]');
-        if (websiteLink) {
-            const href = websiteLink.getAttribute('href') || '';
-            if (href) return href;
-            const ariaLabel = websiteLink.getAttribute('aria-label') || '';
-            const cleaned = ariaLabel.replace(/^Website:\s*/i, '').trim();
-            if (cleaned) return cleaned;
-        }
-        // Method 2: button with data-tooltip="Open website"
-        const websiteBtn = panel.querySelector('button[data-tooltip="Open website"]');
-        if (websiteBtn) {
-            const ariaLabel = websiteBtn.getAttribute('aria-label') || '';
-            const cleaned = ariaLabel.replace(/^Website:\s*/i, '').trim();
-            if (cleaned) return cleaned;
-        }
-        // Method 3: any website-labelled link/button in the place panel
-        const websiteFallback = panel.querySelector('a[aria-label^="Website:"], button[aria-label^="Website:"], a[data-tooltip="Open website"]');
-        if (websiteFallback) {
-            const href = websiteFallback.getAttribute('href') || '';
-            if (href && !href.startsWith('javascript:')) return href;
-            const ariaLabel = websiteFallback.getAttribute('aria-label') || '';
-            const cleaned = ariaLabel.replace(/^Website:\s*/i, '').trim();
-            if (cleaned) return cleaned;
-        }
-        return '';
+        return globalThis.AAHAddressValidation.extractPanelContacts(getPlacePanel()).website;
     }
 
-    // ===== Extract phone number from place detail panel =====
     function tryExtractPhone() {
-        const panel = getPlacePanel();
-        if (!panel) return '';
-        // Method 1: button with data-item-id starting with "phone:"
-        const phoneBtn = panel.querySelector('button[data-item-id^="phone:"]');
-        if (phoneBtn) {
-            // data-item-id="phone:tel:+1-555-123-4567" or similar
-            const dataId = phoneBtn.getAttribute('data-item-id') || '';
-            const phoneFromId = dataId.replace(/^phone:tel:/, '').replace(/^phone:/, '').trim();
-            if (phoneFromId) return phoneFromId;
-            // Fallback: aria-label
-            const ariaLabel = phoneBtn.getAttribute('aria-label') || '';
-            const cleaned = ariaLabel.replace(/^Phone:\s*/i, '').trim();
-            if (cleaned) return cleaned;
-        }
-        // Method 2: look for tel: links
-        const telLinks = panel.querySelectorAll('a[href^="tel:"]');
-        for (const link of telLinks) {
-            const phone = link.getAttribute('href').replace('tel:', '').trim();
-            if (phone) return phone;
-        }
-        // Method 3: generic phone-labelled buttons/spans
-        const phoneFallback = panel.querySelector('button[aria-label^="Phone:"], button[data-item-id*="phone"], [aria-label^="Phone:"]');
-        if (phoneFallback) {
-            const dataId = phoneFallback.getAttribute('data-item-id') || '';
-            const phoneFromId = dataId.replace(/^phone:tel:/, '').replace(/^phone:/, '').trim();
-            if (phoneFromId) return phoneFromId;
-            const ariaLabel = phoneFallback.getAttribute('aria-label') || '';
-            const cleaned = ariaLabel.replace(/^Phone:\s*/i, '').trim();
-            if (cleaned) return cleaned;
-        }
-        return '';
+        return globalThis.AAHAddressValidation.extractPanelContacts(getPlacePanel()).phone;
     }
 
     // ===== Try to extract address from place detail panel =====

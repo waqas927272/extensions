@@ -23,10 +23,6 @@
         if (!context.searchable) return [];
         const location = `${context.city}, ${a.getStateAbbrev(context.state)}`;
         const plans = [];
-        if (a.isUsableStreetAddress(job.streetAddress)) {
-            plans.push({ stage: 'saved-address', query: [context.hospitalName,
-                job.streetAddress, location, a.isValidZipCode(job.zipCode) ? job.zipCode : ''].filter(Boolean).join(', ') });
-        }
         const names = [context.hospitalName,
             context.hospitalName.replace(/&/g, 'and').replace(/[()]/g, ' ').replace(/\s+/g, ' ').trim()];
         for (const name of new Set(names)) plans.push({ stage: 'hospital-name', query: `${name}, ${location}` });
@@ -47,13 +43,12 @@
         const context = getContext(job);
         const attempts = [];
         if (!context.searchable) return { accepted: false, reason: 'missing-confirmed-location', result: null, attempts };
-        let confirmed = null;
         let fallback = null;
         let ambiguous = false;
         const contacts = [];
         for (const plan of buildSearchPlan(job)) {
             let raw;
-            const requestContext = { ...context, confirmedResult: confirmed || (!ambiguous && fallback) || null };
+            const requestContext = { ...context, confirmedResult: (!ambiguous && fallback) || null };
             try {
                 raw = await providers[plan.provider](plan.query, requestContext);
             } catch (error) {
@@ -67,7 +62,6 @@
             const candidate = { ...checked.result, sourceUrl: raw.sourceUrl || (plan.provider === 'maps'
                 ? `https://www.google.com/maps/search/${encodeURIComponent(plan.query)}`
                 : `https://www.google.com/search?q=${encodeURIComponent(plan.query)}`) };
-            const sameSavedStreet = a.compareStreetAddresses(job.streetAddress, candidate.streetAddress, context.state).status === 'match';
             if (!a.isUsableStreetAddress(candidate.streetAddress)) {
                 // Keep contact-only evidence until an address-bearing result can
                 // bind it to the same hospital. Never use name/city alone.
@@ -75,22 +69,9 @@
                 attempt.accepted = false;
                 attempt.reason = 'contact-identity-unconfirmed';
             } else {
-                if (plan.stage === 'saved-address' && !sameSavedStreet) {
-                    attempt.accepted = false;
-                    attempt.reason = 'saved-street-not-confirmed';
-                    continue;
-                }
-                if (confirmed) {
-                    // A confirmed saved street wins over another branch in this city.
-                    if (!sameSavedStreet || conflicts(confirmed, candidate)) {
-                        attempt.accepted = false;
-                        attempt.reason = 'confirmed-branch-conflict';
-                        continue;
-                    }
-                    confirmed = a.chooseCompleteAddressResult(confirmed, candidate);
-                } else if (sameSavedStreet) {
-                    confirmed = candidate;
-                } else if (fallback && conflicts(fallback, candidate)) {
+                // Saved streets do not choose the branch. Compare only Google
+                // results already validated against the hospital, city and state.
+                if (fallback && conflicts(fallback, candidate)) {
                     ambiguous = true;
                     attempt.accepted = false;
                     attempt.reason = 'ambiguous-results';
@@ -98,7 +79,7 @@
                     fallback = a.chooseCompleteAddressResult(fallback, candidate);
                 }
             }
-            let anchor = confirmed || (!ambiguous && fallback);
+            let anchor = !ambiguous && fallback;
             if (anchor) {
                 for (const contact of contacts) {
                     if (!a.sameContactEntity(anchor, contact.candidate)) continue;
@@ -106,16 +87,15 @@
                     contact.attempt.accepted = true;
                     contact.attempt.reason = 'confirmed-hospital-contact';
                 }
-                if (confirmed) confirmed = anchor;
-                else fallback = anchor;
+                fallback = anchor;
             }
-            const best = confirmed || (!ambiguous && fallback);
+            const best = !ambiguous && fallback;
             if (best && enoughData(best)) break;
         }
-        const result = confirmed || (!ambiguous && fallback);
+        const result = !ambiguous && fallback;
         if (!result) return { accepted: false, reason: ambiguous ? 'ambiguous-results' : 'no-google-result', result: null, attempts };
         const checked = a.validateGoogleResult(result, context);
-        return { ...checked, lookupStage: confirmed ? 'saved-address' : 'hospital-name', attempts };
+        return { ...checked, lookupStage: 'hospital-name', attempts };
     }
 
     return { getContext, buildSearchPlan, lookup };
