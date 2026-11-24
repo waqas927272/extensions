@@ -82,24 +82,35 @@ document.addEventListener('DOMContentLoaded', async () => {
         for (const job of Array.isArray(jobs) ? jobs : []) {
             if (!job || /^multiple locations$/i.test(String(job.city || '').trim())) continue;
 
-            const expectedLocation = parseLocationParts(job.location || '');
+            const originalCity = job.city || '';
+            const originalState = job.state || '';
+            const originalLocation = job.location || '';
+            const normalizedLocation = detailRules.normalizeJobLocationData({
+                city: originalCity,
+                state: originalState,
+                location: originalLocation
+            });
+
+            const expectedLocation = parseLocationParts(normalizedLocation.location || '');
             const normalized = detailRules.normalizeAddressData({
                 streetAddress: job.streetAddress || '',
-                city: job.city || '',
-                state: job.state || '',
+                city: normalizedLocation.city,
+                state: normalizedLocation.state,
                 zipCode: job.zipCode || ''
             }, expectedLocation);
             const nextState = normalized.state ? getFullStateName(normalized.state) : '';
             const changed = normalized.streetAddress !== (job.streetAddress || '') ||
-                normalized.city !== (job.city || '') ||
-                nextState !== (job.state || '') ||
-                normalized.zipCode !== (job.zipCode || '');
+                normalized.city !== originalCity ||
+                nextState !== originalState ||
+                normalized.zipCode !== (job.zipCode || '') ||
+                normalizedLocation.location !== originalLocation;
             if (!changed) continue;
 
             job.streetAddress = normalized.streetAddress;
             job.city = normalized.city;
             job.state = nextState;
             job.zipCode = normalized.zipCode;
+            job.location = normalizedLocation.location;
             job.cityMismatchFlag = false;
             job.cityMismatchReason = '';
             repairedCount++;

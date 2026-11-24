@@ -121,6 +121,92 @@ function getFacilityCore(value) {
     return normalizeNameTokens(value).filter(token => !generic.has(token)).join(' ');
 }
 
+const FACILITY_WORD_PATTERN = /\b(?:veterinary|vet|animal|pet|hospital|clinic|center|centre|care|associates?|services?)\b/i;
+const ROLE_WORD_PATTERN = /\b(?:veterinarian|oncologist|cardiologist|radiologist|dermatologist|anesthesiologist|internist|criticalist|surgeon|dentist|medical director)\b/i;
+
+function cleanHospitalCandidate(value, roleTitle = '') {
+    let candidate = cleanInline(value)
+        .replace(/^[\s|,:;\-\u2013\u2014]+|[\s|,:;\-\u2013\u2014]+$/g, '')
+        .replace(/[\s,]+(?:located|situated)\s+(?:in|at)\b.*$/i, '')
+        .replace(/(?:'s|\u2019s)$/i, '')
+        .trim();
+
+    if (!candidate || candidate.length > 120 || candidate.split(/\s+/).length > 14) return '';
+    if (!FACILITY_WORD_PATTERN.test(candidate)) return '';
+    if (/^[\u00b7\u2022*]|\b(?:are you|do you|join|why|your career|your opportunity|practice exceptional|lead with purpose|established excellence|description|equal opportunity|employer|licensed to|dedicated to|build strong|communicating clearly|pain management)\b/i.test(candidate)) return '';
+    if (/[.!?]/.test(candidate)) return '';
+
+    const nameWords = candidate.split(/\s+/).filter(word => !/^(?:&|and|of|the|at|in|for)$/i.test(word));
+    if (nameWords.some(word => !/^[(']*[A-Z0-9]/.test(word))) return '';
+
+    const normalizedCandidate = normalizeNameTokens(candidate).join(' ');
+    const normalizedTitle = normalizeNameTokens(roleTitle).join(' ');
+    if (normalizedTitle && normalizedCandidate === normalizedTitle) return '';
+
+    // A role heading such as "Veterinary Oncologist" is not a facility name.
+    // Real names containing a role word also carry an explicit facility suffix.
+    if (ROLE_WORD_PATTERN.test(candidate) && !/\b(?:hospital|clinic|center|centre|care|associates?|services?)\b/i.test(candidate)) return '';
+
+    if (/^(?:general practice|primary care|specialty(?: hospital| care)?|emergency(?: hospital| services?| care)?|urgent care|critical care|imaging)$/i.test(candidate)) return '';
+    return candidate;
+}
+
+function getOpeningHospitalName(body, roleTitle = '') {
+    const opening = String(body || '').slice(0, 2600);
+    const lines = opening.split(/\r?\n/).map(cleanInline).filter(Boolean).slice(0, 24);
+
+    // Current ClearCompany postings commonly lead with either
+    // "Hospital | City, State" or "Role - Hospital".
+    for (const line of lines) {
+        const pipeIndex = line.indexOf('|');
+        if (pipeIndex > 0) {
+            const candidate = cleanHospitalCandidate(line.slice(0, pipeIndex), roleTitle);
+            if (candidate) return candidate;
+        }
+
+        const dashMatch = line.match(/^(.{3,80}?)\s+[\u2013\u2014]\s+(.{3,120})$/);
+        if (dashMatch) {
+            const right = cleanHospitalCandidate(dashMatch[2], roleTitle);
+            if (right) return right;
+            const whole = cleanHospitalCandidate(line, roleTitle);
+            if (whole) return whole;
+            const left = cleanHospitalCandidate(dashMatch[1], roleTitle);
+            if (left) return left;
+        }
+    }
+
+    // Prefer a short standalone facility-name line before scanning prose.
+    for (const line of lines.slice(0, 10)) {
+        if (/[,;:!?]|\b(?:is|are|seeks?|offers?|provides?|located|situated)\b/i.test(line)) continue;
+        const candidate = cleanHospitalCandidate(line, roleTitle);
+        if (candidate) return candidate;
+    }
+
+    const nameToken = "(?:[A-Z][A-Za-z0-9'().-]*|&|and|of|the)";
+    const name = `(${nameToken}(?:\\s+${nameToken}){1,11})`;
+    const prosePatterns = [
+        new RegExp(`${name}\\s*(?:\\([^)]{2,16}\\))?\\s*(?:(?:in|near)\\s+[A-Z][^.!?]{0,80}|,\\s*(?:located|situated)\\b[^.!?]{0,100},?)?\\s+(?:is|are|seeks?|offers?|provides?|has)\\b`, 'g'),
+        new RegExp(`\\b(?:team|practice|hospital)\\s+at\\s+${name}\\s+(?:is|are|seeks?|offers?|provides?|has|looks?)\\b`, 'g')
+    ];
+
+    for (const pattern of prosePatterns) {
+        for (const match of opening.matchAll(pattern)) {
+            const candidate = cleanHospitalCandidate(match[1], roleTitle);
+            if (candidate) return candidate;
+        }
+    }
+
+    // Some Pieper postings use a location suffix inside prose, for example
+    // "Pieper Veterinary - Madison". Validate the base separately so role
+    // headings such as "Veterinary Dentist - Hospital Name" cannot win.
+    const suffixPattern = new RegExp(`${name}\\s+[\\u2013\\u2014]\\s+([A-Z][A-Za-z'-]*(?:\\s+[A-Z][A-Za-z'-]*){0,2})`, 'g');
+    for (const match of opening.matchAll(suffixPattern)) {
+        const base = cleanHospitalCandidate(match[1], roleTitle);
+        if (base) return `${base}-${cleanInline(match[2])}`;
+    }
+    return '';
+}
+
 function isCredentialedExoticsRole(title, description) {
     const titleText = cleanInline(title);
     if (!/\b(?:exotics?|exotic animal|avian)\b/i.test(titleText)) return false;
@@ -167,16 +253,7 @@ function extractCanonicalHospital(text, title = '') {
     const organization = cleanInline(getMetadataField(text, 'Hiring Organization'));
     if (organization && !/^cove(?: animal health)?$/i.test(organization)) return organization;
 
-    const opening = body.slice(0, 1800);
-    const patterns = [
-        /(?:^|[.!?]\s+)([A-Z][A-Za-z&'.()-]*(?:\s+[A-Z][A-Za-z&'.()-]*){1,8})\s+(?:is seeking|seeks|is expanding|has officially)/gm,
-        /\bat\s+([A-Z][A-Za-z&'.()-]*(?:\s+[A-Z][A-Za-z&'.()-]*){1,8}(?:Hospital|Clinic|Center|Care|Associates?|Services))\b/g
-    ];
-    for (const pattern of patterns) {
-        const match = pattern.exec(opening);
-        if (match) return cleanInline(match[1]);
-    }
-    return '';
+    return getOpeningHospitalName(body, roleTitle);
 }
 
 function getPositionFromTitle(title) {
@@ -387,13 +464,72 @@ const STATE_NAME_TO_ABBREVIATION = {
     'west virginia': 'WV', wisconsin: 'WI', wyoming: 'WY'
 };
 
+const COUNTRY_ONLY_LOCATION_VALUES = new Set([
+    'us',
+    'usa',
+    'united states',
+    'united states of america'
+]);
+
+function getStateAbbreviation(value) {
+    const state = cleanInline(value);
+    if (!state) return '';
+    if (/^[A-Z]{2}$/i.test(state) && Object.values(STATE_NAME_TO_ABBREVIATION).includes(state.toUpperCase())) {
+        return state.toUpperCase();
+    }
+    return STATE_NAME_TO_ABBREVIATION[state.toLowerCase()] || '';
+}
+
+export function normalizeJobLocationData(data = {}) {
+    let city = cleanInline(data.city);
+    let state = cleanInline(data.state);
+    const rawLocation = cleanInline(data.location);
+    const locationParts = rawLocation.split(',').map(cleanInline).filter(Boolean);
+
+    if (locationParts.length && COUNTRY_ONLY_LOCATION_VALUES.has(locationParts[locationParts.length - 1].toLowerCase())) {
+        locationParts.pop();
+    }
+
+    const cityParts = city.split(',').map(cleanInline).filter(Boolean);
+    const cityState = cityParts.length > 1 ? getStateAbbreviation(cityParts[cityParts.length - 1]) : '';
+    const locationState = locationParts.length > 1 ? getStateAbbreviation(locationParts[locationParts.length - 1]) : '';
+
+    if (COUNTRY_ONLY_LOCATION_VALUES.has(state.toLowerCase())) state = '';
+
+    if (cityState) {
+        city = cityParts.slice(0, -1).join(', ');
+        state = cityState;
+    } else if (!getStateAbbreviation(state) && locationState) {
+        city = locationParts.slice(0, -1).join(', ');
+        state = locationState;
+    }
+
+    const stateAbbreviation = getStateAbbreviation(state);
+    const location = city && stateAbbreviation
+        ? `${city}, ${stateAbbreviation}`
+        : rawLocation;
+
+    return { city, state: stateAbbreviation || state, location };
+}
+
 function findLocationSpecificHospital(body, city) {
     if (!city || city === 'Multiple Locations') return '';
     const escapedCity = city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const pattern = new RegExp(`\\b([A-Z][A-Za-z&'.()-]*(?:\\s+[A-Z][A-Za-z&'.()-]*){1,8})\\s+in\\s+${escapedCity}\\b`, 'g');
+    const nameToken = "(?:[A-Z][A-Za-z0-9'().-]*|&|and|of|the)";
+    const pattern = new RegExp(`\\b(${nameToken}(?:\\s+${nameToken}){1,11})\\s+in\\s+${escapedCity}\\b`, 'g');
     for (const match of body.matchAll(pattern)) {
-        const candidate = cleanInline(match[1]);
-        if (getFacilityKind(candidate)) return candidate;
+        const candidate = cleanHospitalCandidate(match[1]);
+        if (candidate) return candidate;
+    }
+
+    // Pieper descriptions sometimes introduce the location as
+    // "Pieper Veterinary, Stratford" and later shorten it to
+    // "Pieper Stratford's". Together those phrases identify the complete
+    // location-specific facility name rather than only the parent brand.
+    const pieperLocationPattern = new RegExp(`\\bPieper\\s+Veterinary\\s*,\\s*${escapedCity}\\b`, 'i');
+    const pieperShortNamePattern = new RegExp(`\\bPieper\\s+${escapedCity}(?:['\u2019]s)?\\b`, 'i');
+    if (pieperLocationPattern.test(body) && pieperShortNamePattern.test(body)) {
+        return `Pieper Veterinary ${city}`;
     }
     return '';
 }
@@ -576,6 +712,23 @@ export function normalizeAddressData(data, expectedLocation = {}) {
     normalized.city = cleanInline(normalized.city);
     normalized.state = cleanInline(normalized.state);
     normalized.zipCode = cleanInline(normalized.zipCode);
+
+    const addressCityParts = normalized.city.split(',').map(cleanInline).filter(Boolean);
+    const cityCarriesState = addressCityParts.length > 1 && !!getStateAbbreviation(addressCityParts[addressCityParts.length - 1]);
+    const stateCarriesCountry = COUNTRY_ONLY_LOCATION_VALUES.has(normalized.state.toLowerCase());
+    if (cityCarriesState || stateCarriesCountry) {
+        const repairedLocation = normalizeJobLocationData({
+            city: normalized.city,
+            state: normalized.state,
+            location: [normalized.city, normalized.state].filter(Boolean).join(', ')
+        });
+        if (repairedLocation.city !== normalized.city || repairedLocation.state !== normalized.state) {
+            normalized.city = repairedLocation.city;
+            normalized.state = repairedLocation.state;
+            normalized.addressRepaired = true;
+            normalized.addressRepairReason = 'Moved the state out of the city field and removed the country value';
+        }
+    }
 
     const embedded = parseAddressStoredInStreet(normalized.streetAddress, expectedLocation);
     if (embedded) {
